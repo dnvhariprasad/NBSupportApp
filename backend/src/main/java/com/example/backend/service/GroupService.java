@@ -103,6 +103,8 @@ public class GroupService {
                 Map<String, Object> content = (Map<String, Object>) entry.get("content");
                 if (content != null) {
                     Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                    List<Map<String, Object>> entryLinks = (List<Map<String, Object>>) content.get("links");
+
                     if (props != null) {
                         Map<String, Object> groupItem = new HashMap<>();
                         groupItem.put("r_object_id", props.get("r_object_id"));
@@ -114,6 +116,19 @@ public class GroupService {
                         groupItem.put("r_creation_date", props.get("r_creation_date"));
                         groupItem.put("r_modify_date", props.get("r_modify_date"));
 
+                        // Include available actions from links
+                        if (entryLinks != null) {
+                            Map<String, String> actions = new HashMap<>();
+                            for (Map<String, Object> link : entryLinks) {
+                                String rel = (String) link.get("rel");
+                                String href = (String) link.get("href");
+                                if (rel != null && href != null) {
+                                    actions.put(rel, href);
+                                }
+                            }
+                            groupItem.put("actions", actions);
+                        }
+
                         groups.add(groupItem);
                     }
                 }
@@ -122,5 +137,63 @@ public class GroupService {
         result.put("groups", groups);
 
         return result;
+    }
+
+    /**
+     * Get detailed information about a specific group including all available actions/links
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getGroupDetails(String groupName) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/groups/" + groupName;
+
+        log.info("Fetching group details for: {}", groupName);
+
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            Map<String, Object> result = new HashMap<>();
+
+            if (response != null) {
+                Map<String, Object> props = (Map<String, Object>) response.get("properties");
+                List<Map<String, Object>> links = (List<Map<String, Object>>) response.get("links");
+
+                if (props != null) {
+                    result.put("properties", props);
+                }
+
+                // Extract available actions from links
+                if (links != null) {
+                    Map<String, Map<String, String>> actions = new HashMap<>();
+                    for (Map<String, Object> link : links) {
+                        String rel = (String) link.get("rel");
+                        String href = (String) link.get("href");
+                        String method = (String) link.get("method"); // HTTP method (GET, POST, PUT, DELETE)
+
+                        if (rel != null && href != null) {
+                            Map<String, String> actionDetails = new HashMap<>();
+                            actionDetails.put("href", href);
+                            actionDetails.put("method", method != null ? method : "GET");
+                            actions.put(rel, actionDetails);
+                        }
+                    }
+                    result.put("availableActions", actions);
+
+                    // Log available actions for debugging
+                    log.info("Available actions for group '{}': {}", groupName, actions.keySet());
+                }
+            }
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error fetching group details for '{}': {}", groupName, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch group details: " + e.getMessage());
+        }
     }
 }

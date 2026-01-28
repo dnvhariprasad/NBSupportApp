@@ -26,4 +26,12 @@ public class GroupController {
             @RequestParam(defaultValue = "10") int size) {
         return groupService.searchGroups(groupName, page, size);
     }
+
+    /**
+     * Get detailed information about a specific group including available actions
+     */
+    @GetMapping("/{groupName}")
+    public Map<String, Object> getGroupDetails(@PathVariable String groupName) {
+        return groupService.getGroupDetails(groupName);
+    }
 }
