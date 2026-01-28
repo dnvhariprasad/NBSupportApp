@@ -1,11 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, HelpCircle, Layers, Briefcase } from 'lucide-react';
+import { GitBranch, Users, Compass, Settings, HelpCircle, Briefcase, UsersRound } from 'lucide-react';
 
 const Sidebar = () => {
     const navItems = [
         { name: 'Cases', path: '/dashboard/cases', icon: Briefcase },
         { name: 'Workflows', path: '/dashboard/workflows', icon: GitBranch },
+        { name: 'Groups', path: '/dashboard/groups', icon: UsersRound },
         { name: 'Users', path: '/dashboard/users', icon: Users },
     ];
 
@@ -47,18 +48,6 @@ const Sidebar = () => {
                             )}
                         </NavLink>
                     ))}
-                </div>
-
-                {/* System Section (Visual placeholder to match style) */}
-                <div className="mt-8 mb-2 px-4">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">System</span>
-                </div>
-                <div className="space-y-1">
-                    <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors text-left">
-                        <Layers size={18} className="text-slate-500" />
-                        <span>Analytics</span>
-                    </button>
-                    {/* Placeholder for more system items if needed */}
                 </div>
             </div>
             

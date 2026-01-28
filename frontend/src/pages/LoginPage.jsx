@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { User, Lock, Loader2, ArrowRight, ShieldCheck, Compass, Mail, Building2 } from 'lucide-react';
+import { Lock, Loader2, ArrowRight, Compass, Mail } from 'lucide-react';
 import api from '../api/axios';
 
 const LoginPage = () => {
@@ -67,24 +67,9 @@ const LoginPage = () => {
                         </div>
                         <span className="text-2xl font-bold tracking-tight">NB Support</span>
                     </div>
-
-                    <h1 className="text-4xl font-bold leading-tight mb-6">
-                        Precision in Compliance,<br />
-                        Power in Review
-                    </h1>
-                    <p className="text-blue-100 text-lg leading-relaxed max-w-md opacity-90">
-                        The unified compliance platform for enterprise operations. Manage vendor submissions with AI-powered comment parsing and intelligent version comparison.
-                    </p>
                 </div>
 
                 <div className="relative z-10">
-                    <div className="flex items-center gap-2 text-sm font-medium mb-4">
-                        <ShieldCheck size={18} />
-                        <span>Enterprise Grade Security Standard</span>
-                    </div>
-                    <p className="text-xs text-blue-200 opacity-60">
-                        &copy; {new Date().getFullYear()} NB Support Technologies. All rights reserved.
-                    </p>
                 </div>
             </div>
 
@@ -190,24 +175,6 @@ const LoginPage = () => {
                             )}
                         </button>
                     </form>
-
-                    <div className="relative my-8">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-gray-200"></div>
-                        </div>
-                        <div className="relative flex justify-center text-xs">
-                            <span className="px-2 bg-white text-gray-400 uppercase font-medium tracking-wide">Or continue with</span>
-                        </div>
-                    </div>
-
-                    <button 
-                        type="button"
-                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-gray-200 rounded-lg 
-                                 text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-                    >
-                        <Building2 size={16} className="text-[#0A66C2]" />
-                        Enterprise SSO
-                    </button>
 
                     <div className="mt-8 text-center">
                         <p className="text-sm text-gray-500">
