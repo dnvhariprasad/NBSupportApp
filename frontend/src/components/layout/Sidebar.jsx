@@ -1,9 +1,10 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, HelpCircle, Layers } from 'lucide-react';
+import { GitBranch, Users, Compass, Settings, HelpCircle, Layers, Briefcase } from 'lucide-react';
 
 const Sidebar = () => {
     const navItems = [
+        { name: 'Cases', path: '/dashboard/cases', icon: Briefcase },
         { name: 'Workflows', path: '/dashboard/workflows', icon: GitBranch },
         { name: 'Users', path: '/dashboard/users', icon: Users },
     ];
