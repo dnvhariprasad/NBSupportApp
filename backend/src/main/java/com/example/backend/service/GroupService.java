@@ -276,62 +276,49 @@ public class GroupService {
 
     /**
      * Add a member to a group using DCTM REST API
+     * The API expects a simple href reference to the user/group resource
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> addMember(String groupName, String memberName, String memberType, String memberSrc) {
         log.info("Adding {} '{}' to group '{}'", memberType, memberName, groupName);
 
         try {
-            // Step 1: Fetch the full user/group object first
-            String fetchUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
-            if ("user".equalsIgnoreCase(memberType)) {
-                fetchUrl += "/users/" + memberName;
-            } else {
-                fetchUrl += "/groups/" + memberName;
-            }
-
-            log.info("Fetching member object from: {}", fetchUrl);
-
-            Map<String, Object> memberObject = restClient.get()
-                    .uri(fetchUrl)
-                    .header("Authorization", getAuthHeader())
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .retrieve()
-                    .body(Map.class);
-
-            if (memberObject == null) {
-                throw new RuntimeException("Member not found: " + memberName);
-            }
-
-            log.info("Fetched member object: {}", memberObject);
-
-            // Step 2: Build the endpoint URL for adding to group
+            // Build the endpoint URL for adding to group
             String addUrl;
+            String memberHref;
+
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
             if ("user".equalsIgnoreCase(memberType)) {
-                addUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
-                        + "/groups/" + groupName + "/users";
+                addUrl = baseUrl + "/groups/" + groupName + "/users";
+                memberHref = baseUrl + "/users/" + memberName;
             } else {
-                addUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
-                        + "/groups/" + groupName + "/groups";
+                addUrl = baseUrl + "/groups/" + groupName + "/groups";
+                memberHref = baseUrl + "/groups/" + memberName;
             }
 
-            log.info("Adding member to group via: {}", addUrl);
+            // The payload is simply an href reference to the member
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("href", memberHref);
 
-            // Step 3: Post the member object to the group
-            // Use the full object structure from the GET response
-            Map<String, Object> response = restClient.post()
+            log.info("Adding member via POST to: {}", addUrl);
+            log.info("Payload: {}", payload);
+
+            // Post the href reference to add the member
+            restClient.post()
                     .uri(addUrl)
                     .header("Authorization", getAuthHeader())
                     .header("Content-Type", "application/vnd.emc.documentum+json")
                     .header("Accept", "application/vnd.emc.documentum+json")
-                    .body(memberObject)
+                    .body(payload)
                     .retrieve()
-                    .body(Map.class);
+                    .toBodilessEntity();
 
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
             result.put("message", memberType + " '" + memberName + "' added successfully");
 
+            log.info("Successfully added {} '{}' to group '{}'", memberType, memberName, groupName);
             return result;
 
         } catch (Exception e) {
