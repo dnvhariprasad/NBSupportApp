@@ -17,11 +17,12 @@ public class QueryController {
     }
 
     /**
-     * Execute a DQL query
+     * Execute a DQL query with optional limit
      */
     @PostMapping("/execute")
     public Map<String, Object> executeQuery(@RequestBody Map<String, Object> request) {
         String dql = (String) request.get("dql");
-        return queryService.executeQuery(dql);
+        Integer limit = request.get("limit") != null ? ((Number) request.get("limit")).intValue() : 10000;
+        return queryService.executeQuery(dql, limit);
     }
 }

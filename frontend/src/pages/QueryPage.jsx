@@ -11,6 +11,7 @@ const QueryPage = () => {
     const [loading, setLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(25);
+    const [resultLimit, setResultLimit] = useState(10000); // DQL RETURN_TOP limit
     const [hasExecuted, setHasExecuted] = useState(false);
     const [error, setError] = useState(null);
     const [columnFilters, setColumnFilters] = useState({});
@@ -18,7 +19,7 @@ const QueryPage = () => {
     const [query, setQuery] = useState('');
     const [activeQuery, setActiveQuery] = useState('');
 
-    const executeQuery = useCallback(async (dql) => {
+    const executeQuery = useCallback(async (dql, limit) => {
         if (!dql || dql.trim() === '') {
             setError('Please enter a DQL query');
             return;
@@ -29,11 +30,10 @@ const QueryPage = () => {
         setError(null);
 
         try {
-            // Fetch all results at once (use large page size)
+            // Send query with RETURN_TOP limit hint
             const response = await axios.post('/query/execute', {
                 dql: dql.trim(),
-                page: 1,
-                size: 10000 // Fetch large number of rows for client-side pagination
+                limit: limit
             });
 
             const data = response.data;
@@ -85,7 +85,7 @@ const QueryPage = () => {
         e.preventDefault();
         if (query.trim()) {
             setActiveQuery(query.trim());
-            executeQuery(query.trim());
+            executeQuery(query.trim(), resultLimit);
         }
     };
 
@@ -160,10 +160,11 @@ const QueryPage = () => {
                         )}
                     </div>
                     <p className="text-xs text-slate-400 mt-1">
-                        r_object_id and r_object_type will be automatically included if not specified.
+                        <span className="font-medium">Note:</span> r_object_id and r_object_type will be automatically included.
+                        <span className="ml-1">ENABLE(RETURN_TOP n) hint is automatically added to limit database results.</span>
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                     <button
                         type="submit"
                         disabled={!query.trim() || loading}
@@ -172,17 +173,35 @@ const QueryPage = () => {
                         {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                         Execute
                     </button>
-                    <select
-                        value={pageSize}
-                        onChange={(e) => handlePageSizeChange(e.target.value)}
-                        className="text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white"
-                    >
-                        <option value={10}>10 rows/page</option>
-                        <option value={25}>25 rows/page</option>
-                        <option value={50}>50 rows/page</option>
-                        <option value={100}>100 rows/page</option>
-                        <option value={500}>500 rows/page</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-600 font-medium">Max Results:</label>
+                        <select
+                            value={resultLimit}
+                            onChange={(e) => setResultLimit(Number(e.target.value))}
+                            className="text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white"
+                            title="DQL ENABLE(RETURN_TOP n) hint"
+                        >
+                            <option value={100}>100</option>
+                            <option value={500}>500</option>
+                            <option value={1000}>1,000</option>
+                            <option value={5000}>5,000</option>
+                            <option value={10000}>10,000</option>
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-600 font-medium">Rows/Page:</label>
+                        <select
+                            value={pageSize}
+                            onChange={(e) => handlePageSizeChange(e.target.value)}
+                            className="text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white"
+                        >
+                            <option value={10}>10</option>
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value={500}>500</option>
+                        </select>
+                    </div>
                 </div>
             </form>
 

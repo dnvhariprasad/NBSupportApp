@@ -34,11 +34,14 @@ public class QueryService {
 
     /**
      * Execute a DQL query and return results.
-     * Automatically adds r_object_id and r_object_type to the SELECT if not
-     * present.
+     * Automatically adds r_object_id and r_object_type to the SELECT if not present.
+     * Uses DQL ENABLE(RETURN_TOP n) hint to limit results at database level.
+     *
+     * @param dqlQuery The DQL query to execute
+     * @param limit Maximum number of results to return (uses DQL hint)
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> executeQuery(String dqlQuery) {
+    public Map<String, Object> executeQuery(String dqlQuery, int limit) {
         if (dqlQuery == null || dqlQuery.isBlank()) {
             Map<String, Object> emptyResult = new HashMap<>();
             emptyResult.put("rows", new ArrayList<>());
@@ -50,19 +53,23 @@ public class QueryService {
         // Modify query to include r_object_id and r_object_type if not present
         String modifiedQuery = ensureRequiredColumns(dqlQuery.trim());
 
-        // Build URL - fetch all results (max 1000 items)
+        // Add DQL ENABLE(RETURN_TOP n) hint to limit results at database level
+        modifiedQuery = addReturnTopHint(modifiedQuery, limit);
+
+        // Build URL
         String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
 
-        log.info("Executing DQL query: {}", modifiedQuery);
+        log.info("Executing DQL query with limit {}: {}", limit, modifiedQuery);
 
         try {
             List<Map<String, Object>> allRows = new ArrayList<>();
             List<String> columns = new ArrayList<>();
             int page = 1;
-            int itemsPerPage = 100; // Fetch in batches of 100
+            int itemsPerPage = Math.min(100, limit); // Fetch in batches
             boolean hasMore = true;
+            int maxPages = (int) Math.ceil((double) limit / itemsPerPage);
 
-            while (hasMore && page <= 10) { // Max 10 pages = 1000 results
+            while (hasMore && page <= maxPages && allRows.size() < limit) {
                 Map<String, Object> response = restClient.get()
                         .uri(baseUrl + "?dql={dql}&items-per-page={itemsPerPage}&page={page}&inline=true",
                                 modifiedQuery, itemsPerPage, page)
@@ -81,10 +88,16 @@ public class QueryService {
                 page++;
             }
 
+            // Ensure we don't exceed the limit
+            if (allRows.size() > limit) {
+                allRows = allRows.subList(0, limit);
+            }
+
             Map<String, Object> result = new HashMap<>();
             result.put("rows", allRows);
             result.put("columns", columns);
             result.put("totalCount", allRows.size());
+            result.put("limit", limit);
             return result;
 
         } catch (Exception e) {
@@ -95,6 +108,13 @@ public class QueryService {
             errorResult.put("error", "Query failed: " + e.getMessage());
             return errorResult;
         }
+    }
+
+    /**
+     * Legacy method for backward compatibility
+     */
+    public Map<String, Object> executeQuery(String dqlQuery) {
+        return executeQuery(dqlQuery, 10000); // Default limit
     }
 
     /**
@@ -151,6 +171,35 @@ public class QueryService {
         // Prepend missing columns
         String newSelectPart = String.join(", ", columnsToAdd) + ", " + selectPart;
         return "SELECT " + newSelectPart + fromPart;
+    }
+
+    /**
+     * Add DQL ENABLE(RETURN_TOP n) hint to limit results at database level.
+     * This is more efficient than fetching all results and limiting client-side.
+     *
+     * @param query The DQL query
+     * @param limit The maximum number of rows to return
+     * @return Query with RETURN_TOP hint
+     */
+    private String addReturnTopHint(String query, int limit) {
+        String upperQuery = query.toUpperCase();
+
+        // Check if query already has ENABLE hints
+        if (upperQuery.contains("ENABLE(RETURN_TOP")) {
+            return query; // Don't add if already present
+        }
+
+        // Find the SELECT keyword
+        int selectIndex = upperQuery.indexOf("SELECT");
+        if (selectIndex == -1) {
+            return query; // Not a SELECT query
+        }
+
+        // Insert ENABLE(RETURN_TOP n) after SELECT
+        String beforeSelect = query.substring(0, selectIndex + 6); // "SELECT"
+        String afterSelect = query.substring(selectIndex + 6);
+
+        return beforeSelect + " ENABLE(RETURN_TOP " + limit + ")" + afterSelect;
     }
 
     /**
