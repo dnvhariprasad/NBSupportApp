@@ -62,12 +62,13 @@ const ManageMembersModal = ({ isOpen, onClose, groupName, onUpdate }) => {
         return () => clearTimeout(timer);
     }, [searchQuery, searchType]);
 
-    const handleAddMember = async (memberName, memberType) => {
+    const handleAddMember = async (memberName, memberType, memberSrc) => {
         setProcessing(true);
         try {
             const response = await axios.post(`/groups/${groupName}/members`, {
                 memberName,
-                memberType
+                memberType,
+                memberSrc
             });
 
             if (response.data.success) {
@@ -81,7 +82,8 @@ const ManageMembersModal = ({ isOpen, onClose, groupName, onUpdate }) => {
             }
         } catch (error) {
             console.error('Error adding member:', error);
-            showNotification('error', 'Failed to add member');
+            const errorMsg = error.response?.data?.message || error.response?.data || 'Failed to add member';
+            showNotification('error', `Failed to add member: ${errorMsg}`);
         } finally {
             setProcessing(false);
         }
@@ -342,7 +344,7 @@ const ManageMembersModal = ({ isOpen, onClose, groupName, onUpdate }) => {
                                                 <span className="text-xs text-slate-500 font-medium">Already member</span>
                                             ) : (
                                                 <button
-                                                    onClick={() => handleAddMember(result.name, result.type)}
+                                                    onClick={() => handleAddMember(result.name, result.type, result.src)}
                                                     disabled={processing}
                                                     className="px-3 py-1.5 bg-[#0A66C2] text-white text-xs rounded-lg hover:bg-[#094d92] disabled:opacity-50 transition-colors font-medium"
                                                 >

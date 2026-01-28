@@ -52,7 +52,8 @@ public class GroupController {
             @RequestBody Map<String, Object> request) {
         String memberName = (String) request.get("memberName");
         String memberType = (String) request.get("memberType"); // "user" or "group"
-        return groupService.addMember(groupName, memberName, memberType);
+        String memberSrc = (String) request.get("memberSrc"); // src link to the member
+        return groupService.addMember(groupName, memberName, memberType, memberSrc);
     }
 
     /**

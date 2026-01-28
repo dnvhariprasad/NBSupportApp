@@ -278,28 +278,38 @@ public class GroupService {
      * Add a member to a group using DCTM REST API
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> addMember(String groupName, String memberName, String memberType) {
-        log.info("Adding {} '{}' to group '{}'", memberType, memberName, groupName);
+    public Map<String, Object> addMember(String groupName, String memberName, String memberType, String memberSrc) {
+        log.info("Adding {} '{}' to group '{}' using src: {}", memberType, memberName, groupName, memberSrc);
 
         try {
             // Build the correct endpoint URL based on member type
             String url;
             Map<String, Object> payload = new HashMap<>();
-            Map<String, Object> properties = new HashMap<>();
 
             if ("user".equalsIgnoreCase(memberType)) {
                 // POST /repositories/{repo}/groups/{groupName}/users
                 url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
                         + "/groups/" + groupName + "/users";
-                properties.put("user_name", memberName);
             } else {
                 // POST /repositories/{repo}/groups/{groupName}/groups
                 url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
                         + "/groups/" + groupName + "/groups";
-                properties.put("group_name", memberName);
             }
 
-            payload.put("properties", properties);
+            // Use the src link to reference the user/group
+            if (memberSrc != null && !memberSrc.isEmpty()) {
+                payload.put("src", memberSrc);
+            } else {
+                // Fallback: construct the src URL if not provided
+                String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+                if ("user".equalsIgnoreCase(memberType)) {
+                    payload.put("src", baseUrl + "/users/" + memberName);
+                } else {
+                    payload.put("src", baseUrl + "/groups/" + memberName);
+                }
+            }
+
+            log.info("Payload for adding member: {}", payload);
 
             // Add the member using the dedicated REST endpoint
             Map<String, Object> response = restClient.post()
@@ -418,6 +428,13 @@ public class GroupService {
                             Map<String, String> item = new HashMap<>();
                             item.put("name", (String) props.get(nameField));
                             item.put("type", type);
+
+                            // Capture the src link for adding members later
+                            String src = (String) content.get("src");
+                            if (src != null) {
+                                item.put("src", src);
+                            }
+
                             if ("user".equalsIgnoreCase(type)) {
                                 String loginName = (String) props.get("user_login_name");
                                 String osName = (String) props.get("user_os_name");
