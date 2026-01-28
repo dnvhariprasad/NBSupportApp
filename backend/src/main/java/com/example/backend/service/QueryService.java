@@ -167,6 +167,8 @@ public class QueryService {
 
     /**
      * Add DQL ENABLE(RETURN_TOP n) hint to limit results at database level.
+     * If user already provided ENABLE(RETURN_TOP in their query, it will be replaced
+     * with the limit from the dropdown to ensure consistency.
      * The hint is appended at the end of the query, e.g.:
      * SELECT * FROM dm_document ENABLE(RETURN_TOP 100)
      *
@@ -178,17 +180,27 @@ public class QueryService {
         String trimmedQuery = query.trim();
         String upperQuery = trimmedQuery.toUpperCase();
 
-        // Check if query already has ENABLE hints
-        if (upperQuery.contains("ENABLE(RETURN_TOP")) {
-            return query; // Don't add if already present
-        }
-
         // Check if it's a SELECT query
         if (!upperQuery.startsWith("SELECT")) {
             return query; // Not a SELECT query
         }
 
-        // Append ENABLE(RETURN_TOP n) at the end of the query
+        // If user already has ENABLE(RETURN_TOP in their query, remove it
+        // Our limit from the dropdown takes precedence
+        if (upperQuery.contains("ENABLE(RETURN_TOP")) {
+            // Find and remove existing ENABLE(RETURN_TOP ...) hint
+            int enableStart = upperQuery.indexOf("ENABLE(RETURN_TOP");
+            int enableEnd = trimmedQuery.indexOf(')', enableStart);
+
+            if (enableEnd != -1) {
+                // Remove the existing hint
+                String before = trimmedQuery.substring(0, enableStart).trim();
+                String after = trimmedQuery.substring(enableEnd + 1).trim();
+                trimmedQuery = (before + " " + after).trim();
+            }
+        }
+
+        // Append our ENABLE(RETURN_TOP n) hint at the end
         return trimmedQuery + " ENABLE(RETURN_TOP " + limit + ")";
     }
 
