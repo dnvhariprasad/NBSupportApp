@@ -6,6 +6,7 @@ import CasesPage from './pages/CasesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
+import QueryPage from './pages/QueryPage';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="groups" element={<GroupsPage />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="query" element={<QueryPage />} />
         </Route>
         
         <Route path="/" element={<Navigate to="/login" replace />} />
