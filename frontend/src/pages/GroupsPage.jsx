@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import axios from '../api/axios';
 import {
     Search, ChevronLeft, ChevronRight, Users,
-    ChevronsLeft, Loader2, X
+    ChevronsLeft, Loader2, X, UsersRound
 } from 'lucide-react';
 
 const GroupsPage = () => {
@@ -172,9 +172,22 @@ const GroupsPage = () => {
                                         </tr>
                                     ) : (
                                         groups.map((g, idx) => {
-                                            const usersCount = Array.isArray(g.users_names) ? g.users_names.length : 0;
-                                            const groupsCount = Array.isArray(g.groups_names) ? g.groups_names.length : 0;
-                                            const totalMembers = usersCount + groupsCount;
+                                            // Filter out empty strings and null values from repeating attributes
+                                            const users = Array.isArray(g.users_names)
+                                                ? g.users_names.filter(name => name && name.trim() !== '')
+                                                : (g.users_names ? [g.users_names] : []);
+                                            const groups = Array.isArray(g.groups_names)
+                                                ? g.groups_names.filter(name => name && name.trim() !== '')
+                                                : (g.groups_names ? [g.groups_names] : []);
+
+                                            const usersCount = users.length;
+                                            const groupsCount = groups.length;
+
+                                            // Create tooltip text
+                                            const memberTooltip = [
+                                                usersCount > 0 ? `Users: ${users.join(', ')}` : '',
+                                                groupsCount > 0 ? `Groups: ${groups.join(', ')}` : ''
+                                            ].filter(Boolean).join('\n') || 'No members';
 
                                             return (
                                                 <tr key={g.r_object_id || idx} className="hover:bg-slate-50 transition-colors">
@@ -182,11 +195,19 @@ const GroupsPage = () => {
                                                     <td className="px-4 py-3 font-medium text-slate-900">{g.group_name || '-'}</td>
                                                     <td className="px-4 py-3 text-slate-600 max-w-xs truncate" title={g.description}>{g.description || '-'}</td>
                                                     <td className="px-4 py-3 text-slate-600">{g.owner_name || '-'}</td>
-                                                    <td className="px-4 py-3 text-slate-600">
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <Users size={12} className="text-slate-400" />
-                                                            {totalMembers}
-                                                        </span>
+                                                    <td className="px-4 py-3 text-slate-600" title={memberTooltip}>
+                                                        <div className="flex flex-col gap-0.5 cursor-help">
+                                                            <span className="inline-flex items-center gap-1 text-xs">
+                                                                <Users size={10} className="text-slate-400" />
+                                                                {usersCount} {usersCount === 1 ? 'user' : 'users'}
+                                                            </span>
+                                                            {groupsCount > 0 && (
+                                                                <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                                                                    <UsersRound size={10} className="text-slate-400" />
+                                                                    {groupsCount} {groupsCount === 1 ? 'group' : 'groups'}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     <td className="px-4 py-3 text-slate-600 text-xs">
                                                         {g.r_creation_date ? new Date(g.r_creation_date).toLocaleDateString() : '-'}
