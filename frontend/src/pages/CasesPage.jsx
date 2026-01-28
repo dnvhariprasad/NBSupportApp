@@ -14,6 +14,7 @@ const CasesPage = () => {
     const [totalEstimate, setTotalEstimate] = useState(null);
     const [hasSearched, setHasSearched] = useState(false);
     const [isDefaultLoad, setIsDefaultLoad] = useState(true); // Track if showing default recent cases
+    const [defaultLoadMonths, setDefaultLoadMonths] = useState(3); // Default value from backend
 
     const [caseNumber, setCaseNumber] = useState('');
     const [activeSearch, setActiveSearch] = useState('');
@@ -47,9 +48,25 @@ const CasesPage = () => {
         }
     }, [pageSize]);
 
-    // Load last 3 months of cases by default on component mount
+    // Fetch application settings on mount
     useEffect(() => {
-        fetchCases('', 1); // Empty string will trigger backend to load last 3 months
+        const fetchSettings = async () => {
+            try {
+                const response = await axios.get('/settings');
+                if (response.data.cases?.defaultLoadMonths) {
+                    setDefaultLoadMonths(response.data.cases.defaultLoadMonths);
+                }
+            } catch (error) {
+                console.error("Error fetching settings", error);
+                // Keep default value of 3 months on error
+            }
+        };
+        fetchSettings();
+    }, []);
+
+    // Load recent cases by default on component mount
+    useEffect(() => {
+        fetchCases('', 1); // Empty string will trigger backend to load recent cases
     }, []); // Empty dependency array = run once on mount
 
     const handleSearch = (e) => {
@@ -72,7 +89,7 @@ const CasesPage = () => {
         setActiveSearch('');
         setIsDefaultLoad(true); // Back to default mode
         setPage(1);
-        // Reload last 3 months
+        // Reload recent cases (configured months)
         fetchCases('', 1);
     };
 
@@ -128,7 +145,7 @@ const CasesPage = () => {
                         {totalEstimate && !loading && (
                             <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-sm">
                                 <span className="text-slate-600">
-                                    <span className="font-semibold text-[#0A66C2]">{totalEstimate}</span> {isDefaultLoad ? 'recent cases (last 3 months)' : `result${totalEstimate !== '1' ? 's' : ''} for "${activeSearch}"`}
+                                    <span className="font-semibold text-[#0A66C2]">{totalEstimate}</span> {isDefaultLoad ? `recent cases (last ${defaultLoadMonths} month${defaultLoadMonths !== 1 ? 's' : ''})` : `result${totalEstimate !== '1' ? 's' : ''} for "${activeSearch}"`}
                                 </span>
                                 {cases.length > 0 && <span className="text-slate-400 text-xs">Showing {rangeStart}-{rangeEnd}</span>}
                             </div>

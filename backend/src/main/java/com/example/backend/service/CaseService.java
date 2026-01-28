@@ -1,5 +1,6 @@
 package com.example.backend.service;
 
+import com.example.backend.config.AppConfig;
 import com.example.backend.config.DctmConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,10 +18,12 @@ import java.util.Map;
 public class CaseService {
 
     private final DctmConfig dctmConfig;
+    private final AppConfig appConfig;
     private final RestClient restClient;
 
-    public CaseService(DctmConfig dctmConfig, RestClient.Builder restClientBuilder) {
+    public CaseService(DctmConfig dctmConfig, AppConfig appConfig, RestClient.Builder restClientBuilder) {
         this.dctmConfig = dctmConfig;
+        this.appConfig = appConfig;
         this.restClient = restClientBuilder.build();
     }
 
@@ -75,13 +78,16 @@ public class CaseService {
     }
 
     /**
-     * Load cases from the last 3 months
+     * Load cases from the last N months (configured in app.cases.default-load-months)
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> loadRecentCases(int page, int itemsPerPage) {
-        // Calculate date 3 months ago
-        java.time.LocalDate threeMonthsAgo = java.time.LocalDate.now().minusMonths(3);
-        String dateFilter = threeMonthsAgo.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+        // Get configured number of months from properties
+        int months = appConfig.getCases().getDefaultLoadMonths();
+
+        // Calculate date N months ago
+        java.time.LocalDate startDate = java.time.LocalDate.now().minusMonths(months);
+        String dateFilter = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
 
         String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/search";
 
@@ -95,7 +101,7 @@ public class CaseService {
         urlBuilder.append("&r_creation_date>=").append(dateFilter);
 
         String fullUrl = urlBuilder.toString();
-        log.info("Loading recent cases (last 3 months) with URL: {}", fullUrl);
+        log.info("Loading recent cases (last {} months) with URL: {}", months, fullUrl);
 
         try {
             Map<String, Object> response = restClient.get()
