@@ -127,7 +127,7 @@ const ManageMembersModal = ({ isOpen, onClose, groupName, onUpdate }) => {
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[70vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full h-[70vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-slate-50">
                     <div>
@@ -317,10 +317,14 @@ const ManageMembersModal = ({ isOpen, onClose, groupName, onUpdate }) => {
                         </div>
 
                         {/* Search Results */}
-                        <div className="space-y-1">
+                        <div className="space-y-1 min-h-[200px]">
                             {searchResults.length === 0 && searchQuery ? (
                                 <p className="text-sm text-slate-400 text-center py-8 italic">
                                     No {searchType}s found
+                                </p>
+                            ) : searchResults.length === 0 ? (
+                                <p className="text-sm text-slate-400 text-center py-8 italic">
+                                    Start typing to search for {searchType}s
                                 </p>
                             ) : (
                                 searchResults.map((result, idx) => {
