@@ -28,32 +28,29 @@ public class GroupService {
     }
 
     /**
-     * Search groups (dm_group) by group name using DQL.
+     * Search groups using DCTM REST API /groups endpoint.
      * Returns paginated list of groups with their details.
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> searchGroups(String groupName, int page, int itemsPerPage) {
 
-        // Build DQL query
-        StringBuilder dqlQuery = new StringBuilder("SELECT r_object_id, group_name, description, owner_name, users_names, groups_names, r_creation_date, r_modify_date FROM dm_group");
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/groups";
 
-        // Add filter condition if group name is provided
-        if (groupName != null && !groupName.isBlank()) {
-            dqlQuery.append(" WHERE group_name LIKE '").append(groupName.trim()).append("%'");
-        }
-
-        dqlQuery.append(" ORDER BY group_name");
-
-        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/dql";
-
+        // Build URL with proper query parameters
         StringBuilder urlBuilder = new StringBuilder(baseUrl);
-        urlBuilder.append("?dql=").append(java.net.URLEncoder.encode(dqlQuery.toString(), StandardCharsets.UTF_8));
-        urlBuilder.append("&items-per-page=").append(itemsPerPage);
+        urlBuilder.append("?items-per-page=").append(itemsPerPage);
         urlBuilder.append("&page=").append(page);
         urlBuilder.append("&inline=true");
 
+        // If group name filter is provided, add it as a filter parameter
+        if (groupName != null && !groupName.isBlank()) {
+            // Use proper filter syntax for DCTM REST API
+            String filterValue = "group_name like '" + groupName.trim() + "%'";
+            urlBuilder.append("&filter=").append(java.net.URLEncoder.encode(filterValue, StandardCharsets.UTF_8));
+        }
+
         String fullUrl = urlBuilder.toString();
-        log.info("Searching groups with DQL: {}", dqlQuery.toString());
+        log.info("Fetching groups from URL: {}", fullUrl);
 
         try {
             Map<String, Object> response = restClient.get()
@@ -63,11 +60,15 @@ public class GroupService {
                     .retrieve()
                     .body(Map.class);
 
+            log.info("Groups API response received with {} entries",
+                response != null && response.containsKey("entries") ?
+                ((List<?>) response.get("entries")).size() : 0);
+
             return transformResponse(response, page);
 
         } catch (Exception e) {
-            log.error("Error searching groups with DQL", e);
-            throw new RuntimeException("Failed to search groups: " + e.getMessage());
+            log.error("Error fetching groups from REST API: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch groups: " + e.getMessage());
         }
     }
 
