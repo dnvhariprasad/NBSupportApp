@@ -440,28 +440,37 @@ public class GroupService {
     }
 
     /**
-     * Search for users or groups to add as members
+     * Search for users or groups to add as members using DQL
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> searchMembers(String query, String type) {
         String objectType = "user".equalsIgnoreCase(type) ? "dm_user" : "dm_group";
         String nameField = "user".equalsIgnoreCase(type) ? "user_name" : "group_name";
 
-        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/search";
+        // Build DQL query with LIKE clause for partial matching
+        // Escape single quotes in query but use %% for SQL wildcard
+        String escapedQuery = query.replace("'", "''");
 
-        StringBuilder urlBuilder = new StringBuilder(baseUrl);
-        urlBuilder.append("?object-type=").append(objectType);
-        urlBuilder.append("&items-per-page=20");
-        urlBuilder.append("&page=1");
-        urlBuilder.append("&inline=true");
-        urlBuilder.append("&q=").append(java.net.URLEncoder.encode(query, StandardCharsets.UTF_8));
+        String dqlQuery;
+        if ("user".equalsIgnoreCase(type)) {
+            dqlQuery = "SELECT user_name, user_login_name, user_os_name FROM dm_user WHERE user_name LIKE '"
+                + escapedQuery + "%' ORDER BY user_name";
+        } else {
+            dqlQuery = "SELECT group_name, description FROM dm_group WHERE group_name LIKE '"
+                + escapedQuery + "%' ORDER BY group_name";
+        }
 
-        String fullUrl = urlBuilder.toString();
-        log.info("Searching for {} with query: {}", type, query);
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+        // Build URL using RestClient URI template to avoid encoding issues
+        // The RestClient will handle proper encoding
+        String url = baseUrl + "?dql={dql}&items-per-page=20&page=1&inline=true";
+
+        log.info("Searching for {} with DQL: {}", type, dqlQuery);
 
         try {
             Map<String, Object> response = restClient.get()
-                    .uri(fullUrl)
+                    .uri(url, dqlQuery)  // Use URI template with variable
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
@@ -480,7 +489,12 @@ public class GroupService {
                             item.put("name", (String) props.get(nameField));
                             item.put("type", type);
                             if ("user".equalsIgnoreCase(type)) {
-                                item.put("fullName", (String) props.get("user_login_name"));
+                                String loginName = (String) props.get("user_login_name");
+                                String osName = (String) props.get("user_os_name");
+                                // Use login name or OS name as full name
+                                item.put("fullName", loginName != null ? loginName : osName);
+                            } else {
+                                item.put("fullName", (String) props.get("description"));
                             }
                             results.add(item);
                         }
@@ -492,10 +506,11 @@ public class GroupService {
             result.put("results", results);
             result.put("count", results.size());
 
+            log.info("Found {} {}s matching '{}'", results.size(), type, query);
             return result;
 
         } catch (Exception e) {
-            log.error("Error searching for {}: {}", type, e.getMessage(), e);
+            log.error("Error searching for {} with query '{}': {}", type, query, e.getMessage(), e);
             Map<String, Object> result = new HashMap<>();
             result.put("results", new ArrayList<>());
             result.put("count", 0);
