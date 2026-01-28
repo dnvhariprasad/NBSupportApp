@@ -275,72 +275,39 @@ public class GroupService {
     }
 
     /**
-     * Add a member to a group
+     * Add a member to a group using DCTM REST API
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> addMember(String groupName, String memberName, String memberType) {
-        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
-                + "/groups/" + groupName;
-
         log.info("Adding {} '{}' to group '{}'", memberType, memberName, groupName);
 
         try {
-            // First, get current group properties
-            Map<String, Object> currentGroup = restClient.get()
-                    .uri(url)
-                    .header("Authorization", getAuthHeader())
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .retrieve()
-                    .body(Map.class);
+            // Build the correct endpoint URL based on member type
+            String url;
+            Map<String, Object> payload = new HashMap<>();
+            Map<String, Object> properties = new HashMap<>();
 
-            if (currentGroup == null) {
-                throw new RuntimeException("Group not found");
-            }
-
-            Map<String, Object> props = (Map<String, Object>) currentGroup.get("properties");
-            List<String> currentUsers = new ArrayList<>();
-            List<String> currentGroups = new ArrayList<>();
-
-            // Get current members
             if ("user".equalsIgnoreCase(memberType)) {
-                Object usersNames = props.get("users_names");
-                if (usersNames instanceof List) {
-                    currentUsers.addAll((List<String>) usersNames);
-                } else if (usersNames != null) {
-                    currentUsers.add(usersNames.toString());
-                }
-                // Add new user
-                if (!currentUsers.contains(memberName)) {
-                    currentUsers.add(memberName);
-                }
+                // POST /repositories/{repo}/groups/{groupName}/users
+                url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                        + "/groups/" + groupName + "/users";
+                properties.put("user_name", memberName);
             } else {
-                Object groupsNames = props.get("groups_names");
-                if (groupsNames instanceof List) {
-                    currentGroups.addAll((List<String>) groupsNames);
-                } else if (groupsNames != null) {
-                    currentGroups.add(groupsNames.toString());
-                }
-                // Add new group
-                if (!currentGroups.contains(memberName)) {
-                    currentGroups.add(memberName);
-                }
+                // POST /repositories/{repo}/groups/{groupName}/groups
+                url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                        + "/groups/" + groupName + "/groups";
+                properties.put("group_name", memberName);
             }
 
-            // Prepare update payload
-            Map<String, Object> updatePayload = new HashMap<>();
-            if ("user".equalsIgnoreCase(memberType)) {
-                updatePayload.put("users_names", currentUsers);
-            } else {
-                updatePayload.put("groups_names", currentGroups);
-            }
+            payload.put("properties", properties);
 
-            // Update the group
+            // Add the member using the dedicated REST endpoint
             Map<String, Object> response = restClient.post()
                     .uri(url)
                     .header("Authorization", getAuthHeader())
                     .header("Content-Type", "application/vnd.emc.documentum+json")
                     .header("Accept", "application/vnd.emc.documentum+json")
-                    .body(updatePayload)
+                    .body(payload)
                     .retrieve()
                     .body(Map.class);
 
@@ -360,69 +327,32 @@ public class GroupService {
     }
 
     /**
-     * Remove a member from a group
+     * Remove a member from a group using DCTM REST API
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> removeMember(String groupName, String memberName, String memberType) {
-        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
-                + "/groups/" + groupName;
-
         log.info("Removing {} '{}' from group '{}'", memberType, memberName, groupName);
 
         try {
-            // First, get current group properties
-            Map<String, Object> currentGroup = restClient.get()
+            // Build the correct endpoint URL based on member type
+            String url;
+            if ("user".equalsIgnoreCase(memberType)) {
+                // DELETE /repositories/{repo}/groups/{groupName}/users/{userName}
+                url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                        + "/groups/" + groupName + "/users/" + memberName;
+            } else {
+                // DELETE /repositories/{repo}/groups/{groupName}/groups/{memberName}
+                url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                        + "/groups/" + groupName + "/groups/" + memberName;
+            }
+
+            // Remove the member using the dedicated REST endpoint
+            restClient.delete()
                     .uri(url)
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
-                    .body(Map.class);
-
-            if (currentGroup == null) {
-                throw new RuntimeException("Group not found");
-            }
-
-            Map<String, Object> props = (Map<String, Object>) currentGroup.get("properties");
-            List<String> updatedMembers = new ArrayList<>();
-
-            // Get current members and remove the specified one
-            if ("user".equalsIgnoreCase(memberType)) {
-                Object usersNames = props.get("users_names");
-                if (usersNames instanceof List) {
-                    for (Object name : (List<?>) usersNames) {
-                        if (name != null && !name.toString().equals(memberName)) {
-                            updatedMembers.add(name.toString());
-                        }
-                    }
-                }
-            } else {
-                Object groupsNames = props.get("groups_names");
-                if (groupsNames instanceof List) {
-                    for (Object name : (List<?>) groupsNames) {
-                        if (name != null && !name.toString().equals(memberName)) {
-                            updatedMembers.add(name.toString());
-                        }
-                    }
-                }
-            }
-
-            // Prepare update payload
-            Map<String, Object> updatePayload = new HashMap<>();
-            if ("user".equalsIgnoreCase(memberType)) {
-                updatePayload.put("users_names", updatedMembers);
-            } else {
-                updatePayload.put("groups_names", updatedMembers);
-            }
-
-            // Update the group
-            restClient.post()
-                    .uri(url)
-                    .header("Authorization", getAuthHeader())
-                    .header("Content-Type", "application/vnd.emc.documentum+json")
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .body(updatePayload)
-                    .retrieve()
-                    .body(Map.class);
+                    .toBodilessEntity();
 
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
