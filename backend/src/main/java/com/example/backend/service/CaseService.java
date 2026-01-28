@@ -32,21 +32,19 @@ public class CaseService {
     }
 
     /**
-     * Search cases (cms_case_folder) by case number.
+     * Search cases (cms_case_folder) by case number or load recent cases.
+     * If caseNumber is null/empty, loads cases from last 3 months.
      * First searches for matching objects, then fetches full details for each.
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> searchCases(String caseNumber, int page, int itemsPerPage) {
 
+        // If no caseNumber provided, load last 3 months of cases
         if (caseNumber == null || caseNumber.isBlank()) {
-            Map<String, Object> emptyResult = new HashMap<>();
-            emptyResult.put("cases", new ArrayList<>());
-            emptyResult.put("hasNext", false);
-            emptyResult.put("page", page);
-            return emptyResult;
+            return loadRecentCases(page, itemsPerPage);
         }
 
-        // Search for matching cases
+        // Search for matching cases by case number
         String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/search";
 
         StringBuilder urlBuilder = new StringBuilder(baseUrl);
@@ -73,6 +71,50 @@ public class CaseService {
         } catch (Exception e) {
             log.error("Error searching cases", e);
             throw new RuntimeException("Failed to search cases: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Load cases from the last 3 months
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> loadRecentCases(int page, int itemsPerPage) {
+        // Calculate date 3 months ago
+        java.time.LocalDate threeMonthsAgo = java.time.LocalDate.now().minusMonths(3);
+        String dateFilter = threeMonthsAgo.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/search";
+
+        StringBuilder urlBuilder = new StringBuilder(baseUrl);
+        urlBuilder.append("?object-type=cms_case_folder");
+        urlBuilder.append("&items-per-page=").append(itemsPerPage);
+        urlBuilder.append("&page=").append(page);
+        urlBuilder.append("&inline=true");
+        urlBuilder.append("&sort=r_creation_date desc");
+        // Filter by creation date >= 3 months ago
+        urlBuilder.append("&r_creation_date>=").append(dateFilter);
+
+        String fullUrl = urlBuilder.toString();
+        log.info("Loading recent cases (last 3 months) with URL: {}", fullUrl);
+
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(fullUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            return transformAndEnrichResponse(response);
+
+        } catch (Exception e) {
+            log.error("Error loading recent cases", e);
+            // Return empty result on error
+            Map<String, Object> emptyResult = new HashMap<>();
+            emptyResult.put("cases", new ArrayList<>());
+            emptyResult.put("hasNext", false);
+            emptyResult.put("page", page);
+            return emptyResult;
         }
     }
 

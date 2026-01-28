@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import axios from '../api/axios';
-import { 
-    Search, ChevronLeft, ChevronRight, Briefcase, 
+import {
+    Search, ChevronLeft, ChevronRight, Briefcase,
     ChevronsLeft, Loader2, X
 } from 'lucide-react';
 
@@ -13,23 +13,22 @@ const CasesPage = () => {
     const [hasNextPage, setHasNextPage] = useState(false);
     const [totalEstimate, setTotalEstimate] = useState(null);
     const [hasSearched, setHasSearched] = useState(false);
+    const [isDefaultLoad, setIsDefaultLoad] = useState(true); // Track if showing default recent cases
 
     const [caseNumber, setCaseNumber] = useState('');
     const [activeSearch, setActiveSearch] = useState('');
 
     const fetchCases = useCallback(async (searchTerm, pageNum) => {
-        if (!searchTerm || searchTerm.trim() === '') {
-            setCases([]);
-            setHasSearched(false);
-            setTotalEstimate(null);
-            return;
-        }
-
         setLoading(true);
         setHasSearched(true);
+
         try {
             const response = await axios.get('/cases/search', {
-                params: { caseNumber: searchTerm.trim(), page: pageNum, size: pageSize }
+                params: {
+                    caseNumber: searchTerm && searchTerm.trim() !== '' ? searchTerm.trim() : undefined,
+                    page: pageNum,
+                    size: pageSize
+                }
             });
 
             const data = response.data;
@@ -48,10 +47,16 @@ const CasesPage = () => {
         }
     }, [pageSize]);
 
+    // Load last 3 months of cases by default on component mount
+    useEffect(() => {
+        fetchCases('', 1); // Empty string will trigger backend to load last 3 months
+    }, []); // Empty dependency array = run once on mount
+
     const handleSearch = (e) => {
         e.preventDefault();
         if (caseNumber.trim()) {
             setActiveSearch(caseNumber.trim());
+            setIsDefaultLoad(false); // User is now searching, not default load
             setPage(1);
             fetchCases(caseNumber.trim(), 1);
         }
@@ -65,10 +70,10 @@ const CasesPage = () => {
     const clearSearch = () => {
         setCaseNumber('');
         setActiveSearch('');
-        setCases([]);
-        setHasSearched(false);
-        setTotalEstimate(null);
+        setIsDefaultLoad(true); // Back to default mode
         setPage(1);
+        // Reload last 3 months
+        fetchCases('', 1);
     };
 
     const rangeStart = cases.length > 0 ? (page - 1) * pageSize + 1 : 0;
@@ -123,7 +128,7 @@ const CasesPage = () => {
                         {totalEstimate && !loading && (
                             <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-sm">
                                 <span className="text-slate-600">
-                                    <span className="font-semibold text-[#0A66C2]">{totalEstimate}</span> result{totalEstimate !== '1' ? 's' : ''} for "{activeSearch}"
+                                    <span className="font-semibold text-[#0A66C2]">{totalEstimate}</span> {isDefaultLoad ? 'recent cases (last 3 months)' : `result${totalEstimate !== '1' ? 's' : ''} for "${activeSearch}"`}
                                 </span>
                                 {cases.length > 0 && <span className="text-slate-400 text-xs">Showing {rangeStart}-{rangeEnd}</span>}
                             </div>
