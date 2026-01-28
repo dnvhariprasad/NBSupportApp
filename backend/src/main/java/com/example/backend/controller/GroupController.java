@@ -34,4 +34,45 @@ public class GroupController {
     public Map<String, Object> getGroupDetails(@PathVariable String groupName) {
         return groupService.getGroupDetails(groupName);
     }
+
+    /**
+     * Get members of a specific group
+     */
+    @GetMapping("/{groupName}/members")
+    public Map<String, Object> getGroupMembers(@PathVariable String groupName) {
+        return groupService.getGroupMembers(groupName);
+    }
+
+    /**
+     * Add member(s) to a group
+     */
+    @PostMapping("/{groupName}/members")
+    public Map<String, Object> addMember(
+            @PathVariable String groupName,
+            @RequestBody Map<String, Object> request) {
+        String memberName = (String) request.get("memberName");
+        String memberType = (String) request.get("memberType"); // "user" or "group"
+        return groupService.addMember(groupName, memberName, memberType);
+    }
+
+    /**
+     * Remove member from a group
+     */
+    @DeleteMapping("/{groupName}/members/{memberName}")
+    public Map<String, Object> removeMember(
+            @PathVariable String groupName,
+            @PathVariable String memberName,
+            @RequestParam(defaultValue = "user") String memberType) {
+        return groupService.removeMember(groupName, memberName, memberType);
+    }
+
+    /**
+     * Search for users or groups to add as members
+     */
+    @GetMapping("/search-members")
+    public Map<String, Object> searchMembers(
+            @RequestParam String query,
+            @RequestParam(defaultValue = "user") String type) {
+        return groupService.searchMembers(query, type);
+    }
 }

@@ -153,32 +153,20 @@ public class QueryService {
         return "SELECT " + newSelectPart + fromPart;
     }
 
+    /**
+     * Transform a single page response and populate columns if empty.
+     */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> transformResponse(Map<String, Object> response) {
+    private Map<String, Object> transformPageResponse(Map<String, Object> response, List<String> columns) {
         Map<String, Object> result = new HashMap<>();
 
         if (response == null) {
             result.put("rows", new ArrayList<>());
-            result.put("columns", new ArrayList<>());
-            result.put("hasNext", false);
             return result;
         }
 
-        result.put("page", response.get("page"));
-        result.put("itemsPerPage", response.get("items-per-page"));
-
-        // Check for next link
-        List<Map<String, Object>> links = (List<Map<String, Object>>) response.get("links");
-        boolean hasNext = false;
-        if (links != null) {
-            hasNext = links.stream().anyMatch(link -> "next".equals(link.get("rel")));
-        }
-        result.put("hasNext", hasNext);
-
         // Transform entries
         List<Map<String, Object>> rows = new ArrayList<>();
-        List<String> columns = new ArrayList<>();
-        boolean columnsExtracted = false;
 
         List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
         if (entries != null) {
@@ -187,10 +175,9 @@ public class QueryService {
                 if (content != null) {
                     Map<String, Object> props = (Map<String, Object>) content.get("properties");
                     if (props != null) {
-                        // Extract column names from first row
-                        if (!columnsExtracted) {
+                        // Extract column names from first row (if not already done)
+                        if (columns.isEmpty()) {
                             columns.addAll(props.keySet());
-                            columnsExtracted = true;
                         }
 
                         // Create ordered row data
@@ -205,8 +192,6 @@ public class QueryService {
         }
 
         result.put("rows", rows);
-        result.put("columns", columns);
-
         return result;
     }
-}
+}}}

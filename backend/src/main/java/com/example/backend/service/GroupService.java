@@ -196,4 +196,310 @@ public class GroupService {
             throw new RuntimeException("Failed to fetch group details: " + e.getMessage());
         }
     }
+
+    /**
+     * Get all members of a group
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getGroupMembers(String groupName) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/groups/" + groupName;
+
+        log.info("Fetching members for group: {}", groupName);
+
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            Map<String, Object> result = new HashMap<>();
+
+            if (response != null) {
+                Map<String, Object> props = (Map<String, Object>) response.get("properties");
+                if (props != null) {
+                    Object usersNames = props.get("users_names");
+                    Object groupsNames = props.get("groups_names");
+
+                    List<Map<String, String>> users = new ArrayList<>();
+                    List<Map<String, String>> groups = new ArrayList<>();
+
+                    // Process user members
+                    if (usersNames instanceof List) {
+                        for (Object name : (List<?>) usersNames) {
+                            if (name != null && !name.toString().trim().isEmpty()) {
+                                Map<String, String> user = new HashMap<>();
+                                user.put("name", name.toString());
+                                user.put("type", "user");
+                                users.add(user);
+                            }
+                        }
+                    } else if (usersNames != null && !usersNames.toString().trim().isEmpty()) {
+                        Map<String, String> user = new HashMap<>();
+                        user.put("name", usersNames.toString());
+                        user.put("type", "user");
+                        users.add(user);
+                    }
+
+                    // Process group members
+                    if (groupsNames instanceof List) {
+                        for (Object name : (List<?>) groupsNames) {
+                            if (name != null && !name.toString().trim().isEmpty()) {
+                                Map<String, String> group = new HashMap<>();
+                                group.put("name", name.toString());
+                                group.put("type", "group");
+                                groups.add(group);
+                            }
+                        }
+                    } else if (groupsNames != null && !groupsNames.toString().trim().isEmpty()) {
+                        Map<String, String> group = new HashMap<>();
+                        group.put("name", groupsNames.toString());
+                        group.put("type", "group");
+                        groups.add(group);
+                    }
+
+                    result.put("users", users);
+                    result.put("groups", groups);
+                    result.put("totalCount", users.size() + groups.size());
+                }
+            }
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error fetching members for group '{}': {}", groupName, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch group members: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Add a member to a group
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> addMember(String groupName, String memberName, String memberType) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/groups/" + groupName;
+
+        log.info("Adding {} '{}' to group '{}'", memberType, memberName, groupName);
+
+        try {
+            // First, get current group properties
+            Map<String, Object> currentGroup = restClient.get()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (currentGroup == null) {
+                throw new RuntimeException("Group not found");
+            }
+
+            Map<String, Object> props = (Map<String, Object>) currentGroup.get("properties");
+            List<String> currentUsers = new ArrayList<>();
+            List<String> currentGroups = new ArrayList<>();
+
+            // Get current members
+            if ("user".equalsIgnoreCase(memberType)) {
+                Object usersNames = props.get("users_names");
+                if (usersNames instanceof List) {
+                    currentUsers.addAll((List<String>) usersNames);
+                } else if (usersNames != null) {
+                    currentUsers.add(usersNames.toString());
+                }
+                // Add new user
+                if (!currentUsers.contains(memberName)) {
+                    currentUsers.add(memberName);
+                }
+            } else {
+                Object groupsNames = props.get("groups_names");
+                if (groupsNames instanceof List) {
+                    currentGroups.addAll((List<String>) groupsNames);
+                } else if (groupsNames != null) {
+                    currentGroups.add(groupsNames.toString());
+                }
+                // Add new group
+                if (!currentGroups.contains(memberName)) {
+                    currentGroups.add(memberName);
+                }
+            }
+
+            // Prepare update payload
+            Map<String, Object> updatePayload = new HashMap<>();
+            if ("user".equalsIgnoreCase(memberType)) {
+                updatePayload.put("users_names", currentUsers);
+            } else {
+                updatePayload.put("groups_names", currentGroups);
+            }
+
+            // Update the group
+            Map<String, Object> response = restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .body(updatePayload)
+                    .retrieve()
+                    .body(Map.class);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", memberType + " '" + memberName + "' added successfully");
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error adding member '{}' to group '{}': {}", memberName, groupName, e.getMessage(), e);
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "Failed to add member: " + e.getMessage());
+            return result;
+        }
+    }
+
+    /**
+     * Remove a member from a group
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> removeMember(String groupName, String memberName, String memberType) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/groups/" + groupName;
+
+        log.info("Removing {} '{}' from group '{}'", memberType, memberName, groupName);
+
+        try {
+            // First, get current group properties
+            Map<String, Object> currentGroup = restClient.get()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (currentGroup == null) {
+                throw new RuntimeException("Group not found");
+            }
+
+            Map<String, Object> props = (Map<String, Object>) currentGroup.get("properties");
+            List<String> updatedMembers = new ArrayList<>();
+
+            // Get current members and remove the specified one
+            if ("user".equalsIgnoreCase(memberType)) {
+                Object usersNames = props.get("users_names");
+                if (usersNames instanceof List) {
+                    for (Object name : (List<?>) usersNames) {
+                        if (name != null && !name.toString().equals(memberName)) {
+                            updatedMembers.add(name.toString());
+                        }
+                    }
+                }
+            } else {
+                Object groupsNames = props.get("groups_names");
+                if (groupsNames instanceof List) {
+                    for (Object name : (List<?>) groupsNames) {
+                        if (name != null && !name.toString().equals(memberName)) {
+                            updatedMembers.add(name.toString());
+                        }
+                    }
+                }
+            }
+
+            // Prepare update payload
+            Map<String, Object> updatePayload = new HashMap<>();
+            if ("user".equalsIgnoreCase(memberType)) {
+                updatePayload.put("users_names", updatedMembers);
+            } else {
+                updatePayload.put("groups_names", updatedMembers);
+            }
+
+            // Update the group
+            restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .body(updatePayload)
+                    .retrieve()
+                    .body(Map.class);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", memberType + " '" + memberName + "' removed successfully");
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error removing member '{}' from group '{}': {}", memberName, groupName, e.getMessage(), e);
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "Failed to remove member: " + e.getMessage());
+            return result;
+        }
+    }
+
+    /**
+     * Search for users or groups to add as members
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> searchMembers(String query, String type) {
+        String objectType = "user".equalsIgnoreCase(type) ? "dm_user" : "dm_group";
+        String nameField = "user".equalsIgnoreCase(type) ? "user_name" : "group_name";
+
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/search";
+
+        StringBuilder urlBuilder = new StringBuilder(baseUrl);
+        urlBuilder.append("?object-type=").append(objectType);
+        urlBuilder.append("&items-per-page=20");
+        urlBuilder.append("&page=1");
+        urlBuilder.append("&inline=true");
+        urlBuilder.append("&q=").append(java.net.URLEncoder.encode(query, StandardCharsets.UTF_8));
+
+        String fullUrl = urlBuilder.toString();
+        log.info("Searching for {} with query: {}", type, query);
+
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(fullUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, String>> results = new ArrayList<>();
+            List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+
+            if (entries != null) {
+                for (Map<String, Object> entry : entries) {
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        if (props != null) {
+                            Map<String, String> item = new HashMap<>();
+                            item.put("name", (String) props.get(nameField));
+                            item.put("type", type);
+                            if ("user".equalsIgnoreCase(type)) {
+                                item.put("fullName", (String) props.get("user_login_name"));
+                            }
+                            results.add(item);
+                        }
+                    }
+                }
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("results", results);
+            result.put("count", results.size());
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error searching for {}: {}", type, e.getMessage(), e);
+            Map<String, Object> result = new HashMap<>();
+            result.put("results", new ArrayList<>());
+            result.put("count", 0);
+            return result;
+        }
+    }
 }

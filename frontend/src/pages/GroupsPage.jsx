@@ -2,8 +2,9 @@ import React, { useState, useCallback } from 'react';
 import axios from '../api/axios';
 import {
     Search, ChevronLeft, ChevronRight, Users,
-    ChevronsLeft, Loader2, X, UsersRound
+    ChevronsLeft, Loader2, X, UsersRound, Settings
 } from 'lucide-react';
+import ManageMembersModal from '../components/ManageMembersModal';
 
 const GroupsPage = () => {
     const [groups, setGroups] = useState([]);
@@ -16,6 +17,8 @@ const GroupsPage = () => {
 
     const [groupName, setGroupName] = useState('');
     const [activeSearch, setActiveSearch] = useState('');
+    const [selectedGroup, setSelectedGroup] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const fetchGroups = useCallback(async (searchTerm, pageNum) => {
         setLoading(true);
@@ -82,6 +85,25 @@ const GroupsPage = () => {
     const rangeStart = groups.length > 0 ? (page - 1) * pageSize + 1 : 0;
     const rangeEnd = (page - 1) * pageSize + groups.length;
 
+    const handleManageMembers = (group) => {
+        setSelectedGroup(group);
+        setIsModalOpen(true);
+    };
+
+    const handleModalClose = () => {
+        setIsModalOpen(false);
+        setSelectedGroup(null);
+    };
+
+    const handleMembersUpdated = () => {
+        // Refresh the groups list to update member counts
+        if (activeSearch) {
+            fetchGroups(activeSearch, page);
+        } else {
+            fetchGroups('', page);
+        }
+    };
+
     return (
         <div className="p-6 max-w-7xl mx-auto">
             {/* Header + Search inline */}
@@ -147,8 +169,9 @@ const GroupsPage = () => {
                                         <th className="px-4 py-3 font-semibold text-slate-700">Group Name</th>
                                         <th className="px-4 py-3 font-semibold text-slate-700">Description</th>
                                         <th className="px-4 py-3 font-semibold text-slate-700">Owner</th>
-                                        <th className="px-4 py-3 font-semibold text-slate-700">Members Count</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-700">Members</th>
                                         <th className="px-4 py-3 font-semibold text-slate-700">Created Date</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-700 w-32">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -161,11 +184,12 @@ const GroupsPage = () => {
                                                 <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-24"></div></td>
                                                 <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-16"></div></td>
                                                 <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-28"></div></td>
+                                                <td className="px-4 py-3"><div className="h-6 bg-slate-100 rounded w-24"></div></td>
                                             </tr>
                                         ))
                                     ) : groups.length === 0 ? (
                                         <tr>
-                                            <td colSpan="6" className="px-4 py-10 text-center text-slate-500">
+                                            <td colSpan="7" className="px-4 py-10 text-center text-slate-500">
                                                 <p className="font-medium">No groups found</p>
                                                 <p className="text-xs mt-1">Try a different search term</p>
                                             </td>
@@ -212,6 +236,16 @@ const GroupsPage = () => {
                                                     <td className="px-4 py-3 text-slate-600 text-xs">
                                                         {g.r_creation_date ? new Date(g.r_creation_date).toLocaleDateString() : '-'}
                                                     </td>
+                                                    <td className="px-4 py-3">
+                                                        <button
+                                                            onClick={() => handleManageMembers(g)}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0A66C2] text-white text-xs rounded-lg hover:bg-[#094d92] transition-colors font-medium"
+                                                            title="Manage group members"
+                                                        >
+                                                            <Settings size={12} />
+                                                            Manage
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             );
                                         })
@@ -245,6 +279,14 @@ const GroupsPage = () => {
                     </>
                 )}
             </div>
+
+            {/* Manage Members Modal */}
+            <ManageMembersModal
+                isOpen={isModalOpen}
+                onClose={handleModalClose}
+                groupName={selectedGroup?.group_name}
+                onUpdate={handleMembersUpdated}
+            />
         </div>
     );
 };
