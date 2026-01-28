@@ -4,7 +4,6 @@ import com.example.backend.config.DctmConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -57,21 +56,22 @@ public class WorkflowService {
 
         // Build query params
         // Filter by process_id (the r_object_id of the workflow template)
-        // and r_runtime_state=1 (Running)
+        // Note: REST API filter doesn't support AND for multiple conditions easily
         // The 'processName' parameter should be the process template ID (e.g.,
         // 4b02cba08000624a)
 
-        String filterQuery = "process_id='" + processName + "' AND r_runtime_state=1"; // 1=Running
+        String filterQuery = "process_id='" + processName + "'";
 
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url)
-                .queryParam("filter", filterQuery)
-                .queryParam("items-per-page", itemsPerPage)
-                .queryParam("page", page)
-                .queryParam("inline", "true"); // Get properties inline
+        // Build URL manually to avoid over-encoding of the filter parameter
+        // The filter expression like process_id='xxx' should NOT have = encoded
+        String fullUrl = url + "?filter=" + filterQuery +
+                "&items-per-page=" + itemsPerPage +
+                "&page=" + page +
+                "&inline=true";
 
         try {
             return restClient.get()
-                    .uri(builder.toUriString())
+                    .uri(fullUrl)
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
