@@ -155,51 +155,41 @@ public class QueryService {
             return query;
         }
 
-        // Add missing required columns
-        List<String> columnsToAdd = new ArrayList<>();
+        // Only add r_object_id if not present (all persistent objects have this)
+        // Don't add r_object_type as not all object types have it (e.g., dm_user, dm_group)
         if (!upperSelectPart.contains("R_OBJECT_ID")) {
-            columnsToAdd.add("r_object_id");
-        }
-        if (!upperSelectPart.contains("R_OBJECT_TYPE")) {
-            columnsToAdd.add("r_object_type");
+            String newSelectPart = "r_object_id, " + selectPart;
+            return "SELECT " + newSelectPart + fromPart;
         }
 
-        if (columnsToAdd.isEmpty()) {
-            return query;
-        }
-
-        // Prepend missing columns
-        String newSelectPart = String.join(", ", columnsToAdd) + ", " + selectPart;
-        return "SELECT " + newSelectPart + fromPart;
+        return query;
     }
 
     /**
      * Add DQL ENABLE(RETURN_TOP n) hint to limit results at database level.
-     * This is more efficient than fetching all results and limiting client-side.
+     * The hint is appended at the end of the query, e.g.:
+     * SELECT * FROM dm_document ENABLE(RETURN_TOP 100)
      *
      * @param query The DQL query
      * @param limit The maximum number of rows to return
      * @return Query with RETURN_TOP hint
      */
     private String addReturnTopHint(String query, int limit) {
-        String upperQuery = query.toUpperCase();
+        String trimmedQuery = query.trim();
+        String upperQuery = trimmedQuery.toUpperCase();
 
         // Check if query already has ENABLE hints
         if (upperQuery.contains("ENABLE(RETURN_TOP")) {
             return query; // Don't add if already present
         }
 
-        // Find the SELECT keyword
-        int selectIndex = upperQuery.indexOf("SELECT");
-        if (selectIndex == -1) {
+        // Check if it's a SELECT query
+        if (!upperQuery.startsWith("SELECT")) {
             return query; // Not a SELECT query
         }
 
-        // Insert ENABLE(RETURN_TOP n) after SELECT
-        String beforeSelect = query.substring(0, selectIndex + 6); // "SELECT"
-        String afterSelect = query.substring(selectIndex + 6);
-
-        return beforeSelect + " ENABLE(RETURN_TOP " + limit + ")" + afterSelect;
+        // Append ENABLE(RETURN_TOP n) at the end of the query
+        return trimmedQuery + " ENABLE(RETURN_TOP " + limit + ")";
     }
 
     /**
