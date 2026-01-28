@@ -28,26 +28,32 @@ public class GroupService {
     }
 
     /**
-     * Search groups (dm_group) by group name.
+     * Search groups (dm_group) by group name using DQL.
      * Returns paginated list of groups with their details.
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> searchGroups(String groupName, int page, int itemsPerPage) {
 
-        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/groups";
+        // Build DQL query
+        StringBuilder dqlQuery = new StringBuilder("SELECT r_object_id, group_name, description, owner_name, users_names, groups_names, r_creation_date, r_modify_date FROM dm_group");
+
+        // Add filter condition if group name is provided
+        if (groupName != null && !groupName.isBlank()) {
+            dqlQuery.append(" WHERE group_name LIKE '").append(groupName.trim()).append("%'");
+        }
+
+        dqlQuery.append(" ORDER BY group_name");
+
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/dql";
 
         StringBuilder urlBuilder = new StringBuilder(baseUrl);
-        urlBuilder.append("?items-per-page=").append(itemsPerPage);
+        urlBuilder.append("?dql=").append(java.net.URLEncoder.encode(dqlQuery.toString(), StandardCharsets.UTF_8));
+        urlBuilder.append("&items-per-page=").append(itemsPerPage);
         urlBuilder.append("&page=").append(page);
         urlBuilder.append("&inline=true");
 
-        // If group name filter is provided, add it to the query
-        if (groupName != null && !groupName.isBlank()) {
-            urlBuilder.append("&filter=group_name%20like%20'").append(groupName.trim()).append("%25'");
-        }
-
         String fullUrl = urlBuilder.toString();
-        log.info("Searching groups with URL: {}", fullUrl);
+        log.info("Searching groups with DQL: {}", dqlQuery.toString());
 
         try {
             Map<String, Object> response = restClient.get()
@@ -60,7 +66,7 @@ public class GroupService {
             return transformResponse(response, page);
 
         } catch (Exception e) {
-            log.error("Error searching groups", e);
+            log.error("Error searching groups with DQL", e);
             throw new RuntimeException("Failed to search groups: " + e.getMessage());
         }
     }
