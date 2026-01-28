@@ -44,3 +44,6 @@ Thumbs.db
 *.tmp
 *.bak
 *.backup
+
+# Session notes (private)
+SESSION_NOTES.md
