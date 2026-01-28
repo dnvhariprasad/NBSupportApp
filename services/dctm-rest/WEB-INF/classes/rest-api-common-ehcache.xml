@@ -1,0 +1,67 @@
+<!--
+  ~ Copyright (c) 2019. Open Text Corporation. All Rights Reserved.
+  -->
+
+<!-- This is the Ehcache configuration file that let you customize the Ehcache settings for REST cache entries.     -->
+<!-- For instance, you can use this file to increase the cache size and TTL for session managers; you can also use  -->
+<!-- this file to set cache replication or cache distribution in a cluster environment.                             -->
+<!-- For the detail configuration parameters, please refer to Ehcache documentation for XML configuration.          -->
+
+<eh:config
+        xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'
+        xmlns:eh='http://www.ehcache.org/v3'
+        xsi:schemaLocation="
+        http://www.ehcache.org/v3 http://www.ehcache.org/schema/ehcache-core-3.8.xsd">
+
+    <!-- 1. Uncomment to override default session manager cache -->
+    <!--
+     <eh:cache alias="sessionManagers">
+        <eh:expiry>
+            <eh:class>com.emc.documentum.rest.cache.RestCacheExpiryPolicy</eh:class>
+        </eh:expiry>
+        <eh:heap unit="entries">200</eh:heap>
+    </eh:cache>
+    -->
+    <!-- end of 1. -->
+
+
+    <!-- 2. Uncomment to override default type parent-child,data types,type attribute list,repository names cache -->
+    <!--
+    <eh:cache-template name="defaultTemplate">
+        <eh:expiry>
+            <eh:class>com.emc.documentum.rest.cache.RestCacheExpiryPolicy</eh:class>
+        </eh:expiry>
+        <eh:heap unit="entries">1000</eh:heap>
+    </eh:cache-template>
+
+    <eh:cache alias="parentTypes" uses-template="defaultTemplate"/>
+
+    <eh:cache alias="attributeDataTypes" uses-template="defaultTemplate">
+        <eh:heap>100000</eh:heap>
+    </eh:cache>
+
+    <eh:cache alias="typeAttrList" uses-template="defaultTemplate"/>
+
+    <eh:cache alias="persistenceLocation" uses-template="defaultTemplate"/>
+
+    <eh:cache alias="repositoryNames" uses-template="defaultTemplate">
+        <eh:heap>1</eh:heap>
+    </eh:cache>
+    -->
+    <!-- end of 2. -->
+
+    <!-- 3. Uncomment to setup cas ProxyTicketGranting ticket cache in a clustering environment.                    -->
+    <!-- It works together with the runtime property 'rest.security.auth.cas.client.pgt.storage=ehcache'            -->
+
+    <!-- 3.1 bean to initialize the cache entry for PGT -->
+    <!--
+    <eh:cache alias="com.emc.documentum.rest.security.cache.EhcacheBackedOneTimeProxyGrantingTicketStorageImpl.cache">
+		<eh:expiry>
+			<eh:ttl>120</eh:ttl>
+		</eh:expiry>
+		<eh:heap>120</eh:heap>
+	</eh:cache>
+	-->
+    <!-- end of 3. -->
+
+</eh:config>

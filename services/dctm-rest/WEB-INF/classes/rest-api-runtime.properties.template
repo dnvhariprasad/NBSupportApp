@@ -1,0 +1,1224 @@
+#
+# Copyright (c) 2020. Open Text Corporation. All Rights Reserved.
+#
+
+# This file holds a template for all configurable parameters for the REST API server side deployment. Available
+# configurations include:
+#
+#  1.  Misc of Service Configuration
+#  2.  Mime Type Configuration
+#  3.  Content Format Restriction
+#  4.  Resources Compatibility mode
+#  5.  Batch Service Configuration
+#  6.  Search Service Configuration
+#  7.  Sanitization Configuration for Request Input
+#  8.  General Security Configuration
+#  9. Security Configuration for Client Token Cookie
+#  10. Security Configuration for Cross Site Request Forgery (CSRF) Protection
+#  11. Cross-Origin Resource Sharing (CORS) Configuration
+#  12. Advanced Web Context Customization
+#  13. Security Configuration for OAuth 2.0
+#  14. Compression Service Configuration
+#  15. Security Configuration for OTDS integration with Documentum Server
+#  16. Contextual Content Engine (CCE) Service Configuration
+#  17. Security Configuration for OTDS integration with Appworks
+#  18. Event Hub Configuration
+#  19.  Constraints Validation
+
+###################################################
+##       1. Misc of Service Configuration        ##
+###################################################
+
+# Specifies the default locale to retrieve the type definition resource. The value MUST be a valid local alias in the
+# repository. The default value is 'en'.
+#
+rest.default.locale=en
+
+# This property can be set to true if the global registry repository should not be added to the list of repositories
+# returned by the documentum rest. The default value for this property is false.
+#
+rest.exclude.global.repository=false
+
+# Indicates all supported locales of error messages. They will be used when determining the preferred locale if the
+# Accept-Language header is provided in REST client's request. If a specified locale in this property has no message
+# in that matched language, REST server will use the default locale regardless of another supported locales.
+# This MUST be a list of valid locales, separated by commas(,). Default value is en.
+#
+rest.error.message.supported.locales=en
+
+# The default number of results per page. The value MUST be a non-negative integer. The default value is 100.
+rest.paging.default.size=100
+
+# Specifies the max number of results per page. If the value of the items-per-page parameter is greater than this
+# setting, the number of results returned is limited by this setting. The value MUST be a non-negative integer. The
+# default value is 1000.
+#
+rest.paging.max.size=1000
+
+# Determines whether or not to enable the REST request and response message logging on the server side. To enable the
+#  message logging, set this property to TRUE, and enable DEBUG logging level for the package
+# 'com.emc.documentum.rest.log' in log4j. The default value is false.
+#
+rest.message.logging.enabled=false
+
+# Specifies the logging buffer size in byte for requests and responses when the message logging is enabled. The value
+# MUST be a non-negative integer. The default value is 1048567.
+#
+rest.message.logging.buffer=1048567
+
+# Specifies the directory in Content Server to persist data for services like saved-search and user-preference.
+# If the folder doesn't exist or has no write permission for dm_world, there will be runtime exception raised.
+# It's administrator response to ensure the defined path qualified.
+#   1. the folder must exist.
+#   2. dm_world has write permission to create new sub-folder in it when necessary.
+#
+rest.persistence.folder=
+
+# Specifies the DFC session use preference in REST server. Available values are:
+#   private - prefer to use DFC private session in time-consuming operations, like create, update, delete and query
+#             based operations
+#   shared - never use DFC private session unless the operation is transactional
+# This setting has no impact to REST behaviors, but it has impact to the DFC session capacity of operation executions:
+#  - When requests for the same user are highly concurrent, it's recommended to use 'private'.
+#  - When requests for the same user is close to sequence, it's recommended to use 'shared'.
+# The default is private.
+#
+rest.dfc.session.use=private
+
+# Specifies whether to validate resource link relations in the output representation.
+#   true -  validate the link relation href and if the href is invalid/inactive, the link relation is removed from the
+#           resource representation.
+#   false - do not validate and the link relation will be presented on the output representation anyway
+# For internal use only.
+#
+rest.link.relation.validate=
+
+# Sets the default behavior that whether to return thumbnails for sysobject feed entries by default.
+# It only affects the default behavior when the client is not specifying the url query parameter 'thumbnail',
+# meaning that whether this configuration is set to true or false, the client is still able to
+# control the returning of thumbnails at runtime by specifying the url query parameter 'thumbnail'.
+# The default is false.
+#
+rest.entry.thumbnail.default=false
+
+# Determines whether or not to restrict the version label of a check-in operation.
+#  - true:  Use of numbers and the dot character (.) is limited in the following way:
+#           #  If you use dots to separate a version label, each part of the label CANNOT be a pure number. For examples,
+#              the following version labels are invalid when this property is set to true: 1.0, 2.1.11, Label1.0 or A.1.
+#           #  The following version labels are valid when this property is set to true: Label1, 123A or Label1.0.x.
+#  - false: No restriction on use of numbers and the dot character.
+# The default value is true.
+#
+rest.checkin.version.label.restricted=true
+
+# Sets the runtime profile.
+# The runtime profile is used to provide REST clients a choice on whether the detail error message is returned by
+# core rest. There are two profiles 'development' and 'production'.
+#  - The profile 'development' returns more detail exception message to clients, such as the root cause of an exception
+#  - The profile 'production' only returns the important error information to clients, like only return the encapsulated
+#    rest exception.
+# The default runtime profile is 'production'.
+#
+rest.runtime.profile=production
+
+# Enables relative URIs in response links.
+# To produce relative URIs in resource responses, set the below property value as true.
+# When the property is set to true, URIs in both link relations, Location header and atom IDs are formatted as the relative
+# relative URIs.
+# The default value is false.
+#
+rest.use.relative.url=false
+
+# Sets the maximum size, in megabytes, of the contents that are allowed to be archived.
+# When the sum of all the contents' original size is greater than the value of ${rest.archive.contents.threshold} megabytes,
+# then that contents will not be archived and an error is returned by REST server.
+# The value of this runtime property defaults to 20971520 kilobytes, which is 20GB.
+#
+rest.archive.contents.threshold=20971520
+
+# Provides a facility to the rest clients where these clients can choose to apply/not to apply
+# the mail app processing mechanism on the emails which are being imported through REST server.
+# The default value is false. This property should be set to true for the rest server to consider emails parsing.
+# The rest server parses the emails if it receives the imported email's content
+# whose size is not zero, the email's content format type value is passed as msg/eml
+# (i.e. the dfc format should be passed as msg/eml by REST clients via it's URL query parameters)
+# and this property value is set to true.
+
+rest.should.parse.emails = true
+
+# This property enables checksum validation for Documentum REST content upload or download operations. When enabled,
+# Documentum REST includes the checksum value in the "Content-MD5" header of the response for these operations.
+# By default, this feature is disabled (false).
+# At runtime, the value provided to the respective rest end point query parameter will override
+# the value set to this property. This flexibility ensures that the need for checksum validation can be dynamically
+# controlled based on operational requirements.
+
+rest.checksum.enabled=false
+
+# Provides a facility to disallow dql execution on the configured documentum type objects.
+# It is recommended to use this property to avoid DQL related security concerns on either documentum config
+# objects (such as docbase config, serve config, bocs config etc) or the types on which an acl can not be defined.
+# This property disallows DQL execution on the configured types only for the users who are neither having admin
+# nor super user privileges.
+# The default types decisded are dmr_content,dm_relation,dm_acs_config,dm_cont_transfer_config,dm_network_location_map,
+# dm_cache_config,dmc_mq_config,dm_bocs_config,dm_dms_config,dm_docbase_config,dm_server_config,dm_user,dm_acl,dm_role,
+# dm_group,dmr_containment,dm_assembly,dm_tasks_all,dmi_package,dmi_queue_item,dm_format,dm_mount_point,dm_store,
+# dm_type, dm_process,dm_workflow,dmi_audit_attrs,dm_java,dm_basic,dm_public_key_certificate,dmi_type_info,
+# dmc_java_library,dm_func_expr,dm_location,dmi_dd_attr_info,dm_relation_ssa_policy,dm_aggr_domain,
+# dmi_change_record,dm_validation_descriptor,dm_client_registration,dm_replica_catalog,dmi_wf_attachment,dmi_registry,
+# dmc_aspect_type,dm_fulltext_index,dm_lifecycle,dmc_java_library,dmi_index,dmi_sequence,dmi_vstamp,dmi_session,
+# dmi_transactionlog,dmi_recovery,dm_docbaseid_map,dm_key,dm_value_assist,dm_value_list,dm_value_query,dm_value_func,
+# dm_expression,dm_literal_expr,dm_builtin_expr,dm_cond_expr,dm_cond_id_expr,dm_dd_info,dm_scope_config,dm_display_config,
+# dm_nls_dd_info,dm_domain,dm_aggr_domain,dmi_dd_common_info,dmi_dd_attr_info,dmi_dd_type_info,dm_relation_type,dm_foreign_key,
+# ,dm_filestore,dmi_otherfile,dm_opticalstore,dm_linkedstore,dmi_linkrecord,dm_distributedstore,dmi_replica_record,dmi_dist_comp_record,
+# dm_blobstore,dm_extern_store,dm_extern_file,dm_extern_url,dm_extern_free,dm_s3_store,dm_rest_store,dmi_subcontent,dm_alias_set,
+# dm_ca_store,dm_dump_record,dmi_dump_object_record,dm_load_record,dmi_load_object_record,dm_reference,dm_client_rights_domain,
+# dmi_workitem,dmi_audittrail_attrs,dm_audit_policy,dmi_audittrail_asp_attrs,dm_partition_scheme,dm_state_extension,dm_state_type,
+# dm_message_route_user_data,dmc_aspect_relation,dm_atmos_store,dm_vipr_store,dm_swift_store,dmc_validation_relation,dm_shmeconfig,
+# dmc_workqueue,dmc_workqueue_policy,dmc_workqueue_doc_profile,dmc_workqueue_user_profile,dmc_completed_workflow,dmc_completed_workitem,
+# dmc_transition_condition,dmc_composite_predicate,dmc_wf_package_schema,dmi_wf_timer,dmc_module_config,dmc_wf_package_skill,
+# dmc_routecase_condition,dmc_wq_skill_info,dmc_wq_user_skill,dmc_wq_task_skill,dmc_process_correlation_set,dmc_wfsdrp_parent,
+# dmc_wfsdrp_integer,dmc_wfsdrp_string,dmc_wfsdrp_double,dmc_wfsdrp_boolean,dmc_wfsdrp_date,dmc_wpr_parent,dmc_act_group_instance,
+# dmc_bpm_lsm,dm_fulltext_collection,dm_relation_ssa_policy,dm_sync_list_relation,dmc_config_scope_relation,dmc_preset_info,
+# dmc_datatable_schema_ex,dmc_datatable_settings.
+dql.disallowed.types=
+
+# Provides a facility to define the DQL resource access modes. This property supports the below three DQL access modes.
+# 1. admin – This is the default mode, where only the users who are having super/admin privileges are allowed to access the DQL resource.
+# 2. group – In this mode, the set of users who are part of the specific groups (the dm_groups created at content server side) are allowed to access the DQL resource.
+#            These set of groups can be configured using the rest property "rest.dql.access.groups". This property takes multiple group names as comma separated values.
+# 3. all   – This mode provides the backward compatibility with the DQL resource where any user would be able to access the DQL resource.
+#            The property dql.disallowed.types holds good only when the access mode is configured to all.
+rest.dql.access.mode=
+
+# Provides a facility to configure the set of groups as comma separated values.
+# This property is valid only when rest.dql.access.mode is set to "group".
+# The users who are part of the groups provided to this property are only allowed to access the DQL resource.
+rest.dql.access.groups=
+
+# Path to the composer headless ex: C:/ComposerHeadless
+#
+rest.composer.path =
+
+#################################################
+##         2. Mime Type Configuration          ##
+#################################################
+#
+# This section contains the mime type configuration for the REST services.
+
+# Pre-defined MIME type to format mapping. When the client uploads data with the 'Content-Type'
+# header without specifying the query parameter 'format', the REST server has to resolve the format for the uploaded
+# data. In this case, the REST server looks up this section first to see if the mapping from the MIME type to the
+# corresponding format has been defined. If the mapping was not found in this section, the REST server runs a query to
+# pick up a default format according to the MIME type, ordering by the format name in the dm_format table.
+#
+# Determines whether or not to look up the MIME to format mapping for content format resolution. By default, the MIME to
+# format mapping is disabled, meaning that the REST server always runs a query to resolve format names.
+#  - true:  The REST server looks up the MIME type format mapping for content format resolution.
+#  - false: The REST server randomly picks up a MIME to format mapping based on the query.
+# The default value is false.
+#
+rest.mime.format.mapping.enabled=false
+
+# Defines all MIME to format mappings in the following format: [repositoryName].[mime_type]=[format].
+# You CAN use the wildcard character (*) to represent all repositories. MIME to format mapping entries are overrided by
+# the repository specific mapping in case both mappings contain the same MIME type names.
+# Examples:
+# *.application/msword=msw8
+# my_repository.application/msword=msw12
+# my_repository.application/octet-stream=emcmf
+
+
+###################################################
+##         3. Content Format Restriction         ##
+###################################################
+#
+# This section contains the restriction configuration for Content Format.
+
+# Specifies the formats which is allowed to upload as a content. Only the formats in this list could be uploaded,
+# otherwise ,the uploading would be blocked. The formats in the list should be separated by ','.
+#
+rest.format.restriction.whitelist=
+
+# Specifies the formats which is forbidden from uploading as a content. The uploading in this list would be blocked.
+# The formats in the list should be seperated by ','.
+#
+rest.format.restriction.blacklist=
+
+
+################################################
+##       4. Resources Compatibility mode      ##
+################################################
+
+# This property specifies the compatibility mode of the REST server. For example, the valid ascending values are V1, V2
+# and CURRENT (CURRENT version is V3). This means Documentum REST services have three incompatible phases:
+#   1. (, V1], V1 included
+#   2. (V1, V2], V1 excluded/V2 included
+#   3. (V2, V3], V2 excluded/V3 included
+#
+# Valid values:
+#   - 7.1
+#       current version REST services run in a mode compatible with version 7.1.
+#       See below explanation about what incompatible changes have been brought between 7.1 and its later versions.
+#   - 7.2
+#       current version REST services run in a mode compatible with version 7.2.
+#       See below explanation about what incompatible changes have been brought between 7.2 and its later versions.
+#   - CURRENT
+# Default value: CURRENT
+# Default value will be adopted If the input is invalid
+#
+# [NOTE] It is strongly recommended to upgrade to the latest version since there is no single configuration for each
+#          change in different versions.
+#
+# Difference between versions:
+#   - 7.1 --> all versions after 7.1
+#       1. In Types resource - JSON - Atom entry - Atom content, "type" for CURRENT and "content-type" for 7.1
+#       2. In Type resource - JSON, 7.1 has additional wrapper curly braces and the Type object is the value of "type"
+#          attribute of the wrapper
+#
+#   - 7.2 --> all versions after 7.2
+#       1. All unknown field would be ignored by server which means it would NOT throw exception in 7.2, instead of
+#          throw exceptions in later versions.
+#       2. Undefined url would be accessible and return 404 if not existed in 7.2, instead of 403 in later versions.
+#
+rest.api.compatibility.version=CURRENT
+
+
+####################################################
+##       5. Batch Service Configuration           ##
+####################################################
+
+# The maximum cache size in megabyte for a multipart batch. This property only works when transactional=false and
+# sequential=false, and the batch is a Multipart/Related request. To disable caching for the multipart batch request,
+# set the value to 0. In general, this value need not be changed. The default is 20.
+#
+rest.batch.multipart.cache.max.size=20
+
+# Determines the number of batch requests that can be executed simultaneously on the server. Despite whoever submits the
+# batch request, the total count of running batches in the system cannot exceed this configuration value. When the
+# running batch count reaches this threshold, all attempts to submit new batch requests are rejected. The default is 50.
+#
+rest.batch.running.tasks.max.count=50
+
+# Defines the maximum count of operations that can be included in one batch request. If the number of operations
+# embedded in a batch request exceeds this threshold, the batch request is rejected. The default is 1000.
+rest.batch.operations.max.count=1000
+
+# The thread pool size which is used to execute background batch tasks. The configuration sets the 'core' pool size. The
+# 'core' thread will not be closed even if it's idle. However, if there are too many tasks to be executed, the new
+# threads may be created even more than the core size. The maximum threads size will be the twice of this 'core' thread
+# configuration. Any threads exceed the configuration will be automatically closed after the execution, and be idle for
+# a while. The default is 5.
+#
+rest.batch.core.thread.pool.size=5
+
+
+####################################################
+##       6. Search Service Configuration          ##
+####################################################
+
+# REST Search Service leverages DFC to search Content Server. The configuration sets a maximum time to wait in
+# seconds for an execution of DFC search request. Set to 0 to have no timeout.
+# When the property is not set, the default value is 60 seconds.
+#
+rest.search.dfc.request.timeout=60
+
+
+#################################################################
+##      7. Sanitization Configuration for Request Input        ##
+#################################################################
+#
+# This section contains the sanitize configuration for the input object metadata and html content.
+
+# Determines whether to sanitize the metadata of an object.
+# The sanitize will modify the metadata (remove the suspicious part).
+# The default value is false.
+#
+rest.sanitize.type.metadata=false
+
+# Determines whether to sanitize the content of an html.
+# The sanitize will modify the content (remove the suspicious part).
+# The default value is false.
+#
+rest.sanitize.type.content=false
+
+# Set the max size of the content which will be sanitized.
+# If the content size is larger than the max size, it will not be sanitized.
+# The value is in bytes.
+# The default value is 500K bytes.
+#
+rest.sanitize.content.max.size=500000
+
+# Set the default html content charset/encoding.
+# When sanitizing the input html content, the charset is determined by the following sequence:
+# 1. the request parameter content-charset
+# 2. try to get the charset from html meta info
+# 3. both 1 and 2 failed, then use this default charset to sanitize the html content
+#
+rest.sanitize.content.default.charset=UTF-8
+
+# Specifies the content formats which will be sanitized.
+# Only the formats in this list will be sanitized.
+# The formats in the list should be separated by ','.
+# The format names refer to dm_format.
+#
+rest.sanitize.content.format=html,pub_html
+
+####################################################
+##       8. General Security Configuration        ##
+####################################################
+#
+# This section contains the general security configuration for the Documentum REST Services. Different combinations of
+# authentication schemes are supported. The default scheme is HTTP basic authentication for Content Server inline users.
+# Specifies the authentication scheme or the combination of authentication schemes used for Documentum REST Services.
+# Please choose one scheme from below supported list : [basic, basic-ct, oauth2, ct-oauth2, otds_token, ct-otds_token,
+# otds_password, ct-otds_password,otds_token-basic,ct-otds_token-basic].
+#
+# basic
+#    - HTTP basic authentication for Content Server inline users and LDAP users synced to Content Server
+# basic-ct
+#    - Supports HTTP basic authentication and Client Token cookie for it
+# oauth2
+# ct-oauth2
+#     - Support OAuth 2.0 and configurable support OpenId Connect with Client Token cookie supported.
+# otds_token
+#     - Support OTDS integration with Documentum Server via token.
+# ct-otds_token
+#     - Support OTDS integration with Documentum Server via token with Client Token cookie supported.
+# otds_password
+#     - Support OTDS integration with Documentum Server via password.
+# ct-otds_password
+#     - Support OTDS integration with Documentum Server via password with Client Token cookie supported.
+# otds_token-basic
+#     - Support OTDS integration with Documentum Server via token and Http basic authentication.
+# ct-otds_token-basic
+#     - Support OTDS integration with Documentum Server via token and Http basic authentication
+#     - Both the basic authentication and OTDS integration will generate the Client Token
+#
+# The default mode is basic. For more information, refer to the Reference Guide for details.
+#
+rest.security.auth.mode=basic
+
+# Specifies the realm name for the authentication. It SHOULD be changed to your organization realm.
+#
+rest.security.realm.name=
+
+# Customizes the scheme type for the WWW-Authenticate response header for a 401 status. This setting adds a suffix
+# string to the scheme type of the header. The suffix is appended to the scheme type only when the client request sets a
+# custom header "DOCUMENTUM-CUSTOM-UNAUTH-SCHEME:true". For example for the Basic authentication, if the suffix is set
+# to "ACME",
+#  -  When the client request sets a custom header "DOCUMENTUM-CUSTOM-UNAUTH-SCHEME:true", the response header for
+#     status 401 is "WWW-Authenticate: Basic_ACME realm='<realm>'".
+#  -  When the custom header is not set or set to false, the response header for status 401 is the default
+#     "WWW-Authenticate: Basic realm='<realm>'".
+# When this property is not set, the default suffix string is "Customized".
+#
+rest.api.unauthorized.response.scheme.suffix=Customized
+
+# Specifies the root URL for authentication mapping.
+# For internal use only.
+#
+rest.security.auth.root.url=
+
+# Determines if the Spring StrictHttpFirewall is used. When the Spring default firewall is enabled, REST will reject
+# any suspicious request containing specific characters as follows.
+# Semicolons(";", "%3b", "%3B"), back slash("\\", "%5c", "%5C"), URL encoded slash("%2f", "%2F"), percent("%", "%25"),
+# URL encoded period("%2e", "%2E"). Otherwise, a REST custom firewall will be used.
+# Default to true, meaning using REST custom firewall.
+#
+rest.security.spring.httpfirewall.disable=true
+
+# Specifies the allowed host names so as to prevent Host Header Injection.
+# Hosts should be separated by commas. Regex is supported for host names.
+# Default to empty, meaning allow all hosts.
+#
+rest.security.allowed.host.patterns=
+
+# Specifies logout URL for client token sign out. This property can be used when Client Token cookie is used
+# in the authentication. It should be a relative URL. Defaults to "/logout".
+#
+rest.security.logout.url=/logout
+
+# Specifies the URL to redirect after the successful logout. This property can be used when Client Token cookie is used
+# in the authentication. It can be a complete URL or a relative URL. When it is a relative URL, the server will insert
+# the request base and context path on the path.
+# When it is not specified, the server returns no content for the success logout.
+# Examples:
+#  - http://another-server/goodbye
+#  - /services
+#
+rest.security.logout.success.url=/services
+
+# Specifies whether to disable the Strict-Transport-Security header. If false, that HTTP Strict Transport  Security (HSTS)
+# is enabled when the network protocol is HTTPS and the response adds the following header:
+#  - Strict-Transport-Security: max-age=31536000 ; includeSubDomains
+# Sees "http://tools.ietf.org/html/rfc6797" for additional details. Defaults to false.
+#
+rest.security.headers.hsts.disabled=false
+
+# Specifies whether to include sub domains for the Strict-Transport-Security header. If true, sub domains should be
+# considered HSTS Hosts too.
+# Sees "http://tools.ietf.org/html/rfc6797#section-6.1.2" for additional details. Defaults to true.
+#
+rest.security.headers.hsts.include_sub_domains=true
+
+# Specifies the value (in seconds) for the max-age directive of the Strict-Transport-Security header.
+# Sees "http://tools.ietf.org/html/rfc6797#section-6.1.1" for additional details. Defaults to 31536000.
+rest.security.headers.hsts.max_age_in_seconds=31536000
+
+# Specifies whether to disable the Cache-Control header. If false, the response adds the following headers:
+#  - Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+#  - Pragma: no-cache
+#  - Expires: 0
+# Defaults to false.
+#
+rest.security.headers.cache_control.disabled=false
+
+# Specifies whether to disable the X-Content-Type-Options header. If false, the response adds the following header:
+#  - X-Content-Type-Options: nosniff
+# Sees "http://msdn.microsoft.com/en-us/library/ie/gg622941(v=vs.85).aspx" for additional details. Defaults to false.
+#
+rest.security.headers.content_type_options.disabled=false
+
+# Specifies whether to disable the X-Frame-Options header. If false, the response adds the following headers:
+#  - X-Frame-Options: DENY
+# Sees "https://developer.mozilla.org/en-US/docs/Web/HTTP/X-Frame-Options" for additional details. Defaults to false.
+#
+rest.security.headers.x_frame_options.disabled=false
+
+# Specifies the X-Frames-Options policy. Allowed values are DENY and SAMEORIGIN.
+# Defaults to DENY.
+#
+rest.security.headers.x_frame_options.policy=DENY
+
+# Specifies whether to disable the X-XSS-Protection header. If false, the response adds the following header:
+#  - X-XSS-Protection: 1; mode=block
+# Sees "http://blogs.msdn.com/b/ieinternals/archive/2011/01/31/controlling-the-internet-explorer-xss-filter-with-the-x-xss-protection-http-header.aspx"
+# for additional details. Defaults to false.
+#
+rest.security.headers.xss_protection.disabled=false
+
+# Specifies whether to enable X-XSS-Protection explicitly. If true, the response adds the following header:
+#  - X-XSS-Protection: 1
+# If false, the response adds the following header:
+#  - X-XSS-Protection: 0
+# Defaults to true.
+#
+rest.security.headers.xss_protection.explicit_enable=true
+
+# Specifies whether to set block mode for the X-XSS-Protection header. If true, the response adds the block mode to the
+# X-XSS-Protection header:
+#  - X-XSS-Protection: 1; mode=block
+# If false, the response does not adds a mode. Defaults to true.
+#
+rest.security.headers.xss_protection.block=true
+
+# Specifies the comma-separated white list for redirecting url of successful SSO login. Users can specify relative url or absolution url.
+# For example, the relative url "/services" will redirect the client to REST home page;
+# the absolution url "http://www.w3.org" will redirect the client to W3C site.
+# Examples:
+#  - http://another-server/.*,/services,/repositories/REPO/.*
+# If the url specified by parameter success-url is in the white list, REST will redirect the client to this url;
+# or REST will raise error to the client.
+#
+# Default value: /.*
+#
+rest.security.sso.login.success.url.whitelist=/.*
+
+# The address of the proxy that the third party service is behind.
+# This is used when the REST is making requests to a third party service via a proxy.
+# Please note that proxy and https can NOT be set for consumer at the same time. If both are set, proxy would take effect.
+# The default value is empty.
+rest.security.consumer.proxy.address=
+
+# The port of the proxy that the third party service is behind.
+# This is used when the REST is making requests to a third party service via a proxy.
+# Please note that proxy and https can NOT be set for consumer at the same time. If both are set, proxy would take effect.
+# The default value is 80.
+rest.security.consumer.proxy.port=
+
+# The username of the proxy that the third party service is behind.
+# This is used for authentication when the REST is making requests to a third party service via a proxy.
+# Please note that proxy and https can NOT be set for consumer at the same time. If both are set, proxy would take effect.
+# The default value is empty.
+rest.security.consumer.proxy.username=
+
+# The authentication password of the proxy that the third party service is behind.
+# This is used for authentication when the REST is making requests to a third party service via a proxy.
+# Due to security concern, this password should be encrypted by com.documentum.fc.tools.RegistryPasswordUtils.encrypt.
+# Additionally, REST is request to the server as a client that have to visit it via proxy by authentication.
+# Please note that proxy and https can NOT be set for consumer at the same time. If both are set, proxy would take effect.
+# The default value is empty.
+# You can also set the authentication password of the proxy in an env variable and specify the env varaible name with the prefix "ENV_VARIABLE_".
+# For example: rest.security.consumer.proxy.password=ENV_VARIABLE_<proxy_password_env_variable_name>
+#
+rest.security.consumer.proxy.password=
+
+# The local path and filename of the https certificate keystore.
+# Example: rest.security.consumer.https.keystore.path=C:/keystore/mycertfile.jks
+# This is used when the REST is making requests to a third party service secured with https/ssl.
+# Please note that proxy and https can NOT be set for consumer at the same time. If both are set, proxy would take effect.
+# Keep this empty would accept all certificates.
+# The default value is empty.
+rest.security.consumer.https.keystore.path=
+
+# The password of the local https certificate keystore.
+# This is used when the REST is making requests to a third party service secured with https/ssl.
+# Due to security concern, this password should be encrypted by com.documentum.fc.tools.RegistryPasswordUtils.encrypt.
+# Please note that proxy and https can NOT be set for consumer at the same time. If both are set, proxy would take effect.
+# The default value is empty.
+# You can also set the keystore password in an env variable and specify the env varaible name with the prefix "ENV_VARIABLE_".
+# For example: rest.security.consumer.https.keystore.password=ENV_VARIABLE_<keystore_password_env_variable_name>
+#
+rest.security.consumer.https.keystore.password=
+
+# This property is used to specify expiry time for distributed content write ticket timeout. The timeout is in minutes.
+# The default is 30 minutes.
+#
+rest.security.distributed.content.ticket.timeout=
+
+#########################################################################
+##  9. Security Configuration for Client Token Cookie And Header      ##
+#########################################################################
+#
+# This section contains the security configuration for client token cookie/header which is used for authenticated users.
+# Settings in this section work when a specific authentication scheme and the client token are set together in the
+# General Security Configuration section. All configuration properties in this section MUST be uncommented when client
+# token cookie/header is enabled. Refer to the Reference Guide for detailed configuration steps.
+
+
+# Specify whether using the header for the client token.
+# If the value is provided, the client token is transferred by the specified header name.
+# Otherwise, the cookie is used for the client token.
+# The default value is empty (the client token is in the cookie)
+rest.security.client.token.header=
+
+# # Supported expiration policies for client token cookie are:
+# (1) com.emc.documentum.rest.security.ticket.impl.HardTimeoutExpirationPolicy
+#     The client token expires after a specified duration. If the REST client sends a request before the duration, the
+#     REST server accepts the client token. If the REST client sends a request after the duration, the REST server
+#     rejects the client token, and the client has to authenticate again.
+#
+# (2) com.emc.documentum.rest.security.ticket.impl.TolerantTimeoutExpirationPolicy
+#     - the client token expires at a date/time for inactivity;
+#     - if the REST client comes before the expiry time, the REST server accepts the client token;
+#     - if the REST client comes after the expiry time but still within a tolerant time slot,
+#       the REST server accepts the client token, and renews another client token with a new lifetime to set back for
+#       next call use;
+#     - if the REST client comes after the expiry time and out of the tolerant time slot,
+#       the REST server rejects the client token, then the REST client needs to authenticate again.
+#     - the tolerant time slot is set as the same duration to the expiry time
+#     The client token expires after two times of the specified duration. The REST server issues new client tokens under
+#     certain conditions. For details, see the following:
+#     - If the REST client sends a request before the duration, the REST server accepts the client token.
+#     - If the REST client sends a request after the duration, and before two times of the duration, the REST server
+#       accepts the client token, and issue another client token with the same duration to the client for subsequent
+#       requests.
+#     - If the REST client sends a request after two times of the duration comes to an end, the REST server rejects the
+#       client token, and the client has to authenticate again.
+#
+# (3) com.emc.documentum.rest.security.ticket.impl.TouchedTimeoutExpirationPolicy
+#     The client token expires after a specified duration. The REST server issues new client tokens under certain
+#     conditions. For details, see the following:
+#     - If the REST client sends a request before the duration, the REST server accepts the client token, and issues
+#       another client token with the same duration to the client for subsequent requests.
+#     - If the REST client sends a request after the duration, the REST server rejects the client token, and the client
+#       has to authenticate again.
+#
+# By default, the REST server uses the TolerantTimeoutExpirationPolicy policy.
+#
+rest.security.client.token.expiration.policy=
+
+# Whether enable repository path in client token cookie.
+# When set the value to true, repository path will be set in cookie.
+# For instance, the DCTM REST context root is "dctm-rest" and repository name is "REPO". The Path in cookie will be "/dctm-rest/repositories/REPO"
+# When set the value to false, the Path in cookie will be ""/dctm-rest"
+# The default value is false.
+#
+rest.security.client.token.cookie.scoped=
+
+# This property is used by all expiration policies. The timeout in seconds for the client token cookie.
+# This property MUST be specified with a non-empty value. The default is 3600 seconds.
+# This option won't take effect when rest.security.client.token.session.cookie=true
+#
+rest.security.client.token.timeout=3600
+
+# Whether enable session cookie for client token cookie.
+# When set the value to true, client token cookie will be session cookie, that means the cookie is erased when the Web browser is closed.
+# The default value is false.
+#
+rest.security.client.token.session.cookie=
+
+# SameSite attribute for the client token cookie.
+# Used to control access to cookie from third-party sites. Possible values are Strict, Lax, None, None; Secure, None; Secure; Partitioned
+# The default value is blank, which means that it would depend on the browser to determine third-party access behavior.
+#
+rest.security.client.token.cookie.samesite=
+
+# Whether disable the encryption and decryption for the client tokens
+# When set the value to true, then no cryption is processed.
+# And the REST services have no direct dependencies on the cryption library, such as RAS JSafe, Bouncy Castle.
+# The secure random based on providers are also replaced by the standard JRE provided SecureRandom.
+# The default value is false.
+#
+rest.security.crypto.disabled=false
+
+# Symmetric crypto algorithm that RESTful Services uses to encrypt and decrypt client tokens, the block cipher mode,
+# and the padding strategy in the following pattern:
+# rest.security.crypto.algorithm=<crypto_algorithm>/<block_cipher_mode>/<padding_strategy>
+# Each provider MAY have different implementations and limitations. This property is optional. We do not recommend that
+# you set <padding_strategy> to NoPadding because the CT length is not always compatible with the block size.
+# Default: AES/CBC/PKCS5Padding
+#
+rest.security.crypto.algorithm=AES/CBC/PKCS5Padding
+
+# Crypto algorithm parameters class name
+# Valid values: javax.crypto.spec.IvParameterSpec, or blank.
+# If the algorithm requires extra parameters, such as initialization vector (IV), set this property to
+# javax.crypto.spec.IvParameterSpec. Otherwise, leave it blank.
+# For example, if AES/CBC/PKCS5Padding is used, the value MUST be set to javax.crypto.spec.IvParameterSpec.
+# If AES/ECB/PKCS5Padding is used, the value MUST be blank. This property is optional for the ECB, CBC, OFB, and CFB
+# modes. The system selects the correct class for these modes.
+#
+rest.security.crypto.algorithm.parameters.class=
+
+# Algorithm to generate the secret key
+# Examples: AES, DESede, DES, RC5, HmacMD5, and Blowfish
+# The key generating algorithm MUST be compatible with the crypto algorithm. This property is optional.
+# Default: AES
+#
+rest.security.key.algorithm=AES
+
+# Random algorithm name
+# Default: SHA1PRNG
+# You CAN set this property to other random generation algorithms.
+#
+rest.security.random.algorithm=SHA1PRNG
+
+# Crypto provider name
+# Default: empty (the JVM provider)
+# Alternatively, set this property to 'BC' to use the Bouncy Castle provider. When REST Services uses the Bouncy Castle
+# provider, its library MUST be specified in the class path.
+# To use RSA provider, the value can be set to JsafeJCE. And also please make sure the RSA libs are in the class path.
+#
+rest.security.crypto.provider=
+
+# Whether replace the application/web server's registered provider with the same provider name.
+# Default: false
+# If the provider with name specified by rest.security.crypto.provider is already registered in the server, then whether
+# replace it by rest.security.crypto.provider.class, depends on the value of this configuration. Set the value to false,
+# if the provider is already existed, then the REST will try to reuse it. Otherwise, the registered provided will be
+# removed, and rest.security.crypto.provider.class will be registered.
+#
+rest.security.crypto.provider.force.replace=false
+
+# Crypto provider class name
+# Default: empty (the JVM provider)
+# It can be com.rsa.jsafe.provider.JsafeJCE for the RSA JsafeJCE provider.
+# Or org.bouncycastle.jce.provider.BouncyCastleProvider for the Bouncy Castle as well.
+# This property is optional if the provider is RSA JsafeJCE or Bouncy Castle.
+#
+rest.security.crypto.provider.class=
+
+# Key size in bit for the secret key
+# This property MUST be compatible with the crypto algorithm.
+# If you want to use a key size larger than 128 bits, download the "JCE Unlimited Strength Jurisdiction Policy Files" from
+# the Oracle web site. By default, the key size is 64 for DES, and 128 for all other algorithms.
+#
+rest.security.crypto.key.size=
+
+# Block size in bit
+# This property MUST be compatible with the crypto algorithm. By default, the block size is 64 bits for Blowfish, DES,
+# DESede, RC2, and RC5, and 128 bits for all other algorithms.
+#
+rest.security.crypto.block.size=
+
+# Crypto salt for client token encryption and decryption
+# For a multi-node deployment of REST servers, this property MUST be consistently set across all REST servers. For a
+# single-node deployment of REST servers, this property is optional. The value CAN be any ascII characters. We recommend
+# that you specify a text no less than 8 characters.
+#
+rest.security.crypto.key.salt=
+
+# Specifies the mode of the JsafeJCE provider.
+# Valid values are:
+#  -	FIPS140_MODE: only FIPS140-approved algorithms and default algorithms are allowed
+#  -	NON_FIPS140_MODE: all algorithms are allowed
+# When you deploy Documentum REST Services on IBM WebSphere and use CAS or Kerberos authentication, the value must be
+# set to NON_FIPS140_MODE.
+#
+# This property only takes effect when CryptoJ toolkit in runtime supports to switch mode.
+#
+# Editing property "com.rsa.cryptoj.fips140initialmode" in Java security properties file
+# (by default, it is JAVA_HOME/lib/security/java.security) will change the initial FIPS mode.
+# For example, "com.rsa.cryptoj.fips140initialmode=NON_FIPS140_MODE" will set the initial mode as NON FIPS.
+#
+# Currently REST will only try to switch mode at runtime when NON_FIPS140_MODE is specified here no matter what the initial FIPS mode is.
+# When it fails to switch mode, logs are dumped to indicate the failure and the working FIPS mode is dumped as well.
+#
+# Default value: FIPS140_MODE
+#
+rest.security.crypto.provider.jsafejce.mode=FIPS140_MODE
+
+
+
+##############################################################################################
+##        10. Security Configuration for Cross Site Request Forgery (CSRF) Protection       ##
+##############################################################################################
+#
+# This section contains the configuration of CSRF protection for Client Token cookie.
+
+# Determines whether the CSRF protection is enabled for Client Token. The default value is true.
+#
+rest.security.csrf.enabled=true
+
+# Specifies for which http methods, the requests will be required for CSRF token.
+# Multiple methods should be separated by ','.
+# The default value is POST,PUT,DELETE.
+#
+rest.security.csrf.http_methods=POST,PUT,DELETE
+
+# Specifies the CSRF token generation method. Valid values are 'client' and 'server'.
+#
+# When the value is 'client', the client must provide the CSRF token and parameters in the initial authentication, and
+# later send the CSRF token together with Client Token cookie for authentications. The initial authentication request
+# should provide the request headers below:
+#   DOCUMENTUM-CSRF-HEADER-NAME: {csrfHeaderName}
+#   DOCUMENTUM-CSRF-QUERY-NAME: {csrfQueryName}
+#   DOCUMENTUM-CSRF-TOKEN: {csrfTokenValue}
+#
+# DOCUMENTUM-CSRF-TOKEN is mandatory. At least one header of DOCUMENTUM-CSRF-HEADER-NAME and DOCUMENTUM-CSRF-QUERY-NAME
+# must be provided at the same time.
+#
+# The following Client Token cookie authentications must provide the CSRF token in a request header or a query parameter.
+# For a request which sends CSRF token by the request header, its headers are like this:
+#   {csrfHeaderName}: {csrfTokenValue}
+# For a request which sends CSRF token by the query parameter, its request URI query is like this:
+#   /repositories/{REPO}?{csrfQueryName}={csrfTokenValue}
+#
+# When the value is 'server', the server will generate the CSRF token and parameters during the initial authentication and
+# send back to the client together with Client Token cookie. The client later should send the CSRF token together with
+# Client Token cookie for authentications. The initial authentication request remains the same as before, but the
+# authentication response will sends additional headers, like below:
+#   DOCUMENTUM-CSRF-HEADER-NAME: {csrfHeaderName}
+#   DOCUMENTUM-CSRF-QUERY-NAME: {csrfQueryName}
+#   DOCUMENTUM-CSRF-TOKEN: {csrfTokenValue}
+#
+# The client must remember the CSRF token and parameters and use them in the following Client Token cookie authentications.
+# The following requests are the same as Client Token authentication requests for 'client' token generation.
+#
+# The default value is 'server'.
+#
+rest.security.csrf.generation.method=server
+
+# Specifies the {csrfHeaderName} for CSRF 'server' token generation. The default value is 'DOCUMENTUM-CSRF-TOKEN'. When
+# the default is set, the Client Token authentication requests should have a header like below:
+#   DOCUMENTUM-CSRF-TOKEN: {csrfTokenValue}
+# Please note 'rest.security.csrf.header_name' and 'rest.security.csrf.parameter_name' can be set together. Then the client
+# can decide to send CSRF token either by a request header or a query parameter.
+#
+rest.security.csrf.header_name=DOCUMENTUM-CSRF-TOKEN
+
+# Specifies the {csrfQueryName} for CSRF 'server' token generation. The default value is 'csrf-token'. When the default
+# is set, the Client Token authentication requests should have a URI query like below:
+#   /repositories/{REPO}?csrf-token={csrfTokenValue}
+# Please note 'rest.security.csrf.header_name' and 'rest.security.csrf.parameter_name' can be set together. Then the client
+# can decide to send CSRF token either by a request header or a query parameter.
+#
+rest.security.csrf.parameter_name=csrf-token
+
+# Specifies the 'server' generated CSRF token length in bits. This value is only used when property
+# 'rest.security.csrf.generation.method' is 'server'. The value must be an positive integer multiple of 8. The default
+# value is 256.
+#
+rest.security.csrf.token.length=256
+
+
+#######################################################################
+##       11. Cross-Origin Resource Sharing (CORS) Configuration      ##
+#######################################################################
+
+# Specifies whether to enable cross origin resource sharing support. The default value is false.
+#
+rest.cors.enabled=false
+
+# Specifies the origins which are allowed to share. The default value '*' is no more supported from 22.2 release.
+# Setting the property value to * is allowed only if the property rest.cors.allow.credentials value is set to false.
+# If there are more than one origins, the value should be seperated by ',', for example, http://opentext.com,https://test.com:8443
+
+rest.cors.allowed.origins=
+
+# Specifies the HTTP methods allowed to be shared. The value should be in upper case, and separated by ',' in case multiple methods need to be added.
+# Setting the property value to * is allowed only if the property rest.cors.allow.credentials value is set to false.
+# The default value '*' is no more supported from 22.2 release.
+rest.cors.allowed.methods=
+
+# Specifies the HTTP headers allowed to be sent. The value should be separated by ',' in case multiple headers need to be added.
+# Setting the property value to * is allowed only if the property rest.cors.allow.credentials value is set to false.
+# The default value '*' is no more supported from 22.2 release.
+rest.cors.allowed.headers=
+
+# Specifies whether to allow user credentials. The default value is true.
+#
+rest.cors.allow.credentials=true
+
+# Specifies the headers which are safe to expose to the API. The values are seperated by ','. The simple headers are
+# exposed by CORS specification, and need not be set: Cache-Control, Content-Language, Content-Type, Expires,
+# Last-Modified, Pragma. The default exposed header is 'Location'.
+#
+rest.cors.exposed.headers=
+
+# Specifies the life time in seconds the results of a 'preflight' request can be cached. The value is in seconds, and the
+# default is 3600 (one hour).
+#
+rest.cors.max.age=3600
+
+
+#########################################################
+##       12. Advanced Web Context Customization        ##
+#########################################################
+
+# Specify the base packages to scan for Spring components. It is used by Spring servlet to load the context configurations
+# during the servlet initialization. This setting will scan all customer defined configurations in this specific packages.
+# Typically, a customer defined configuration is annotated by 'org.springframework.context.annotation.Configuration @Configuration'
+# or plain 'org.springframework.stereotype.Component @Component' classes, which are used to load customer defined beans.
+# This is by semantics equivalent to customizing context-param 'contextConfigLocation' in a file web.xml. The location
+# string can consist of multiple locations separated by commas, semicolons or whitespace. The REST default context config
+# location 'com.emc.documentum.rest.context.jc' is always added into the context config locations.
+# For example, if its value is set as "com.acme.rest.context", it is equivalent to the XML definition in the web.xml:
+#  <context-param>
+#      <param-name>contextConfigLocation</param-name>
+#      <param-value>com.emc.documentum.rest.context.jc, com.acme.rest.context</param-value>
+#  </context-param>
+#
+rest.context.config.location=
+
+# Specifies the directory in your local file system to store temporary files generated by the REST server. If the path
+# does not exist, the server will try to create a new directory (including parent directories) for the path. If the path
+# name contains illegal characters, an exception will be thrown. The default value is the return of
+# System.getProperty("java.io.tmpdir").
+#
+rest.temp.dir=
+
+# Sets the package(s) for custom message files.
+# Custom message files are added to the packages under 'src/main/resources' to provide message code to localizable
+# message mapping. The message files must be in pattern of "rest-*messages*.properties". For instance, for the custom
+# message file path 'src/main/resources/org/acme/messages/rest-api-acme-messages.properties', the custom package name is
+# 'org.acme.messages'. Use comma (,) to separate multiple packages.
+# Custom message files take precedence over the core default message files. Therefore, please keep caution that any
+# overridden message code globally affects the message localization for all resources which use the same message code.
+#
+rest.extension.message.packages=
+
+# Sets the package(s) for custom error code mapping json files.
+# Custom error mapping json files are added to the packages under 'src/main/resources' to provide the error message
+# mapping from DFC to REST via JSON configuration files.
+# The message files must be in pattern of "rest-*error-mapping.json". For instance, for the custom message file
+# path 'src/main/resources/org/acme/messages/rest-api-acme-error-mapping.json', the custom package name is
+# 'org.acme.messages'. Use comma (,) to separate multiple packages.
+#
+rest.ext.error.code.mapping.packages=
+
+# Sets url patterns of anonymous resources.
+# These custom patterns would be added after default anonymous resources.
+# Multiple patterns are supported to be separated with comma.
+# The patterns refer to @RequestMapping on certain controller.
+#
+rest.security.anonymous.url.patterns=/anonymous-accessible-resource, /any-other-resource
+
+# Specifies whether to validate the status of the outer resource controller for the corresponding new resource creation
+# in a collection.
+#   true - validate the outer resource controller and fail with 403 if the controller is inactive
+#   false - do not validate and the new resource will be created anyway even though it may not have the resource links.
+# For internal use only.
+#
+rest.post.outer.controller.validate=
+
+# Sets the package (folder location) for custom yaml file.
+# Custom YAML files are added to your REST extension project's war overlay module under the path
+# 'src/main/resources/<package_name_separated_by_slash>'.
+# For instance, when custom YAML files are put under 'src/main/resources/org/acme/sample', the package should be set as
+# rest.ext.yaml.package=org.acme.sample.
+# REST runtime looks up the YAML file by the ANT pattern: {rest.ext.yaml.package}/{rest.ext.yaml.name}.
+# The default package is 'com.emc.documentum.rest.script'.
+#
+rest.ext.yaml.package=
+
+# Sets the name pattern for YAML file.
+# As at different development stages (by release, iteration, or dev/product environment, etc.), the customization of YAML
+# files can vary. REST runtime allows to specify an ANT pattern of YAML file name, e.g. 'rest-api-*.yaml', '*.yml'.
+# REST runtime looks up the YAML file by the ANT pattern: {rest.ext.yaml.package}/{rest.ext.yaml.name}.
+# The default name pattern of the YAML file is '*.yaml'. A default YAML file 'rest-api-custom-resource-registry.yaml' is
+# put under WAR path 'WEB-INF/classes/com/emc/documentum/rest/script'.
+#
+rest.ext.yaml.name=
+
+# Sets the common REST Ehcache configuration which overrides the module specific Ehcache settings for the REST services.
+# The default location is 'rest-api-common-ehcache.xml' under the WAR classpath.
+#
+rest.ehcache.common.config.file=
+
+
+#########################################################
+##       13. Security Configuration for OAuth 2.0      ##
+#########################################################
+
+# Specifies whether to validate OAuth 2.0 access token by Documentum Server.
+#   true - Documentum Server will validate access token
+#   false - REST will validate the access token locally or remotely
+# The default value is false.
+rest.security.oauth2.access.token.server.validate=
+
+# The url of login entry point for OAuth 2.0 to indicate user where to send request.
+# This value is used as a hint when oauth2 error occurs.
+# The default value is empty.
+rest.security.oauth2.login.url=
+
+# The key path of a series of keys to extract principal related value from claims.
+# Keys should be separate with slashes, i.e, '/'. All spaces are ignored.
+# Every value mapped with key is considered as map and passes to next key to handle.
+# This value is mandatory so that REST can principal login in Content Server.
+# The default value is empty.
+rest.security.oauth2.principal.key=
+
+# The pattern to extract principle name from value mapping to key in claims.
+# The pattern should be standard string version of java.util.regex.Pattern.
+# For example, if value is 'CN=admin' and 'admin' is wanted, pattern should be 'CN=(.*)'.
+# If multiple matches are found, the first one would be used.
+# The default value is .*.
+rest.security.oauth2.principal.pattern=
+
+# The administrator username of requested repository.
+# This function would use PRINCIPAL Login to Content Server.
+# Please make sure this REST client is set as privilege client to Content Server.
+# This administrator MUST have privilege to create a user in this repository at least.
+# It is used to self provision so that an un-registered user can use principal login.
+# The default value is empty.
+rest.security.oauth2.self.provision.administrator=
+
+# The userinfo endpoint url provided by Auth Server if it supports Openid Connect.
+# This value is mandatory if access token needs to be verified by endpoint remotely rather than locally as standard JWT.
+# UrlValidator is used to validate if this url can be used with local url supported.
+# If this value is set, claims will be extract from response of requesting it by access token.
+rest.security.oauth2.userinfo.endpoint.url=
+
+# The type of JWS algorithm for verifying signature of access token.
+# This value is mandatory if access token needs to be verified as standard JWT locally rather than remotely to extract response as claims.
+# Either MAC for symmetric one or RSA for asymmetric one.
+# If using MAC, 'rest.security.oauth2.access_token.jws.sym_key' must be set properly.
+# If using RSA, 'rest.security.oauth2.access_token.jws.public_key.file' must be set, eg. '/Users/username/keys/publicKey'
+# The default value is empty.
+rest.security.oauth2.access_token.jws.type=
+
+# The symmetric key for access token to verify signature. Server side should hold the same key.
+# Make sure 'rest.security.oauth2.access_token.jws.type' is set to be 'MAC'.
+rest.security.oauth2.access_token.jws.sym_key=
+
+# The asymmetric key for access token to verify signature. Server side should hold the private key matching with this public key.
+# It could be set like '/Users/username/keys/publicKey'.
+# Make sure 'rest.security.oauth2.access_token.jws.type' is set to be 'RSA'.
+rest.security.oauth2.access_token.jws.public_key.file=
+
+# The type of JWE algorithm for decrypting of access token.
+# For now, only AES algorithm is supported, so it should always be 'AES'.
+# The default value is AES.
+rest.security.oauth2.access_token.jwe.type=
+
+# The encrypt key for access token using JWE. Only symmetric key is supported.
+# Make sure 'rest.security.oauth2.access_token.jwe.type' is set to be 'AES'.
+# The default value is null.
+rest.security.oauth2.access_token.jwe.sym_key=
+
+# The expected value of claim 'iss' in clear-text claims. Usually it varies with Auth Server.
+# This value is mandatory if access token needs to be verified as standard JWT locally.
+# This is used to verify token whether is from expected server or not.
+# The default value is empty.
+rest.security.oauth2.claims.issuer=
+
+# The expected value of claim 'aud' in clear-text claims. Usually it is resource identifier defined in Auth Server.
+# This is used to verify token whether is aimed for this REST server or not.
+# This value is optional if access token needs to be verified as standard JWT locally. If not set, it would not be checked.
+# The default value is empty.
+rest.security.oauth2.claims.audience=
+
+
+###########################################################
+##        14. Compression Service Configuration             ##
+###########################################################
+#
+# This section contains the configuration of server response message compression, the
+# response message includes both the xml/json message and the content binaries. The
+# compression service is only triggered when the Request header Accept-Encoding matches
+# any one of the following supported compression schemas:
+# - gzip
+# - x-gzip
+# - deflate
+#
+# In addition to the above, the Request and Response must also match the conditions listed
+# in all of the properties shown below.
+#
+# This property specifies the size, in bytes, of the smallest response that will be
+# compressed. When less than the value of ${rest.compression.threshold} bytes are written
+# to the Response, it is not compressed. In this case, the Response goes back to the client
+# unmodified. When the value for this property is 0, compression always begins immediately.
+# This property defaults to 10485760 bytes (10MB).
+rest.compression.threshold=
+#
+# When specified, this property is treated as a comma-separated list of content types
+# For example, application/xml,application/json
+# The REST server only attempts to compress responses whose content type is compatible
+# with one of the values set for this property.
+# This property defaults to all media types.
+rest.compression.include.content.types=
+#
+# This property is the same as {rest.compression.include.content.types}, but specifies a
+# list of content types not to compress. By default no content type is excluded.
+# However note that any content type that indicates a compressed format, such as the
+# following content types are never compressed:
+# - application/gzip
+# - application/x-compress
+# - application/deflate
+# - application/x-gzip)
+#
+# Also note, when any value is specified in both {rest.compression.include.content.types}
+# and here in this property, the specific content type is removed from the included content
+# types, which causes the Response not to be compressed.
+rest.compression.exclude.content.types=
+#
+# When specified, this property is treated as a comma-separated list of regular expressions
+# of the types that are accepted by the regular expression pattern. The pattern must match
+# those paths that should be compressed. Anything else will not be compressed.
+# This property defaults to all paths.
+# "Paths" here means values returned by HttpServletRequest.getRequestURI().
+# Note that the regular expression must match the file name exactly.
+# For example the regular expression pattern "/static/" does not match everything
+# containing the string "/static/". To do that, use ".*/static/.*" instead.
+rest.compression.include.path.patterns=
+#
+# This property is same as {rest.compression.include.path.patterns}, but specifies a list
+# of patterns that match paths that should not be compressed. Note the archived-contents
+# path pattern is always excluded, specifically the value ".*/archived-contents.*" is
+# always set in this property, and when any value is specified both in
+# {rest.compression.include.path.patterns} and here simultaneously, the specific path is
+# removed from the included paths, and the Response with that path is not compressed.
+rest.compression.exclude.path.patterns=
+#
+# When specified, this property is treated as a comma-separated list of regular
+# expressions, and only those Requests with User-Agent headers whose value matches one of
+# these regular expressions is compressed.
+# This property defaults to all user agents.
+rest.compression.include.user.agent.patterns=
+#
+# Similar to {rest.compression.include.user.agent.patterns}, all requests whose User-Agent
+# header matches one of the patterns set for this property are not compressed. By default
+# no user agent is excluded, but when any value is specified in
+# {rest.compression.include.user.agent.patterns} and here at the same time, the specific
+# user agent is removed from the list of included agents, and the Response with that user
+# agent is not compressed.
+rest.compression.exclude.user.agent.patterns=
+#
+# When specified, this property is treated as a comma-separated list of regular
+# expressions. A Request with User-Agent headers whose value matches one of these regular
+# expressions causes the Response to be returned without the Vary header.
+rest.compression.no.vary.header.agent.patterns=
+
+##########################################################################################
+##       15. Security Configuration for OTDS integration with Documentum Server         ##
+##########################################################################################
+
+# The url of login entry point for otds_token/ct-otds_token/otds_token-basic/ct-otds_token-basic to
+# indicate user where to send request for getting access token from OTDS.
+# This value is used as a hint when oauth2 error occurs.
+# The default value is empty.
+rest.security.otds.login.url=
+
+##############################################################################
+##       16. Contextual Content Engine (CCE) Service Configuration          ##
+##############################################################################
+
+# REST CCE resources leverage CCE for recommendations from Content Server.
+# This property defines a few pairs of root URLs for CCE instances and their mapped repository names.
+# The repository name and CCE root URL in a pair should be separated by a comma ',' and different
+# mapping pairs should be separated by a semicolon ';'.
+# For example, rest.cce.root.urls = <REPO>,<CCE_URL_FOR_REPO>;<REPO1>,<CCE_URL_FOR_REPO1>...
+# When the property is not set, CCE service is considered unavailable.
+# Please avoid using 'localhost' in url for network issues.
+# As CCE is an external service to REST, if proxy or https is set on CCE server,
+# please refer to section 8 for consumer settings.
+rest.cce.root.urls=
+
+##########################################################################################
+##       17. Security Configuration for OTDS integration with Appworks			        ##
+##########################################################################################
+
+# The repository that is integrated with OTDS to perform OTDS password authentication.
+# This should be the same OTDS where Appworks gateway has resource, partition and users 
+# The default value is empty.
+rest.appworks.otds.repository=
+
+##############################################################################
+##                      18. Event Hub Configuration                         ##
+##############################################################################
+
+# The REST can be configured with event hub and it can send events to the event hub via DFC
+# This property defines whether for all API requests request/response body should be published or not
+# If the content-type is json then only it will capture and publish the request/response body
+# If the response body is not published then response header will be published
+# and the response header will not contain all the header information
+# Certain end points are restricted to avail this feature considering the security concern
+# The default value is false
+rest.eventhub.httpbody.enabled=
+
+# When specified, this property is treated as a comma-separated list of regular expressions
+# of the types that are accepted by the Ant expression pattern. The request and response body
+# for the specified patterns will not be logged. Anything else will be logged.
+# This property defaults to empty i.e all request and response body are logged by default (Certain
+# end points are restricted to avail this feature considering the security concern.)
+# "Paths" here means values returned by HttpServletRequest.getPathInfo().
+# For example the expression pattern
+# 1. "/repositories/*/cabinets" - blocks body for the cabinets api.
+# 2. "/repositories/*/folders/**" - blocks body for all the apis starting with /repositories/*/folders.
+rest.eventhub.httpbody.blacklistapis=
+
+# Specifies the logging limit size in byte for requests and responses body publish to the event hub. The value
+# MUST be a non-negative integer. The default value is 102400.
+rest.eventhub.httpbody.logging.limit=102400
+
+###########################################################################
+##            19. Constraints Validation                                 ##
+###########################################################################
+# The dctm-rest allows constraint validation either dynamically or statically. The static validation can be performed
+# by providing the below mentioned validation policy values to the rest-api-runtime property
+# "rest.constraints.validation.method". The dynamic validation can be performed by providing the validation policy values
+# during the object creation. The dynamic values always takes precedence over static configuration.
+#
+# This property provides a provision to validate the values of an object of a type using the constraints defined on
+# that type. The constraints on a type can be defined at either attribute or object/type level. There are different types
+# of validation methods mentioned below are supported.
+# 1. validate the constraints/rules defined on attributes, irrespective of whether the values of these attributes are changed or not.
+# 2. validate the constraints/rules defined on attributes whose values have changed/modified.
+# 3. object/type level constraints will be validated.
+# 4. The combination of 1 and 3 scenarios.
+# 5. The combination of 2 and 3 scenarios.
+# The above mentioned validation method can be applied at dctm-rest, based on the value chosen from one of the below list of
+# validation policy values to this property.
+#
+# attrs  -- The fist validation method mentioned above is applied.
+# modified_attrs -- The second validation method mentioned above is applied.
+# obj            --- The third validation method mentioned above is applied.
+# obj_and_attrs      --- The fourth validation method mentioned above is applied.
+# obj_and_modified_attrs --- The fifth validation method mentioned above is applied.
+# not_validate -- Does not validate sysobject attribute values. This is the default value.
+#
+# The email objects attributes validation is only performed if the validation policy is chosen as obj_and_attrs due to the
+# limitation of DFC, as it supports the validation policy only for "obj_and_attrs".
+
+rest.constraints.validation.method
+
+# The objects of the types allowed for validation. Multiple types can be provided as comma separated values.
+# The valid validation policy chosen for the property "rest.constraints.validation.method" will be applied on
+# the objects only if this object's type is amongst the types provided for this property.
+# The default value is all.
+# The default value is considered when a valid value is chosen for the property "rest.constraints.validation.method".
+
+rest.constraints.validation.allowed.types

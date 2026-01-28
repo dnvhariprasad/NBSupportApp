@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<weblogic-web-app xmlns="http://xmlns.oracle.com/weblogic/weblogic-web-app">
+    <container-descriptor>
+        <prefer-web-inf-classes>false</prefer-web-inf-classes>
+        <prefer-application-packages>
+            <package-name>org.joda.*</package-name>
+            <package-name>org.apache.*</package-name>
+            <package-name>com.google.*</package-name>
+            <package-name>com.fasterxml.*</package-name>
+        </prefer-application-packages>
+    </container-descriptor>
+    <context-root>/dctm-rest</context-root>
+</weblogic-web-app>

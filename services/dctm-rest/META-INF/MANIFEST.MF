@@ -1,0 +1,20 @@
+Manifest-Version: 1.0
+Created-By: 17.0.7+7 (Eclipse Adoptium)
+Build-Jdk-Spec: 17
+Specification-Title: documentum-rest-web
+Specification-Version: 0.0
+Specification-Vendor: Open Text Corporation
+Implementation-Title: documentum-rest-web
+Implementation-Version: 25.2.0000.0104
+Implementation-Vendor: Open Text Corporation
+addClasspath: true
+classpathPrefix: lib
+mode: Integration-SNAPSHOT
+Ant-Version: Apache Ant 1.10.1
+Title: Documentum REST Services
+Copyright: Copyright 2021 Open Text Corporation.
+Version: 25.2.0000.0104
+Bundle-Version: 25.2.0000.0104
+Revision-Number: 592b6454b083f31e690ab04061bbabdb6b17f3f1
+Build-Date: 20250429.151554
+

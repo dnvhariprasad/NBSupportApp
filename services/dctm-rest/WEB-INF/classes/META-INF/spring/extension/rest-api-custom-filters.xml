@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright (c) 2017. Open Text Corporation. All Rights Reserved.
+  -->
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans    http://www.springframework.org/schema/beans/spring-beans-3.1.xsd">
+
+    <!-- allow users to add custom filters into the REST servlet; all filters are mapped to the root context '/*' -->
+    <bean id="restFilterFactory" class="com.emc.documentum.rest.filter.FilterFactory">
+        <property name="customBeforeSecurityFilters">
+            <list>
+                <!-- an ordered list of filters added before springSecurityFilterChain; empty by default -->
+            </list>
+        </property>
+        <property name="customAfterSecurityFilters">
+            <list>
+                <!-- an ordered list of filters added after springSecurityFilterChain; empty by default -->
+            </list>
+        </property>
+    </bean>
+</beans>

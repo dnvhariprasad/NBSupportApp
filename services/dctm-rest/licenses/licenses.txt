@@ -1,0 +1,244 @@
+Open Source Usage:
+
+
+
+* activation
+version:    1.1
+license:    JavaBeans Activation Framework is implemented as a standard extension. Sun provides a reference implementation of the JAF software
+download:   http://www.oracle.com/technetwork/java/jaf11-139815.html
+
+* antisamy
+version:    1.5.3
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://www.owasp.org/index.php/Category:OWASP_AntiSamy_Project
+
+* antlr
+version:    4.0
+license:    BSD License, http://www.antlr.org/license.html
+download:   http://www.antlr.org/
+
+* aopalliance
+version:    1.0
+license:    Public Domain
+download:   http://aopalliance.sourceforge.net
+
+* aspectj
+version:    1.5.2a
+license:    Eclipse Public License, https://eclipse.org/org/documents/epl-v10.php
+download:   https://eclipse.org/aspectj/
+
+* batik-css
+version:    1.7
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://xmlgraphics.apache.org/batik/download.html
+
+* batik-ext
+version:    1.7
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://xmlgraphics.apache.org/batik/download.html
+
+* batik-util
+version:    1.7
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://xmlgraphics.apache.org/batik/download.html
+
+* BouncyCastle JCE Provider
+version:    1.4.6
+license:    Bouncy Castle Licence, http://www.bouncycastle.org/licence.html
+download:   http://www.bouncycastle.org/java.html
+
+* cas java client
+version:    3.3.3
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://www.jasig.org/cas/
+
+* commons-beanutils
+version:    1.8.0
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://commons.apache.org/beanutils/ 
+
+* commons-codec
+version:    1.3
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://jakarta.apache.org/commons/codec/
+
+* commons-collections
+version:    3.2.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://commons.apache.org/collections/
+
+* commons-configuration
+version:    1.6
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://commons.apache.org/configuration/
+
+* commons-digester
+version:    1.8
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://commons.apache.org/digester/
+
+* commons-fileupload
+version:    1.3
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://commons.apache.org/proper/commons-fileupload/
+
+* commons-httpclient
+version:    3.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://hc.apache.org/httpcomponents-client-ga/
+
+* commons-io
+version:    2.0.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://commons.apache.org/io/
+
+* commons-jxpath
+version:    1.3
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://commons.apache.org/proper/commons-jxpath/
+
+* commons-lang
+version:    2.4
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://commons.apache.org/lang/
+
+* commons-logging
+version:    1.1.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://commons.apache.org/logging/
+
+* ehcache-core
+version:    2.4.4
+license:    The Apache Software License, Version 2.0, http://www.ehcache.org/about/license
+download:   http://ehcache.org/
+
+* esapi
+version:    2.0.1
+license:    BSD licence, http://www.opensource.org/licenses/bsd-license.php
+download:   https://www.owasp.org/index.php/Category:OWASP_Enterprise_Security_API
+
+* freemarker
+version:    2.3.18
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://freemarker.org/
+
+* guava
+version:    13.0.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://code.google.com/p/guava-libraries/guava
+
+* jackson json processor
+version:    2.6.5
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://wiki.fasterxml.com/JacksonDownload
+
+* javassist
+version:    3.18.2-GA
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://www.csg.ci.i.u-tokyo.ac.jp/~chiba/javassist/
+
+* joda time
+version:    2.2
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://www.joda.org/joda-time/
+
+* log4j
+version:    1.2.17
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://logging.apache.org/log4j/
+
+* not yet commons ssl
+version:    1.2.17
+license:    The Apache Software License, Version 2.0, http://juliusdavies.ca/commons-ssl/LICENSE.txt
+download:   http://juliusdavies.ca/commons-ssl
+
+* opensaml
+version:    2.6.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://shibboleth.net/products/opensaml-java.html
+
+* openws
+version:    1.5.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://opensaml.org/
+
+* treelayout
+version:    1.0.1
+license:    BSD 3-Clause "New" or "Revised" License, http://treelayout.googlecode.com/files/LICENSE.TXT
+download:   http://code.google.com/p/treelayout/
+
+* serializer
+version:    2.7.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://xml.apache.org/xalan-j/
+
+* slf4j
+version:    1.6.1
+license:    MIT License, http://www.opensource.org/licenses/mit-license.php
+download:   http://www.slf4j.org/
+
+* snakeyaml
+version:    1.13
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://code.google.com/p/snakeyaml/
+
+* springframework
+version:    4.2.3
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://projects.spring.io/spring-framework/
+
+* spring security
+version:    4.0.3
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://projects.spring.io/spring-security/
+
+* stringtemplate
+version:    3.2
+license:    BSD licence, http://www.stringtemplate.org/license.html
+download:   http://www.stringtemplate.org/
+
+* st4
+version:    4.0.7
+license:    BSD licence, http://antlr.org/license.html
+download:   http://www.stringtemplate.org/
+
+* stax2 api
+version:    3.1.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://woodstox.codehaus.org/
+
+* velocity
+version:    1.7
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://velocity.apache.org/engine/devel/
+
+* woodstox
+version:    4.2.0
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://woodstox.codehaus.org/
+
+* xalan
+version:    2.7.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://xml.apache.org/xalan-j/
+
+* xerces impl
+version:    2.10.0
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   https://xerces.apache.org/xerces2-j/
+
+* xml resolver
+version:    1.2
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://xml.apache.org/commons/components/resolver/
+
+* xmlsec
+version:    1.5.6
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://santuario.apache.org/
+
+* xmltooling
+version:    1.4.1
+license:    The Apache Software License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0.txt
+download:   http://opensaml.org/
+

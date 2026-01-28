@@ -1,0 +1,264 @@
+#  # Copyright (c) 2017. Open Text Corporation. All Rights Reserved.
+#  # This file holds configurations for Documentum REST Services extensibility.
+
+---
+#  ##############################################  REGISTER NEW URI TEMPLATES  #########################################
+#  # This section allows you to register new URI templates to the shared URI factory. The URI templates are used to
+#  # resolve new links on existing resources. The syntax for an URI template definition is shown below:
+#  #   - name:                <template name>
+#  #     [href|hreftemplate]: <URI template pattern for 'href' or 'hreftemplate'>
+#  #     encoding:            <encoding method>
+#  #     external:            <true or false>
+#  #
+#  # name:
+#  #  The name of a customer defined URI template, where the name MUST starts with 'X_'. It is suggested to use upper
+#  #  case words delimited by under score (_) characters as the name. This setting is mandatory.
+#  #
+#  # href or hreftemplate:
+#  #  The URI template pattern for the href or hreftemplate. The key name could be either 'href' or 'hreftemplate' where
+#  #  'hreftemplate' indicates this URI is for a href-template link relation. The pattern can contain path variables or
+#  #  query parameters like '{repositoryUri}/<item1>/<item2>/<...>?<param1>&<param2>&<...>{ext}'. Variables in the path
+#  #  or query parameters MUST be quoted by curly brackets ({}). For path variables in the path segments, there are three
+#  #  pre-defined variables:
+#  #    {baseUri} :       The URI root of the current deployment, e.g. 'https://current-deploy-host:8443/dctm-rest'.
+#  #    {repositoryUri} : The URI root of the current repository, e.g. 'https://current-deploy-host:8443/dctm-rest/
+#  #                      repositories/acme'. As the home document can not resolve {repositoryUri}, the
+#  #                      root-service-registry should not refer an URI template which contains {repositoryUri}.
+#  #    {ext} :           The URI extension name for the matching format, e.g. .xml or .json.
+#  #  For a hreftemplate URI, the template variables in query parameters should be in the format of {?q1,q2,...} or
+#  #  {&q1,q2,...}. When the hreftemplate does not contain query parameters, the template variables use the join character
+#  #  '?'; when the hreftemplate contains query parameters, the template variables use the join character '&'.
+#  #  This setting is mandatory.
+#  #
+#  # encoding:
+#  #  Sets the encoding method for path variables. Valid encoding methods: default and safe-text-encoding. The default is
+#  #  to use the regular url encoding; if the property value to resolve the path variable contains special characters
+#  #  (e.g. '/'), it is required to set the encoding method as safe-text-encoding. This setting is optional. It takes
+#  #  'default' as the default encoding when the encoding is not explicitly specified.
+#  #
+#  # external:
+#  #  Specifies whether this URI template is external or internal. The values are true or false.
+#  #    true:   Indicates this is an external URI template. External URI templates are not mapped to any custom
+#  #            resources. The external URI templates MUST NOT use pre-defined variables {repositoryUri} or {ext}, but
+#  #            can use {baseUri}. The accessibility of an external URI template will NOT be validated by the REST server.
+#  #    false:  Indicates this is an internal URI template. The internal URI template is mapped to a REST resource. The
+#  #            internal URI template MUST start with pre-defined variables {baseUri}, {repositoryUri}.
+#  #  This setting is optional. The default is false.
+#  #####################################################################################################################
+uri-template-registry:
+#  - name:     X_POLICIES_FEED_TEMPLATE
+#    href:     '{repositoryUri}/objects/{objectId}/policies{ext}'
+#  - name:     X_POLICY_TEMPLATE
+#    href:     '{repositoryUri}/objects/{objectId}/policies/{policyId}{ext}'
+#  - name:     X_AUTHOR1_TEMPLATE
+#    href:     '{repositoryUri}/users/{userId}{ext}'
+#    encoding: safe-text-encoding
+#  - name:     X_AUTHOR2_TEMPLATE
+#    href:     '{repositoryUri}/users{ext}?name={userId}'
+#  - name:     X_CUSTOM_SEARCH_TEMPLATE
+#    hreftemplate: '{baseUri}/x-search{?q,locations,page,items-per-page}'
+#  - name:     X_CUSTOM_LOCATION_SEARCH_TEMPLATE
+#    hreftemplate: '{repositoryUri}/x-search?locations={path}{&q,page,items-per-page}'
+#  - name:     X_EXTERNAL_SEARCH_TEMPLATE
+#    href:     'http://www.google.com?q={keyword}'
+#    external: true
+
+
+---
+#  ################################################# REGISTER ROOT SERVICES ############################################
+#  # This section allows you to register new topmost resources to the home document. The syntax for a new topmost resource
+#  # definition in the home document is as below:
+#  #   - name:             <descriptive information of the resource>
+#  #     link-relation:    <the link relation name of the resource>
+#  #     target-resource:  <the code name of the target topmost resource registered for the home document>
+#  #     uri-template:     <the URI template registered for the home document; alternate for 'target-resource'>
+#  #     allowed-methods:  <allowed HTTP methods on this resource>
+#  #     media-types:      <supported media types on this resource>
+#  #
+#  # name:
+#  #  This is a descriptive text for the new topmost resource. It will not be presented in the home document.
+#  #
+#  # link-relation:
+#  #  The link relation name for the topmost resource in the home document. Link relations in a home document resource
+#  #  MUST NOT be duplicated.
+#  #
+#  # target-resource:
+#  #  The target topmost resource registered to the home document. The value must be a valid resource code name, e.g.
+#  #  'repositories', 'acme#modules'. When the target topmost resource is built-in, this attribute is the preferable
+#  #  approach to specify the topmost resource for the home document. When the target topmost resource is from an
+#  #  external web server, please use the other attribute 'uri-template' instead. When the attribute 'target-resource'
+#  #  is specified, the other attribute 'uri-template' is skipped.
+#  #
+#  # uri-template:
+#  #  Please use the other attribute 'target-resource' insead for building link relations for built-in resources.
+#  #  The URI template name must be the one registered in the YAML section 'uri-template-registry'. The URI template
+#  #  for the topmost resource MUST NOT contain any variables other than {baseUri} or {ext} except the hreftemplate URI.
+#  #  The hreftemplate URI can additional contain template variables like {?q1,q2,...} or {&q1,q2,...}. When the other
+#  #  attribute 'target-resource' is set, this attribute is skipped.
+#  #
+#  # allowed-methods:
+#  #  The allowed HTTP methods on the topmost resource. This provides clients with the indicative information about the
+#  #  resource. The actual resource implementation should be consistent with the information described in the home
+#  #  document.
+#  #
+#  # media-types:
+#  #  The supported media types on the topmost resource. This provides clients with the indicative information about the
+#  #  resource. The actual resource implementation should be consistent with the information described in the home
+#  #  document.
+#  #####################################################################################################################
+root-service-registry:
+#  - name:            User defined global module feed
+#    link-relation:   'http://identifiers.emc.com/linkrel/modlues'
+#    target-resource: acme#modules
+#    allowed-methods: [GET,POST]
+#    media-types:     [application/xml, application/json]
+#  - name:            User defined global search resource
+#    link-relation:   'http://identifiers.emc.com/linkrel/x-search'
+#    uri-template:    X_CUSTOM_SEARCH_TEMPLATE
+#    allowed-methods: [POST]
+#    media-types:     [application/vnd.emc.documentum+json, application/vnd.emc.documentum+xml]
+
+
+---
+#  ############################################  ADD LINKS ON EXISTING RESOURCES  ######################################
+#  # This section allows you to add new links to existing resources. The new links will be presented on the resource
+#  # representation once configured; for more controls over the resource links, please refer to the Documentum Platform
+#  # REST Development Guide for customizing resource representation. The syntax for the new resource link is shown below:
+#  #   - resource:         <the resource code name>
+#  #     link-relation:    <the new link relation name>
+#  #     target-resource:  <the code name of the target resource registered for this link relation>
+#  #     uri-template:     <the URI template registered for this link relation; alternate for 'target-resource'>
+#  #     value-mapping:    <the property names from the resource to resolve the variable values in the URI template>
+#  #
+#  # resource:
+#  #  The code name of the resource to which the links are added. Each core resource has a unique code name. Please
+#  #  refer to the Documentum Platform REST Services Development Guide for the complete  list of resource code names. In
+#  #  the link registry, following resources are supported:  [format, user, group, content, relation, type, object,
+#  #  document, folder, cabinet, network-location, relation-type, repository].
+#  #
+#  # link-relation:
+#  #  The rel of the link relation.
+#  #
+#  # target-resource:
+#  #  The target resource registered to the link relation. The value must be a valid resource code name, e.g.
+#  #  'repositories', 'acme#modules'. When the target resource is built-in, this attribute is the preferable approach to
+#  #  specify the target resource for the link relation. When the target resource is from an external web server, please
+#  #  use the other attribute 'uri-template' instead. When the attribute 'target-resource' is specified, the other
+#  #  attribute 'uri-template' is skipped.
+#  #
+#  # uri-template:
+#  #  Please use the other attribute 'target-resource' for building link relations for built-in resources.
+#  #  The name of the URI template registered in the YAML section 'uri-template-registry' for the target resource. The
+#  #  URI template can contain variables which shall be resolved during the generation of the link relaiton href. When
+#  #  the other attribute 'target-resource' is set, this attribute is skipped.
+#  #
+#  # value-mapping:
+#  #  The value mapping is used to resolve values of path variables or query parameters on the URI template defined by
+#  #  'uri-template' or the 'target-resource'; the format of the value mapping is:
+#  #    [variableName1:propertyName1[,variableName2:propertyName2]*
+#  #    -  the variable names are defined the URI template pattern
+#  #    -  the property names are defined the resource object
+#  #  The value mapping is supported on resource models extending from com.emc.documentum.rest.model.PersistentObject.
+#  #  When the URI is generated at runtime, the variables will be replaced by the property values; the property can be
+#  #  repeating. When any of the properties in the variables is repeating, multiple links will be generated, each with a
+#  #  different value in the variable segment. Besides, a 'title' attribute will be set on the link representation to
+#  #  differentiate href for different repeating values. There could be at most one repeating property in the variables.
+#  #  If the property values for the variables are not returned in the resource object (e.g. by custom view), the
+#  #  corresponding links will neither be generated nor be presented on the resource.
+#  #####################################################################################################################
+resource-link-registry:
+#  - resource:        repository
+#    link-relation:   'http://identifiers.emc.com/linkrel/alias-sets'
+#    target-resource: acme#alias-sets
+#    value-mapping:   []
+#  - resource:        folder
+#    link-relation:   'http://identifiers.emc.com/linkrel/x-location-search'
+#    uri-template:    X_CUSTOM_LOCATION_SEARCH_TEMPLATE
+#    value-mapping:   ['path:r_folder_path']
+#  - resource:        object
+#    link-relation:   'http://identifiers.emc.com/linkrel/policies'
+#    uri-template:    X_POLICIES_FEED_TEMPLATE
+#    value-mapping:   ['objectId:r_object_id']
+#  - resource:        document
+#    link-relation:   'http://identifiers.emc.com/linkrel/author'
+#    uri-template:    X_AUTHOR_TEMPLATE
+#    value-mapping:   ['userId:authors']
+
+
+---
+#  ###################################  DISABLE EXISTING RESOURCES  (FOR INTERNAL USE) #################################
+#  # This section allows you to disable the core resources; the setting contains a list of resources to be disabled.
+#  # Each Core resource has a unique code name. Please refer to the Documentum Platform REST Services Development Guide
+#  # for the complete list of resource code names. The following three resources cannot be disabling: [home-document,
+#  # repositories, repository]. The syntax for this setting is shown below:
+#  #   - resources: [<resource code name1>,<resource code name2>,...]
+#  #####################################################################################################################
+disabling-resource-registry:
+#  - resources: [formats,format]
+
+---
+#  ###################################  OVERRIDE EXISTING RESOURCES  (FOR INTERNAL USE) #################################
+#  # This section allows you to override the core resources with a new resource; The new resource will take the place of 
+#  # the resource overridden. All existing link relations pointing to the overridden resource (origin) will be directed to
+#  # the overriding resource (new). 
+#  # To make the overriding work, the new resource and the old resource must have the same number of variable segments and
+#  # the same meanings in their URI patterns. 
+#  # For instance, below two URI patterns are taken as compatible for resource overriding.
+#  #     /repositories/{repositoryName}/documents/{documentId}
+#  #     /repositories/{repositoryName}/my-documents/filtered/{documentId}
+#  # Each Core resource has a unique code name. Please refer to the Documentum Platform REST Services Development Guide
+#  # for the complete list of resource code names. The following three resources cannot be overridden: [home-document,
+#  # repositories, repository].
+#  #####################################################################################################################
+override-resource-registry:
+#  - new: new-document
+#    origin:  document
+
+
+---
+#  ##################################  REGISTER RESOURCE VIEWS (FOR INTERNAL USE) ######################################
+#  # This section allows you to register custom view definitions for core resources. Custom views can change the output
+#  # core resource representations , e.g. hide links, edit links or change properties. Custom views for a resource will
+#  # override the default view definitions of the resource. Please refer to the Documentum Platform REST Services
+#  # Development Guide for the concept of resource views. The syntax for a resource view definition is shown below:
+#  #   - resource:  <the resource code name>
+#  #     view:      <view definition classes>
+#  #
+#  # resource:
+#  #  The code name of the resource to which the views are defined. Each core resource has a unique code name. Please
+#  #  refer to Documentum Platform REST Services Development Guide for the complete list of resource code names. In the
+#  #  view registry all resources, except for the following ones, are allowed for view customization: [batch,
+#  #  batch-capabilities, content-media, home-document, search].
+#  #
+#  # view:
+#  #  The view definition classes for the resource. A resource can define multiple views. But each view definition MUST
+#  #  be corresponding to a unique data model for the resource. Following this principal, there could at most one
+#  #  custom FeedableView definition for a resource. The custom view definition class must extend either class
+#  #  'com.emc.documentum.rest.view.LinkableView', 'com.emc.documentum.rest.view.EntryableView' or
+#  #  'com.emc.documentum.rest.view.FeedableView'. Please refer to the Documentum Platform REST Services Development
+#  #  Guide for the detail explanation.
+#  #####################################################################################################################
+resource-view-registry:
+#  - resource:  repository
+#    view:      [org.acme.view.impl.RepositoryViewExtend]
+#  - resource:  cabinet
+#    view:      [org.acme.view.impl.CabinetViewNew]
+#  - resource:  cabinets
+#    view:      [org.acme.view.impl.CabinetsFeedViewExtend,org.acme.view.impl.CabinetViewNew]
+
+
+---
+#  ####################################  SET SUPPORTED MEDIA TYPES (FOR INTERNAL USE) ##################################
+#  # Sets the supported media types at runtime. XML only or JSON only support can be configured.
+#  # The setting applies to both core resources and extended resources. The syntax for a resource view definition is
+#  # shown below:
+#  #   - media-type:  <media type name>
+#  #
+#  # There are three choices at the moment.
+#  # - default, supporting both XML and JSON media types at runtime.
+#  # - xml, supporting XML media types only at runtime.
+#  # - json, supporting JSON media types only at runtime.
+#  # The default media type support is 'default'.
+#  #####################################################################################################################
+media-type-registry:
+#  - media-type: default
