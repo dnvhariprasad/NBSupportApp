@@ -22,9 +22,6 @@ public class QueryController {
     @PostMapping("/execute")
     public Map<String, Object> executeQuery(@RequestBody Map<String, Object> request) {
         String dql = (String) request.get("dql");
-        int page = request.containsKey("page") ? ((Number) request.get("page")).intValue() : 1;
-        int size = request.containsKey("size") ? ((Number) request.get("size")).intValue() : 25;
-
-        return queryService.executeQuery(dql, page, size);
+        return queryService.executeQuery(dql);
     }
 }

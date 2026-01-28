@@ -194,4 +194,4 @@ public class QueryService {
         result.put("rows", rows);
         return result;
     }
-}}}
+}
