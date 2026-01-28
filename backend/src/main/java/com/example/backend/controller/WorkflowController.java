@@ -30,4 +30,9 @@ public class WorkflowController {
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(workflowService.getRunningWorkflows(processName, page, size));
     }
+
+    @GetMapping("/case/{caseId}")
+    public ResponseEntity<Map<String, Object>> getWorkflowsForCase(@PathVariable String caseId) {
+        return ResponseEntity.ok(workflowService.getWorkflowsForCase(caseId));
+    }
 }

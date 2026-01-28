@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import axios from '../api/axios';
 import {
     Search, ChevronLeft, ChevronRight, Briefcase,
-    ChevronsLeft, Loader2, X
+    ChevronsLeft, Loader2, X, Eye
 } from 'lucide-react';
 
 const CasesPage = () => {
@@ -18,6 +18,12 @@ const CasesPage = () => {
 
     const [caseNumber, setCaseNumber] = useState('');
     const [activeSearch, setActiveSearch] = useState('');
+
+    // Modal state
+    const [selectedCase, setSelectedCase] = useState(null);
+    const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
+    const [workflowData, setWorkflowData] = useState(null);
+    const [loadingWorkflow, setLoadingWorkflow] = useState(false);
 
     const fetchCases = useCallback(async (searchTerm, pageNum) => {
         setLoading(true);
@@ -93,6 +99,24 @@ const CasesPage = () => {
         fetchCases('', 1);
     };
 
+    const handleViewWorkflow = async (caseItem) => {
+        setSelectedCase(caseItem);
+        setIsWorkflowModalOpen(true);
+        setLoadingWorkflow(true);
+        setWorkflowData(null);
+
+        try {
+            // Fetch workflow information for this case
+            const response = await axios.get(`/workflows/case/${caseItem.r_object_id}`);
+            setWorkflowData(response.data);
+        } catch (error) {
+            console.error("Error fetching workflow data", error);
+            setWorkflowData({ error: "Failed to load workflow information" });
+        } finally {
+            setLoadingWorkflow(false);
+        }
+    };
+
     const rangeStart = cases.length > 0 ? (page - 1) * pageSize + 1 : 0;
     const rangeEnd = (page - 1) * pageSize + cases.length;
 
@@ -163,6 +187,7 @@ const CasesPage = () => {
                                         <th className="px-4 py-3 font-semibold text-slate-700">Description</th>
                                         <th className="px-4 py-3 font-semibold text-slate-700">Department</th>
                                         <th className="px-4 py-3 font-semibold text-slate-700">Functions</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-700 w-16 text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -176,11 +201,12 @@ const CasesPage = () => {
                                                 <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-32"></div></td>
                                                 <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-20"></div></td>
                                                 <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-16"></div></td>
+                                                <td className="px-4 py-3"><div className="h-6 bg-slate-100 rounded w-6 mx-auto"></div></td>
                                             </tr>
                                         ))
                                     ) : cases.length === 0 ? (
                                         <tr>
-                                            <td colSpan="7" className="px-4 py-10 text-center text-slate-500">
+                                            <td colSpan="8" className="px-4 py-10 text-center text-slate-500">
                                                 <p className="font-medium">No cases found</p>
                                                 <p className="text-xs mt-1">Try a different search term</p>
                                             </td>
@@ -195,6 +221,15 @@ const CasesPage = () => {
                                                 <td className="px-4 py-3 text-slate-600 max-w-xs truncate" title={c.description}>{c.description || '-'}</td>
                                                 <td className="px-4 py-3 text-slate-600">{c.department_name || '-'}</td>
                                                 <td className="px-4 py-3 text-slate-600">{c.functions || '-'}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <button
+                                                        onClick={() => handleViewWorkflow(c)}
+                                                        className="p-2 hover:bg-white border border-transparent hover:border-slate-200 text-slate-400 hover:text-[#0A66C2] hover:shadow-sm rounded-lg transition-all"
+                                                        title="View Workflow"
+                                                    >
+                                                        <Eye size={16} />
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))
                                     )}
@@ -227,6 +262,107 @@ const CasesPage = () => {
                     </>
                 )}
             </div>
+
+            {/* Workflow Information Modal */}
+            {isWorkflowModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col m-4">
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-white">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-900">Workflow Information</h2>
+                                {selectedCase && (
+                                    <p className="text-sm text-slate-600 mt-1">
+                                        Case: <span className="font-medium text-[#0A66C2]">{selectedCase.object_name}</span>
+                                    </p>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setIsWorkflowModalOpen(false)}
+                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 hover:text-slate-700"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {loadingWorkflow ? (
+                                <div className="flex flex-col items-center justify-center py-12">
+                                    <Loader2 size={40} className="animate-spin text-[#0A66C2] mb-4" />
+                                    <p className="text-slate-600">Loading workflow information...</p>
+                                </div>
+                            ) : workflowData?.error ? (
+                                <div className="flex flex-col items-center justify-center py-12 text-center">
+                                    <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                                        <X size={32} className="text-red-500" />
+                                    </div>
+                                    <p className="text-lg font-medium text-slate-900 mb-2">Error Loading Workflows</p>
+                                    <p className="text-slate-600">{workflowData.error}</p>
+                                </div>
+                            ) : workflowData?.workflows && workflowData.workflows.length > 0 ? (
+                                <div className="space-y-4">
+                                    {workflowData.workflows.map((workflow, idx) => (
+                                        <div key={idx} className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Workflow ID</p>
+                                                    <p className="text-sm text-slate-900 font-medium">{workflow.r_object_id || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Process Name</p>
+                                                    <p className="text-sm text-slate-900">{workflow.process_name || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Status</p>
+                                                    <span className={`inline-block px-2 py-1 text-xs rounded-full font-medium ${
+                                                        workflow.r_runtime_state === 'running' ? 'bg-green-100 text-green-800' :
+                                                        workflow.r_runtime_state === 'halted' ? 'bg-yellow-100 text-yellow-800' :
+                                                        workflow.r_runtime_state === 'finished' ? 'bg-blue-100 text-blue-800' :
+                                                        'bg-slate-100 text-slate-800'
+                                                    }`}>
+                                                        {workflow.r_runtime_state || '-'}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Supervisor</p>
+                                                    <p className="text-sm text-slate-900">{workflow.supervisor_name || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Start Date</p>
+                                                    <p className="text-sm text-slate-900">{workflow.r_start_date ? new Date(workflow.r_start_date).toLocaleString() : '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Current Activity</p>
+                                                    <p className="text-sm text-slate-900">{workflow.r_act_name || '-'}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-12 text-center">
+                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                                        <Briefcase size={32} className="text-slate-300" />
+                                    </div>
+                                    <p className="text-lg font-medium text-slate-900 mb-2">No Workflows Found</p>
+                                    <p className="text-slate-600">This case has no associated workflow information.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+                            <button
+                                onClick={() => setIsWorkflowModalOpen(false)}
+                                className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

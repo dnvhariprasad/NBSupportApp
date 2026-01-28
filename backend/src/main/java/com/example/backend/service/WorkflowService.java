@@ -81,4 +81,60 @@ public class WorkflowService {
             throw new RuntimeException("Failed to fetch running workflows: " + e.getMessage());
         }
     }
+
+    /**
+     * Get workflows associated with a specific case
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getWorkflowsForCase(String caseId) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> workflows = new ArrayList<>();
+
+        try {
+            // Query using dmi_package to find workflows attached to this case
+            // dmi_package links workflows to their attached objects
+            String dql = "SELECT w.r_object_id, w.process_name, w.supervisor_name, w.r_runtime_state, " +
+                        "w.r_start_date, w.r_act_name " +
+                        "FROM dm_workflow w, dmi_package p " +
+                        "WHERE w.r_object_id = p.r_workflow_id " +
+                        "AND p.r_component_id = '" + caseId + "'";
+
+            String searchUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
+                              "/search?dql=" + java.net.URLEncoder.encode(dql, StandardCharsets.UTF_8) +
+                              "&inline=true&items-per-page=100";
+
+            log.info("Fetching workflows for case {} with DQL: {}", caseId, dql);
+
+            Map<String, Object> response = restClient.get()
+                    .uri(searchUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            // Parse response
+            if (response != null && response.containsKey("entries")) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                for (Map<String, Object> entry : entries) {
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null && content.containsKey("properties")) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        workflows.add(props);
+                    }
+                }
+            }
+
+            result.put("workflows", workflows);
+            result.put("count", workflows.size());
+            log.info("Found {} workflows for case {}", workflows.size(), caseId);
+
+        } catch (Exception e) {
+            log.error("Error fetching workflows for case {}: {}", caseId, e.getMessage());
+            result.put("workflows", workflows);
+            result.put("count", 0);
+            result.put("error", "Failed to fetch workflow information: " + e.getMessage());
+        }
+
+        return result;
+    }
 }
