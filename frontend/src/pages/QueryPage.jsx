@@ -1,24 +1,24 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import axios from '../api/axios';
-import { 
-    Play, ChevronLeft, ChevronRight, Database, 
-    ChevronsLeft, Loader2, X, AlertCircle
+import {
+    Play, ChevronLeft, ChevronRight, Database,
+    ChevronsLeft, Loader2, X, AlertCircle, Filter
 } from 'lucide-react';
 
 const QueryPage = () => {
-    const [rows, setRows] = useState([]);
+    const [allRows, setAllRows] = useState([]); // Store all fetched rows
     const [columns, setColumns] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [page, setPage] = useState(1);
+    const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(25);
-    const [hasNextPage, setHasNextPage] = useState(false);
     const [hasExecuted, setHasExecuted] = useState(false);
     const [error, setError] = useState(null);
+    const [columnFilters, setColumnFilters] = useState({});
 
     const [query, setQuery] = useState('');
     const [activeQuery, setActiveQuery] = useState('');
 
-    const executeQuery = useCallback(async (dql, pageNum) => {
+    const executeQuery = useCallback(async (dql) => {
         if (!dql || dql.trim() === '') {
             setError('Please enter a DQL query');
             return;
@@ -27,63 +27,104 @@ const QueryPage = () => {
         setLoading(true);
         setHasExecuted(true);
         setError(null);
-        
+
         try {
+            // Fetch all results at once (use large page size)
             const response = await axios.post('/query/execute', {
                 dql: dql.trim(),
-                page: pageNum,
-                size: pageSize
+                page: 1,
+                size: 10000 // Fetch large number of rows for client-side pagination
             });
 
             const data = response.data;
-            
+
             if (data.error) {
                 setError(data.error);
-                setRows([]);
+                setAllRows([]);
                 setColumns([]);
-                setHasNextPage(false);
             } else {
-                setRows(data.rows || []);
+                setAllRows(data.rows || []);
                 setColumns(data.columns || []);
-                setHasNextPage(data.hasNext || false);
+                setColumnFilters({}); // Reset filters on new query
+                setCurrentPage(1); // Reset to first page
             }
         } catch (err) {
             console.error("Error executing query", err);
             setError(err.response?.data?.message || err.message || 'Query execution failed');
-            setRows([]);
+            setAllRows([]);
             setColumns([]);
-            setHasNextPage(false);
         } finally {
             setLoading(false);
         }
-    }, [pageSize]);
+    }, []);
+
+    // Client-side filtering
+    const filteredRows = useMemo(() => {
+        if (allRows.length === 0) return [];
+
+        return allRows.filter(row => {
+            return Object.entries(columnFilters).every(([column, filterValue]) => {
+                if (!filterValue || filterValue.trim() === '') return true;
+                const cellValue = row[column];
+                if (cellValue === null || cellValue === undefined) return false;
+                return String(cellValue).toLowerCase().includes(filterValue.toLowerCase());
+            });
+        });
+    }, [allRows, columnFilters]);
+
+    // Client-side pagination
+    const paginatedRows = useMemo(() => {
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        return filteredRows.slice(startIndex, endIndex);
+    }, [filteredRows, currentPage, pageSize]);
+
+    const totalPages = Math.ceil(filteredRows.length / pageSize);
 
     const handleExecute = (e) => {
         e.preventDefault();
         if (query.trim()) {
             setActiveQuery(query.trim());
-            setPage(1);
-            executeQuery(query.trim(), 1);
+            executeQuery(query.trim());
         }
     };
 
     const handlePageChange = (newPage) => {
-        setPage(newPage);
-        executeQuery(activeQuery, newPage);
+        setCurrentPage(newPage);
+    };
+
+    const handleFilterChange = (column, value) => {
+        setColumnFilters(prev => ({
+            ...prev,
+            [column]: value
+        }));
+        setCurrentPage(1); // Reset to first page when filtering
+    };
+
+    const clearAllFilters = () => {
+        setColumnFilters({});
+        setCurrentPage(1);
     };
 
     const clearQuery = () => {
         setQuery('');
         setActiveQuery('');
-        setRows([]);
+        setAllRows([]);
         setColumns([]);
         setHasExecuted(false);
         setError(null);
-        setPage(1);
+        setCurrentPage(1);
+        setColumnFilters({});
     };
 
-    const rangeStart = rows.length > 0 ? (page - 1) * pageSize + 1 : 0;
-    const rangeEnd = (page - 1) * pageSize + rows.length;
+    const handlePageSizeChange = (newSize) => {
+        setPageSize(Number(newSize));
+        setCurrentPage(1); // Reset to first page when changing page size
+    };
+
+    const rangeStart = paginatedRows.length > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+    const rangeEnd = (currentPage - 1) * pageSize + paginatedRows.length;
+    const hasActiveFilters = Object.values(columnFilters).some(v => v && v.trim() !== '');
 
     return (
         <div className="p-6 max-w-full mx-auto">
@@ -133,13 +174,14 @@ const QueryPage = () => {
                     </button>
                     <select
                         value={pageSize}
-                        onChange={(e) => setPageSize(Number(e.target.value))}
+                        onChange={(e) => handlePageSizeChange(e.target.value)}
                         className="text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white"
                     >
-                        <option value={10}>10 rows</option>
-                        <option value={25}>25 rows</option>
-                        <option value={50}>50 rows</option>
-                        <option value={100}>100 rows</option>
+                        <option value={10}>10 rows/page</option>
+                        <option value={25}>25 rows/page</option>
+                        <option value={50}>50 rows/page</option>
+                        <option value={100}>100 rows/page</option>
+                        <option value={500}>500 rows/page</option>
                     </select>
                 </div>
             </form>
@@ -169,69 +211,115 @@ const QueryPage = () => {
                         <Database className="mx-auto h-10 w-10 text-slate-300 mb-2" />
                         <p className="text-sm">No results found</p>
                     </div>
-                ) : rows.length > 0 && (
+                ) : allRows.length > 0 && (
                     <>
-                        {/* Count */}
-                        <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-sm">
-                            <span className="text-slate-600">
-                                <span className="font-semibold text-[#0A66C2]">{columns.length}</span> columns, showing rows {rangeStart}-{rangeEnd}
-                            </span>
-                            {hasNextPage && <span className="text-slate-400 text-xs">More results available</span>}
+                        {/* Count and Filter Controls */}
+                        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-sm flex-wrap gap-2">
+                            <div className="flex items-center gap-3">
+                                <span className="text-slate-600">
+                                    <span className="font-semibold text-[#0A66C2]">{allRows.length}</span> total rows
+                                    {filteredRows.length < allRows.length && (
+                                        <span className="ml-1">
+                                            (<span className="font-semibold text-amber-600">{filteredRows.length}</span> filtered)
+                                        </span>
+                                    )}
+                                </span>
+                                <span className="text-slate-400">•</span>
+                                <span className="text-slate-600">
+                                    Showing {rangeStart}-{rangeEnd}
+                                </span>
+                            </div>
+                            {hasActiveFilters && (
+                                <button
+                                    onClick={clearAllFilters}
+                                    className="text-xs px-2 py-1 bg-white border border-slate-200 rounded hover:bg-slate-50 text-slate-600 flex items-center gap-1"
+                                >
+                                    <X size={12} />
+                                    Clear Filters
+                                </button>
+                            )}
                         </div>
 
-                        {/* Table */}
-                        <div className="overflow-x-auto">
+                        {/* Table with fixed height */}
+                        <div className="overflow-auto max-h-[calc(100vh-28rem)] min-h-[400px]">
                             <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 border-b border-slate-200">
+                                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                                     <tr>
-                                        <th className="px-3 py-2 font-semibold text-slate-700 w-10">#</th>
+                                        <th className="px-3 py-2 font-semibold text-slate-700 bg-slate-50 sticky left-0 z-20 w-12">#</th>
                                         {columns.map((col) => (
-                                            <th key={col} className="px-3 py-2 font-semibold text-slate-700 whitespace-nowrap">
-                                                {col}
+                                            <th key={col} className="px-3 py-2 font-semibold text-slate-700 bg-slate-50">
+                                                <div className="flex flex-col gap-1.5 min-w-[120px]">
+                                                    <span className="whitespace-nowrap">{col}</span>
+                                                    <div className="relative">
+                                                        <Filter size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            value={columnFilters[col] || ''}
+                                                            onChange={(e) => handleFilterChange(col, e.target.value)}
+                                                            placeholder="Filter..."
+                                                            className="w-full pl-7 pr-2 py-1 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500/30 focus:border-[#0A66C2] bg-white"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        />
+                                                    </div>
+                                                </div>
                                             </th>
                                         ))}
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {rows.map((row, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-3 py-2 text-slate-400 font-mono text-xs">
-                                                {(page - 1) * pageSize + idx + 1}
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                    {paginatedRows.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={columns.length + 1} className="px-3 py-12 text-center text-slate-400">
+                                                <Filter className="mx-auto h-8 w-8 text-slate-300 mb-2" />
+                                                <p className="text-sm">No results match the current filters</p>
                                             </td>
-                                            {columns.map((col) => (
-                                                <td key={col} className="px-3 py-2 text-slate-600 max-w-xs truncate" title={String(row[col] ?? '')}>
-                                                    {row[col] !== null && row[col] !== undefined ? String(row[col]) : '-'}
-                                                </td>
-                                            ))}
                                         </tr>
-                                    ))}
+                                    ) : (
+                                        paginatedRows.map((row, idx) => (
+                                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-3 py-2.5 text-slate-400 font-mono text-xs bg-slate-50/50 sticky left-0 border-r border-slate-100">
+                                                    {(currentPage - 1) * pageSize + idx + 1}
+                                                </td>
+                                                {columns.map((col) => (
+                                                    <td key={col} className="px-3 py-2.5 text-slate-600 max-w-xs truncate" title={String(row[col] ?? '')}>
+                                                        {row[col] !== null && row[col] !== undefined ? String(row[col]) : '-'}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                         </div>
 
                         {/* Pagination */}
-                        <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 bg-slate-50/50 text-sm">
-                            <span className="text-slate-500">Page {page}</span>
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50 text-sm">
+                            <span className="text-slate-500">
+                                Page <span className="font-semibold text-slate-700">{currentPage}</span> of <span className="font-semibold text-slate-700">{totalPages}</span>
+                            </span>
                             <div className="flex items-center gap-1">
-                                <button 
-                                    onClick={() => handlePageChange(1)} 
-                                    disabled={page === 1 || loading} 
-                                    className="p-1.5 border border-slate-200 rounded hover:bg-white disabled:opacity-40 text-slate-600"
+                                <button
+                                    onClick={() => handlePageChange(1)}
+                                    disabled={currentPage === 1}
+                                    className="p-1.5 border border-slate-200 rounded hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed text-slate-600"
+                                    title="First page"
                                 >
                                     <ChevronsLeft size={14} />
                                 </button>
-                                <button 
-                                    onClick={() => handlePageChange(page - 1)} 
-                                    disabled={page === 1 || loading} 
-                                    className="p-1.5 border border-slate-200 rounded hover:bg-white disabled:opacity-40 text-slate-600"
+                                <button
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    disabled={currentPage === 1}
+                                    className="p-1.5 border border-slate-200 rounded hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed text-slate-600"
+                                    title="Previous page"
                                 >
                                     <ChevronLeft size={14} />
                                 </button>
-                                <span className="px-3 text-slate-700 font-medium">{page}</span>
-                                <button 
-                                    onClick={() => handlePageChange(page + 1)} 
-                                    disabled={!hasNextPage || loading} 
-                                    className="p-1.5 border border-slate-200 rounded hover:bg-white disabled:opacity-40 text-slate-600"
+                                <span className="px-3 text-slate-700 font-medium min-w-[3rem] text-center">{currentPage}</span>
+                                <button
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    disabled={currentPage >= totalPages}
+                                    className="p-1.5 border border-slate-200 rounded hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed text-slate-600"
+                                    title="Next page"
                                 >
                                     <ChevronRight size={14} />
                                 </button>
