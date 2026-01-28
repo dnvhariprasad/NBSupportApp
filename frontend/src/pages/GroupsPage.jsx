@@ -23,7 +23,7 @@ const GroupsPage = () => {
         try {
             const response = await axios.get('/groups/search', {
                 params: {
-                    groupName: searchTerm ? searchTerm.trim() : undefined,
+                    groupName: searchTerm && searchTerm.trim() !== '' ? searchTerm.trim() : undefined,
                     page: pageNum,
                     size: pageSize
                 }
@@ -45,6 +45,12 @@ const GroupsPage = () => {
         }
     }, [pageSize]);
 
+    // Load all groups on component mount
+    React.useEffect(() => {
+        fetchGroups('', 1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const handleSearch = (e) => {
         e.preventDefault();
         setActiveSearch(groupName.trim());
@@ -54,7 +60,14 @@ const GroupsPage = () => {
 
     const handlePageChange = (newPage) => {
         setPage(newPage);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         fetchGroups(activeSearch, newPage);
+    };
+
+    const handlePageSizeChange = (newSize) => {
+        setPageSize(newSize);
+        setPage(1);
+        fetchGroups(activeSearch, 1);
     };
 
     const clearSearch = () => {
@@ -107,10 +120,10 @@ const GroupsPage = () => {
 
             {/* Results */}
             <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-                {!hasSearched ? (
+                {!hasSearched && !loading ? (
                     <div className="py-16 text-center text-slate-400">
-                        <Users className="mx-auto h-10 w-10 text-slate-300 mb-2" />
-                        <p className="text-sm">Click Search to view all groups or enter a group name to filter</p>
+                        <Loader2 className="mx-auto h-10 w-10 text-slate-300 mb-2 animate-spin" />
+                        <p className="text-sm">Loading groups...</p>
                     </div>
                 ) : (
                     <>
@@ -191,7 +204,7 @@ const GroupsPage = () => {
                             <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 bg-slate-50/50 text-sm">
                                 <select
                                     value={pageSize}
-                                    onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); if (hasSearched) fetchGroups(activeSearch, 1); }}
+                                    onChange={(e) => handlePageSizeChange(Number(e.target.value))}
                                     className="text-xs border border-slate-200 rounded px-2 py-1 bg-white"
                                 >
                                     <option value={5}>5</option>

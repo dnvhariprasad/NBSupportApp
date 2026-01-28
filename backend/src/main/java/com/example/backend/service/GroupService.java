@@ -38,7 +38,7 @@ public class GroupService {
 
         StringBuilder urlBuilder = new StringBuilder(baseUrl);
         urlBuilder.append("?items-per-page=").append(itemsPerPage);
-        urlBuilder.append("?page=").append(page);
+        urlBuilder.append("&page=").append(page);
         urlBuilder.append("&inline=true");
 
         // If group name filter is provided, add it to the query
