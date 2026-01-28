@@ -27,7 +27,7 @@ const UsersPage = () => {
         try {
             // Fetch all users at once
             const response = await api.get('/users/profiles', { 
-                params: { page: 1, size: 5000 } 
+                params: { page: 1, size: 2000 } 
             });
             const data = response.data;
             setAllUsers(data.users || []);

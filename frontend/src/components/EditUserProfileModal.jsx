@@ -142,16 +142,18 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         </div>
 
                         {/* Status */}
-                        <div className="flex items-center gap-2 pt-2">
-                            <input 
-                                type="checkbox" 
-                                id="is_active" 
-                                name="is_active" 
-                                checked={formData.is_active || false} 
-                                onChange={handleChange}
-                                className="w-4 h-4 text-[#0A66C2] border-slate-300 rounded focus:ring-[#0A66C2]"
-                            />
-                            <label htmlFor="is_active" className="text-sm font-medium text-slate-700">Active User</label>
+                        <div className="flex items-center pt-2">
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    name="is_active" 
+                                    checked={formData.is_active || false} 
+                                    onChange={handleChange}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0A66C2]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0A66C2]"></div>
+                                <span className="ml-3 text-sm font-medium text-slate-700">Active User</span>
+                            </label>
                         </div>
                     </form>
                 </div>
