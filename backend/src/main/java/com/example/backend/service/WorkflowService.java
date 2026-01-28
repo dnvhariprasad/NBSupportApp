@@ -91,42 +91,64 @@ public class WorkflowService {
         List<Map<String, Object>> workflows = new ArrayList<>();
 
         try {
-            // Query using dmi_package to find workflows attached to this case
-            // dmi_package links workflows to their attached objects
-            String dql = "SELECT w.r_object_id, w.process_name, w.supervisor_name, w.r_runtime_state, " +
-                        "w.r_start_date, w.r_act_name " +
-                        "FROM dm_workflow w, dmi_package p " +
-                        "WHERE w.r_object_id = p.r_workflow_id " +
-                        "AND p.r_component_id = '" + caseId + "'";
+            // First, fetch workflow IDs from dmi_package table
+            String packageDql = "SELECT DISTINCT r_workflow_id FROM dmi_package WHERE r_component_id = '" + caseId + "'";
 
-            String searchUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
-                              "/search?dql=" + java.net.URLEncoder.encode(dql, StandardCharsets.UTF_8) +
+            String packageUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
+                              "/search?dql=" + java.net.URLEncoder.encode(packageDql, StandardCharsets.UTF_8) +
                               "&inline=true&items-per-page=100";
 
-            log.info("Fetching workflows for case {} with DQL: {}", caseId, dql);
+            log.info("Fetching workflow IDs for case {} with DQL: {}", caseId, packageDql);
 
-            Map<String, Object> response = restClient.get()
-                    .uri(searchUrl)
+            Map<String, Object> packageResponse = restClient.get()
+                    .uri(packageUrl)
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
                     .body(Map.class);
 
-            // Parse response
-            if (response != null && response.containsKey("entries")) {
-                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+            // Extract workflow IDs
+            List<String> workflowIds = new ArrayList<>();
+            if (packageResponse != null && packageResponse.containsKey("entries")) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) packageResponse.get("entries");
                 for (Map<String, Object> entry : entries) {
                     Map<String, Object> content = (Map<String, Object>) entry.get("content");
                     if (content != null && content.containsKey("properties")) {
                         Map<String, Object> props = (Map<String, Object>) content.get("properties");
-                        workflows.add(props);
+                        String wfId = (String) props.get("r_workflow_id");
+                        if (wfId != null && !workflowIds.contains(wfId)) {
+                            workflowIds.add(wfId);
+                        }
                     }
+                }
+            }
+
+            log.info("Found {} unique workflow IDs for case {}", workflowIds.size(), caseId);
+
+            // Now fetch details for each workflow
+            for (String workflowId : workflowIds) {
+                try {
+                    String workflowUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
+                                        "/objects/" + workflowId;
+
+                    Map<String, Object> wfResponse = restClient.get()
+                            .uri(workflowUrl)
+                            .header("Authorization", getAuthHeader())
+                            .header("Accept", "application/vnd.emc.documentum+json")
+                            .retrieve()
+                            .body(Map.class);
+
+                    if (wfResponse != null && wfResponse.containsKey("properties")) {
+                        workflows.add((Map<String, Object>) wfResponse.get("properties"));
+                    }
+                } catch (Exception e) {
+                    log.warn("Error fetching workflow details for {}: {}", workflowId, e.getMessage());
                 }
             }
 
             result.put("workflows", workflows);
             result.put("count", workflows.size());
-            log.info("Found {} workflows for case {}", workflows.size(), caseId);
+            log.info("Successfully fetched {} workflow details for case {}", workflows.size(), caseId);
 
         } catch (Exception e) {
             log.error("Error fetching workflows for case {}: {}", caseId, e.getMessage());
