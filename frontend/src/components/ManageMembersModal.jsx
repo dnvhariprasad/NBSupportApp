@@ -125,7 +125,7 @@ const ManageMembersModal = ({ isOpen, onClose, groupName, onUpdate }) => {
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[70vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-slate-50">
                     <div>
@@ -156,9 +156,9 @@ const ManageMembersModal = ({ isOpen, onClose, groupName, onUpdate }) => {
                 )}
 
                 {/* Content */}
-                <div className="flex-1 overflow-hidden grid grid-cols-2 divide-x divide-slate-200">
+                <div className="flex-1 overflow-hidden grid grid-cols-2 divide-x divide-slate-200 min-h-0">
                     {/* Left Panel - Current Members */}
-                    <div className="p-6 overflow-y-auto">
+                    <div className="p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
                         <h3 className="text-lg font-semibold text-slate-900 mb-4">Current Members</h3>
 
                         {loadingMembers ? (
@@ -267,7 +267,7 @@ const ManageMembersModal = ({ isOpen, onClose, groupName, onUpdate }) => {
                     </div>
 
                     {/* Right Panel - Add Members */}
-                    <div className="p-6 overflow-y-auto bg-slate-50">
+                    <div className="p-6 overflow-y-auto bg-slate-50 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
                         <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
                             <UserPlus size={20} />
                             Add Members
