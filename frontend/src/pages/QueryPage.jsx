@@ -247,7 +247,6 @@ const QueryPage = () => {
                     <Database size={20} className="text-[#0A66C2]" />
                     Query
                 </h1>
-                <p className="text-sm text-slate-500">Execute DQL queries against the repository</p>
             </div>
 
             {/* Query Input */}

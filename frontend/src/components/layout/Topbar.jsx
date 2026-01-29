@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, User, LogOut, ChevronDown, Check } from 'lucide-react';
+import { User, LogOut, ChevronDown, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Topbar = () => {
@@ -38,13 +38,6 @@ const Topbar = () => {
     return (
         <header className="h-16 bg-white border-b border-slate-200 fixed top-0 right-0 left-64 z-10 flex items-center justify-end px-8 shadow-sm">
             <div className="flex items-center gap-6">
-                
-                {/* Notification Icon */}
-                <button className="relative p-2 text-slate-500 hover:text-[#0A66C2] hover:bg-blue-50 rounded-full transition-colors">
-                    <Bell size={20} />
-                    <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-                </button>
-
                 {/* Profile Section */}
                 <div className="relative" ref={dropdownRef}>
                     <button 

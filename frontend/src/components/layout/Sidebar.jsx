@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, HelpCircle, Briefcase, UsersRound, Database } from 'lucide-react';
+import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database } from 'lucide-react';
 
 const Sidebar = () => {
     const navItems = [
@@ -21,7 +21,6 @@ const Sidebar = () => {
                     </div>
                     <div>
                         <h1 className="text-lg font-bold text-slate-900 leading-tight">NB Support</h1>
-                        <p className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase">Enterprise EPC</p>
                     </div>
                 </div>
             </div>
@@ -57,10 +56,6 @@ const Sidebar = () => {
                 <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors text-left">
                     <Settings size={18} className="text-slate-500" />
                     <span>Settings</span>
-                </button>
-                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors text-left">
-                    <HelpCircle size={18} className="text-slate-500" />
-                    <span>Support</span>
                 </button>
             </div>
         </aside>
