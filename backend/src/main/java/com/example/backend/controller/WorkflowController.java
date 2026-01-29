@@ -35,4 +35,14 @@ public class WorkflowController {
     public ResponseEntity<Map<String, Object>> getWorkflowsForCase(@PathVariable String caseId) {
         return ResponseEntity.ok(workflowService.getWorkflowsForCase(caseId));
     }
+
+    @PostMapping("/{workflowId}/restart")
+    public ResponseEntity<Map<String, Object>> restartWorkflow(@PathVariable String workflowId) {
+        return ResponseEntity.ok(workflowService.restartWorkflow(workflowId));
+    }
+
+    @PostMapping("/{workflowId}/activity/{activityId}/retry")
+    public ResponseEntity<Map<String, Object>> retryActivity(@PathVariable String workflowId, @PathVariable String activityId) {
+        return ResponseEntity.ok(workflowService.retryActivity(workflowId, activityId));
+    }
 }

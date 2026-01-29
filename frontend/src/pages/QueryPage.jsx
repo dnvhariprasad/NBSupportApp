@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import axios from '../api/axios';
 import {
     Play, ChevronLeft, ChevronRight, Database,
-    ChevronsLeft, Loader2, X, AlertCircle, Filter
+    ChevronsLeft, Loader2, X, AlertCircle, Filter, History, Clock, Trash2, Copy, Check
 } from 'lucide-react';
+import useQueryHistory from '../hooks/useQueryHistory';
 
 const QueryPage = () => {
     const [allRows, setAllRows] = useState([]); // Store all fetched rows
@@ -18,6 +19,17 @@ const QueryPage = () => {
 
     const [query, setQuery] = useState('');
     const [activeQuery, setActiveQuery] = useState('');
+
+    // Query history
+    const { history, addQuery, clearHistory } = useQueryHistory();
+    const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+    const [copiedId, setCopiedId] = useState(null);
+    const historyButtonRef = useRef(null);
+    const historyDropdownRef = useRef(null);
+
+    // Selective execution
+    const textareaRef = useRef(null);
+    const [hasSelection, setHasSelection] = useState(false);
 
     const executeQuery = useCallback(async (dql, limit) => {
         if (!dql || dql.trim() === '') {
@@ -47,6 +59,9 @@ const QueryPage = () => {
                 setColumns(data.columns || []);
                 setColumnFilters({}); // Reset filters on new query
                 setCurrentPage(1); // Reset to first page
+
+                // Add to query history after successful execution
+                addQuery(dql.trim(), limit);
             }
         } catch (err) {
             console.error("Error executing query", err);
@@ -56,7 +71,105 @@ const QueryPage = () => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [addQuery]);
+
+    // Close history dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (showHistoryDropdown &&
+                historyDropdownRef.current &&
+                !historyDropdownRef.current.contains(event.target) &&
+                historyButtonRef.current &&
+                !historyButtonRef.current.contains(event.target)) {
+                setShowHistoryDropdown(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showHistoryDropdown]);
+
+    // Track selection changes
+    const handleSelectionChange = () => {
+        if (textareaRef.current) {
+            const start = textareaRef.current.selectionStart;
+            const end = textareaRef.current.selectionEnd;
+            setHasSelection(start !== end);
+        }
+    };
+
+    // Handle keyboard shortcuts
+    const handleKeyDown = (e) => {
+        // Ctrl+Enter or Cmd+Enter to execute
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            handleExecuteWithSelection();
+        }
+    };
+
+    // Execute selected text or full query
+    const handleExecuteWithSelection = () => {
+        if (!textareaRef.current) return;
+
+        const start = textareaRef.current.selectionStart;
+        const end = textareaRef.current.selectionEnd;
+
+        let queryToExecute;
+        if (start !== end) {
+            // Text is selected - execute only selection
+            queryToExecute = query.substring(start, end).trim();
+        } else {
+            // No selection - execute full query
+            queryToExecute = query.trim();
+        }
+
+        if (queryToExecute) {
+            setActiveQuery(queryToExecute);
+            executeQuery(queryToExecute, resultLimit);
+        }
+    };
+
+    // Load query from history
+    const loadQueryFromHistory = (historyQuery) => {
+        setQuery(historyQuery);
+        setShowHistoryDropdown(false);
+    };
+
+    // Copy query to clipboard
+    const copyQueryToClipboard = async (queryText, itemId, e) => {
+        e.stopPropagation(); // Prevent loading query when clicking copy button
+        try {
+            await navigator.clipboard.writeText(queryText);
+            setCopiedId(itemId);
+            // Reset copied state after 2 seconds
+            setTimeout(() => setCopiedId(null), 2000);
+        } catch (err) {
+            console.error('Failed to copy query:', err);
+        }
+    };
+
+    // Format timestamp for display
+    const formatTimestamp = (timestamp) => {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    // Truncate query text for display
+    const truncateQuery = (text, maxLength = 60) => {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+    };
 
     // Client-side filtering
     const filteredRows = useMemo(() => {
@@ -143,36 +256,144 @@ const QueryPage = () => {
                     <label className="block text-sm font-medium text-slate-700 mb-1">DQL Query</label>
                     <div className="relative">
                         <textarea
+                            ref={textareaRef}
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
+                            onSelect={handleSelectionChange}
+                            onKeyDown={handleKeyDown}
                             placeholder="SELECT r_object_id, object_name FROM dm_document WHERE folder('/Temp')"
                             rows={3}
                             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] resize-y"
                         />
                         {query && (
-                            <button 
-                                type="button" 
-                                onClick={clearQuery} 
+                            <button
+                                type="button"
+                                onClick={clearQuery}
                                 className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
                             >
                                 <X size={16} />
                             </button>
                         )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">
-                        <span className="font-medium">Note:</span> r_object_id and r_object_type will be automatically included.
-                        <span className="ml-1">ENABLE(RETURN_TOP n) hint is automatically added to limit database results.</span>
-                    </p>
+                    <div className="flex items-start justify-between gap-2 text-xs mt-1">
+                        <p className="text-slate-400">
+                            <span className="font-medium">Note:</span> r_object_id and r_object_type will be automatically included.
+                            <span className="ml-1">ENABLE(RETURN_TOP n) hint is automatically added to limit database results.</span>
+                        </p>
+                        <p className="text-slate-500 shrink-0">
+                            <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-xs font-mono">
+                                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter
+                            </kbd>
+                            <span className="ml-1">to execute{hasSelection ? ' selection' : ''}</span>
+                        </p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
                     <button
                         type="submit"
                         disabled={!query.trim() || loading}
                         className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                        title={`Execute query (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+Enter)`}
                     >
                         {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                         Execute
                     </button>
+
+                    {/* History Button */}
+                    <div className="relative">
+                        <button
+                            ref={historyButtonRef}
+                            type="button"
+                            onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
+                            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center gap-1.5"
+                            title="Query History"
+                        >
+                            <History size={14} />
+                            History
+                            {history.length > 0 && (
+                                <span className="ml-1 px-1.5 py-0.5 bg-[#0A66C2] text-white text-xs rounded-full">
+                                    {history.length}
+                                </span>
+                            )}
+                        </button>
+
+                        {/* History Dropdown */}
+                        {showHistoryDropdown && (
+                            <div
+                                ref={historyDropdownRef}
+                                className="absolute top-full mt-2 right-0 w-96 bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
+                            >
+                                {/* Header */}
+                                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                                    <span className="text-sm font-semibold text-slate-700">
+                                        Recent Queries ({history.length})
+                                    </span>
+                                    {history.length > 0 && (
+                                        <button
+                                            onClick={() => {
+                                                if (window.confirm('Clear all query history?')) {
+                                                    clearHistory();
+                                                }
+                                            }}
+                                            className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
+                                        >
+                                            <Trash2 size={12} />
+                                            Clear All
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* History List */}
+                                <div className="overflow-y-auto flex-1">
+                                    {history.length === 0 ? (
+                                        <div className="py-8 text-center text-slate-400">
+                                            <History className="mx-auto h-8 w-8 text-slate-300 mb-2" />
+                                            <p className="text-sm">No queries yet</p>
+                                        </div>
+                                    ) : (
+                                        history.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                className="w-full px-4 py-3 hover:bg-slate-50 border-b border-slate-100 transition-colors flex items-start gap-2 group"
+                                            >
+                                                <Database size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                                                <button
+                                                    onClick={() => loadQueryFromHistory(item.query)}
+                                                    className="flex-1 min-w-0 text-left"
+                                                >
+                                                    <p className="text-sm text-slate-700 font-mono truncate">
+                                                        {truncateQuery(item.query)}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
+                                                        <Clock size={10} />
+                                                        <span>{formatTimestamp(item.executedAt)}</span>
+                                                        {item.limit && (
+                                                            <>
+                                                                <span>•</span>
+                                                                <span>Limit: {item.limit.toLocaleString()}</span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </button>
+                                                <button
+                                                    onClick={(e) => copyQueryToClipboard(item.query, item.id, e)}
+                                                    className="px-2 py-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                                    title="Copy query"
+                                                >
+                                                    {copiedId === item.id ? (
+                                                        <Check size={14} className="text-green-600" />
+                                                    ) : (
+                                                        <Copy size={14} />
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="flex items-center gap-2">
                         <label className="text-xs text-slate-600 font-medium">Max Results:</label>
                         <select
@@ -225,7 +446,7 @@ const QueryPage = () => {
                         <Loader2 className="mx-auto h-8 w-8 text-[#0A66C2] animate-spin mb-2" />
                         <p className="text-sm">Executing query...</p>
                     </div>
-                ) : rows.length === 0 && !error ? (
+                ) : allRows.length === 0 && !error ? (
                     <div className="py-16 text-center text-slate-400">
                         <Database className="mx-auto h-10 w-10 text-slate-300 mb-2" />
                         <p className="text-sm">No results found</p>

@@ -53,23 +53,26 @@ public class QueryService {
         // Modify query to include r_object_id and r_object_type if not present
         String modifiedQuery = ensureRequiredColumns(dqlQuery.trim());
 
+        // Extract user's RETURN_TOP limit if present
+        int effectiveLimit = extractReturnTopLimit(modifiedQuery, limit);
+
         // Add DQL ENABLE(RETURN_TOP n) hint to limit results at database level
-        modifiedQuery = addReturnTopHint(modifiedQuery, limit);
+        modifiedQuery = addReturnTopHint(modifiedQuery, effectiveLimit);
 
         // Build URL
         String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
 
-        log.info("Executing DQL query with limit {}: {}", limit, modifiedQuery);
+        log.info("Executing DQL query with limit {}: {}", effectiveLimit, modifiedQuery);
 
         try {
             List<Map<String, Object>> allRows = new ArrayList<>();
             List<String> columns = new ArrayList<>();
             int page = 1;
-            int itemsPerPage = Math.min(100, limit); // Fetch in batches
+            int itemsPerPage = Math.min(100, effectiveLimit); // Fetch in batches
             boolean hasMore = true;
-            int maxPages = (int) Math.ceil((double) limit / itemsPerPage);
+            int maxPages = (int) Math.ceil((double) effectiveLimit / itemsPerPage);
 
-            while (hasMore && page <= maxPages && allRows.size() < limit) {
+            while (hasMore && page <= maxPages && allRows.size() < effectiveLimit) {
                 Map<String, Object> response = restClient.get()
                         .uri(baseUrl + "?dql={dql}&items-per-page={itemsPerPage}&page={page}&inline=true",
                                 modifiedQuery, itemsPerPage, page)
@@ -89,15 +92,15 @@ public class QueryService {
             }
 
             // Ensure we don't exceed the limit
-            if (allRows.size() > limit) {
-                allRows = allRows.subList(0, limit);
+            if (allRows.size() > effectiveLimit) {
+                allRows = allRows.subList(0, effectiveLimit);
             }
 
             Map<String, Object> result = new HashMap<>();
             result.put("rows", allRows);
             result.put("columns", columns);
             result.put("totalCount", allRows.size());
-            result.put("limit", limit);
+            result.put("limit", effectiveLimit);
             return result;
 
         } catch (Exception e) {
@@ -166,9 +169,36 @@ public class QueryService {
     }
 
     /**
+     * Extract the RETURN_TOP limit from user's query if present.
+     * Returns the extracted limit or the default limit if not found.
+     */
+    private int extractReturnTopLimit(String query, int defaultLimit) {
+        String upperQuery = query.toUpperCase();
+
+        if (!upperQuery.contains("ENABLE(RETURN_TOP")) {
+            return defaultLimit;
+        }
+
+        try {
+            int enableStart = upperQuery.indexOf("ENABLE(RETURN_TOP");
+            int numberStart = enableStart + "ENABLE(RETURN_TOP".length();
+            int numberEnd = query.indexOf(')', numberStart);
+
+            if (numberEnd != -1) {
+                String numberStr = query.substring(numberStart, numberEnd).trim();
+                return Integer.parseInt(numberStr);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract RETURN_TOP limit from query, using default: {}", defaultLimit);
+        }
+
+        return defaultLimit;
+    }
+
+    /**
      * Add DQL ENABLE(RETURN_TOP n) hint to limit results at database level.
-     * If user already provided ENABLE(RETURN_TOP in their query, it will be replaced
-     * with the limit from the dropdown to ensure consistency.
+     * If user already provided ENABLE(RETURN_TOP in their query, respect it
+     * instead of overriding it.
      * The hint is appended at the end of the query, e.g.:
      * SELECT * FROM dm_document ENABLE(RETURN_TOP 100)
      *
@@ -185,22 +215,13 @@ public class QueryService {
             return query; // Not a SELECT query
         }
 
-        // If user already has ENABLE(RETURN_TOP in their query, remove it
-        // Our limit from the dropdown takes precedence
+        // If user already has ENABLE(RETURN_TOP in their query, keep it as-is
+        // Respect the user's explicit limit rather than overriding
         if (upperQuery.contains("ENABLE(RETURN_TOP")) {
-            // Find and remove existing ENABLE(RETURN_TOP ...) hint
-            int enableStart = upperQuery.indexOf("ENABLE(RETURN_TOP");
-            int enableEnd = trimmedQuery.indexOf(')', enableStart);
-
-            if (enableEnd != -1) {
-                // Remove the existing hint
-                String before = trimmedQuery.substring(0, enableStart).trim();
-                String after = trimmedQuery.substring(enableEnd + 1).trim();
-                trimmedQuery = (before + " " + after).trim();
-            }
+            return trimmedQuery; // Keep user's original query with their limit
         }
 
-        // Append our ENABLE(RETURN_TOP n) hint at the end
+        // Only append ENABLE(RETURN_TOP n) if user didn't specify one
         return trimmedQuery + " ENABLE(RETURN_TOP " + limit + ")";
     }
 

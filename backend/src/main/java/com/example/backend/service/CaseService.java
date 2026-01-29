@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -35,134 +37,133 @@ public class CaseService {
     }
 
     /**
-     * Search cases (cms_case_folder) by case number or load recent cases.
-     * If caseNumber is null/empty, loads cases from last 3 months.
-     * First searches for matching objects, then fetches full details for each.
+     * Search cases (cms_case_folder) by case number or load recent cases using DQL.
+     * Uses a single DQL query to fetch all required fields, eliminating N+1 query problem.
+     * If caseNumber is null/empty, loads cases from last N months (configured in properties).
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> searchCases(String caseNumber, int page, int itemsPerPage) {
-
-        // If no caseNumber provided, load last 3 months of cases
-        if (caseNumber == null || caseNumber.isBlank()) {
-            return loadRecentCases(page, itemsPerPage);
-        }
-
-        // Search for matching cases by case number
-        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/search";
-
-        StringBuilder urlBuilder = new StringBuilder(baseUrl);
-        urlBuilder.append("?object-type=cms_case_folder");
-        urlBuilder.append("&items-per-page=").append(itemsPerPage);
-        urlBuilder.append("&page=").append(page);
-        urlBuilder.append("&inline=true");
-        urlBuilder.append("&sort=r_creation_date desc");
-        urlBuilder.append("&q=").append(caseNumber.trim());
-
-        String fullUrl = urlBuilder.toString();
-        log.info("Searching cases with URL: {}", fullUrl);
-
         try {
-            Map<String, Object> response = restClient.get()
-                    .uri(fullUrl)
-                    .header("Authorization", getAuthHeader())
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .retrieve()
-                    .body(Map.class);
+            String dql;
 
-            return transformAndEnrichResponse(response);
+            if (caseNumber == null || caseNumber.isBlank()) {
+                // Build DQL for recent cases (last N months)
+                int months = appConfig.getCases().getDefaultLoadMonths();
+                LocalDate startDate = LocalDate.now().minusMonths(months);
+                String dateStr = startDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
 
-        } catch (Exception e) {
-            log.error("Error searching cases", e);
-            throw new RuntimeException("Failed to search cases: " + e.getMessage());
-        }
-    }
+                dql = String.format(
+                    "SELECT r_object_id, object_name, subject, ho_ro, description, " +
+                    "department_name, functions, r_creation_date " +
+                    "FROM cms_case_folder " +
+                    "WHERE r_creation_date >= DATE('%s', 'yyyy-mm-dd') " +
+                    "ORDER BY r_creation_date DESC " +
+                    "ENABLE(RETURN_TOP %d)",
+                    dateStr,
+                    page * itemsPerPage
+                );
 
-    /**
-     * Load cases from the last N months (configured in app.cases.default-load-months)
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> loadRecentCases(int page, int itemsPerPage) {
-        // Get configured number of months from properties
-        int months = appConfig.getCases().getDefaultLoadMonths();
+                log.info("Loading recent cases (last {} months) from {}", months, dateStr);
+            } else {
+                // Build DQL for search by case number
+                // Escape single quotes for SQL injection protection
+                String searchTerm = caseNumber.trim().replace("'", "''");
 
-        // Calculate date N months ago
-        java.time.LocalDate startDate = java.time.LocalDate.now().minusMonths(months);
-        String dateFilter = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+                dql = String.format(
+                    "SELECT r_object_id, object_name, subject, ho_ro, description, " +
+                    "department_name, functions, r_creation_date " +
+                    "FROM cms_case_folder " +
+                    "WHERE object_name LIKE '%%%s%%' " +
+                    "ORDER BY r_creation_date DESC " +
+                    "ENABLE(RETURN_TOP %d)",
+                    searchTerm,
+                    page * itemsPerPage
+                );
 
-        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/search";
-
-        StringBuilder urlBuilder = new StringBuilder(baseUrl);
-        urlBuilder.append("?object-type=cms_case_folder");
-        urlBuilder.append("&items-per-page=").append(itemsPerPage);
-        urlBuilder.append("&page=").append(page);
-        urlBuilder.append("&inline=true");
-        urlBuilder.append("&sort=r_creation_date desc");
-        // Filter by creation date >= 3 months ago
-        urlBuilder.append("&r_creation_date>=").append(dateFilter);
-
-        String fullUrl = urlBuilder.toString();
-        log.info("Loading recent cases (last {} months) with URL: {}", months, fullUrl);
-
-        try {
-            Map<String, Object> response = restClient.get()
-                    .uri(fullUrl)
-                    .header("Authorization", getAuthHeader())
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .retrieve()
-                    .body(Map.class);
-
-            return transformAndEnrichResponse(response);
-
-        } catch (Exception e) {
-            log.error("Error loading recent cases", e);
-            // Return empty result on error
-            Map<String, Object> emptyResult = new HashMap<>();
-            emptyResult.put("cases", new ArrayList<>());
-            emptyResult.put("hasNext", false);
-            emptyResult.put("page", page);
-            return emptyResult;
-        }
-    }
-
-    /**
-     * Fetch full object details including custom attributes
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> fetchObjectDetails(String objectId) {
-        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
-                + "/objects/" + objectId + "?view=:all";
-
-        try {
-            Map<String, Object> response = restClient.get()
-                    .uri(url)
-                    .header("Authorization", getAuthHeader())
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .retrieve()
-                    .body(Map.class);
-
-            if (response != null) {
-                return (Map<String, Object>) response.get("properties");
+                log.info("Searching cases for: {}", searchTerm);
             }
+
+            return executeCaseDQL(dql, page, itemsPerPage);
+
         } catch (Exception e) {
-            log.warn("Error fetching object details for {}: {}", objectId, e.getMessage());
+            log.error("Error in searchCases", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("cases", new ArrayList<>());
+            errorResult.put("hasNext", false);
+            errorResult.put("page", page);
+            errorResult.put("itemsPerPage", itemsPerPage);
+            errorResult.put("error", "Failed to search cases: " + e.getMessage());
+            return errorResult;
         }
-        return null;
     }
 
+    /**
+     * Execute a DQL query for cases and return paginated results.
+     * Uses Documentum REST API with DQL parameter.
+     */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> transformAndEnrichResponse(Map<String, Object> response) {
+    private Map<String, Object> executeCaseDQL(String dql, int page, int itemsPerPage) {
+        try {
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+            log.debug("Executing DQL: {}", dql);
+
+            // Use URI templates for proper encoding (RestClient handles encoding)
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&items-per-page={itemsPerPage}&page={page}&inline=true",
+                         dql, itemsPerPage, page)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            return transformDQLResponse(response, page, itemsPerPage);
+
+        } catch (Exception e) {
+            log.error("Error executing case DQL", e);
+            throw new RuntimeException("Failed to execute DQL query: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Transform DQL response to the expected format.
+     * Extracts cases from entries and preserves pagination metadata.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> transformDQLResponse(Map<String, Object> response, int page, int itemsPerPage) {
         Map<String, Object> result = new HashMap<>();
 
         if (response == null) {
             result.put("cases", new ArrayList<>());
             result.put("hasNext", false);
+            result.put("page", page);
+            result.put("itemsPerPage", itemsPerPage);
             return result;
         }
 
-        result.put("page", response.get("page"));
-        result.put("itemsPerPage", response.get("items-per-page"));
+        // Extract cases from entries
+        List<Map<String, Object>> cases = new ArrayList<>();
+        List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
 
-        // Check for next link
+        if (entries != null) {
+            for (Map<String, Object> entry : entries) {
+                Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                if (content != null) {
+                    Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                    if (props != null) {
+                        // All fields are already present in DQL result
+                        // No need for additional API calls
+                        cases.add(props);
+                    }
+                }
+            }
+        }
+
+        result.put("cases", cases);
+        result.put("page", page);
+        result.put("itemsPerPage", itemsPerPage);
+
+        // Check for next link to determine if there are more pages
         List<Map<String, Object>> links = (List<Map<String, Object>>) response.get("links");
         boolean hasNext = false;
         if (links != null) {
@@ -170,40 +171,7 @@ public class CaseService {
         }
         result.put("hasNext", hasNext);
 
-        // Transform entries and fetch full details
-        List<Map<String, Object>> cases = new ArrayList<>();
-        List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
-        if (entries != null) {
-            for (Map<String, Object> entry : entries) {
-                Map<String, Object> content = (Map<String, Object>) entry.get("content");
-                if (content != null) {
-                    Map<String, Object> props = (Map<String, Object>) content.get("properties");
-                    if (props != null) {
-                        String objectId = (String) props.get("r_object_id");
-                        String objectName = (String) props.get("object_name");
-
-                        // Fetch full object details with custom attributes
-                        Map<String, Object> fullProps = fetchObjectDetails(objectId);
-
-                        Map<String, Object> caseItem = new HashMap<>();
-                        caseItem.put("r_object_id", objectId);
-                        caseItem.put("object_name", objectName);
-
-                        if (fullProps != null) {
-                            caseItem.put("subject", fullProps.get("subject"));
-                            caseItem.put("ho_ro", fullProps.get("ho_ro"));
-                            caseItem.put("description", fullProps.get("description"));
-                            caseItem.put("department_name", fullProps.get("department_name"));
-                            caseItem.put("functions", fullProps.get("functions"));
-                            caseItem.put("r_creation_date", fullProps.get("r_creation_date"));
-                        }
-
-                        cases.add(caseItem);
-                    }
-                }
-            }
-        }
-        result.put("cases", cases);
+        log.info("Transformed {} cases for page {}, hasNext: {}", cases.size(), page, hasNext);
 
         return result;
     }
