@@ -12,4 +12,8 @@ public class DctmConfig {
     private String repository;
     private String username;
     private String password;
+
+    // Privileged service account for elevated operations
+    private String serviceUsername;
+    private String servicePassword;
 }

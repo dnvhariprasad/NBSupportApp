@@ -17,18 +17,25 @@ import java.nio.charset.StandardCharsets;
 public class WorkflowService {
 
     private final DctmConfig dctmConfig;
+    private final DctmAuthService authService;
     private final RestClient restClient;
 
-    public WorkflowService(DctmConfig dctmConfig, RestClient.Builder restClientBuilder) {
+    public WorkflowService(DctmConfig dctmConfig,
+                          DctmAuthService authService,
+                          RestClient.Builder restClientBuilder) {
         this.dctmConfig = dctmConfig;
+        this.authService = authService;
         this.restClient = restClientBuilder.build();
     }
 
+    // Use this for regular read operations
     private String getAuthHeader() {
-        String username = dctmConfig.getUsername();
-        String password = dctmConfig.getPassword();
-        return "Basic " + Base64.getEncoder().encodeToString(
-                (username + ":" + password).getBytes(StandardCharsets.UTF_8));
+        return authService.getUserAuthHeader();
+    }
+
+    // Use this for privileged write operations
+    private String getServiceAuthHeader() {
+        return authService.getServiceAuthHeader();
     }
 
     @org.springframework.beans.factory.annotation.Value("${app.workflow.processes}")
@@ -261,6 +268,81 @@ public class WorkflowService {
             result.put("error", "Failed to fetch workflow information: " + e.getMessage());
             debugLogs.add("Exception: " + e.getMessage());
             result.put("debug", debugLogs);
+        }
+
+        return result;
+    }
+
+    /**
+     * Restart a workflow (privileged operation)
+     * Uses service account with elevated permissions
+     */
+    public Map<String, Object> restartWorkflow(String workflowId) {
+        log.info("Restarting workflow: {}", workflowId);
+
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
+                        "/workflows/" + workflowId + "/restart";
+
+            // Use service account for privileged operation
+            Map<String, Object> response = restClient.post()
+                    .uri(url)
+                    .header("Authorization", getServiceAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            result.put("success", true);
+            result.put("workflowId", workflowId);
+            result.put("message", "Workflow restarted successfully");
+            result.put("response", response);
+
+            log.info("Successfully restarted workflow: {}", workflowId);
+
+        } catch (Exception e) {
+            log.error("Error restarting workflow {}: {}", workflowId, e.getMessage());
+            result.put("success", false);
+            result.put("error", "Failed to restart workflow: " + e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * Retry a workflow activity (privileged operation)
+     * Uses service account with elevated permissions
+     */
+    public Map<String, Object> retryActivity(String workflowId, String activityId) {
+        log.info("Retrying activity {} in workflow {}", activityId, workflowId);
+
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
+                        "/workflows/" + workflowId + "/activities/" + activityId + "/retry";
+
+            // Use service account for privileged operation
+            Map<String, Object> response = restClient.post()
+                    .uri(url)
+                    .header("Authorization", getServiceAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            result.put("success", true);
+            result.put("workflowId", workflowId);
+            result.put("activityId", activityId);
+            result.put("message", "Activity retry initiated successfully");
+            result.put("response", response);
+
+            log.info("Successfully initiated retry for activity {} in workflow {}", activityId, workflowId);
+
+        } catch (Exception e) {
+            log.error("Error retrying activity {} in workflow {}: {}", activityId, workflowId, e.getMessage());
+            result.put("success", false);
+            result.put("error", "Failed to retry activity: " + e.getMessage());
         }
 
         return result;
