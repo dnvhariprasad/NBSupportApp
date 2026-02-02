@@ -136,7 +136,7 @@ public class WorkflowService {
 
             Map<String, Object> packageResponse = restClient.get()
                     .uri(baseUrl + "?dql={dql}&inline=true&items-per-page={itemsPerPage}",
-                         packageDql.toString(), 100)
+                            packageDql.toString(), 100)
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
@@ -174,7 +174,7 @@ public class WorkflowService {
                     // Fetch workflow object properties
                     try {
                         String workflowUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
-                                            "/objects/" + workflowId;
+                                "/objects/" + workflowId;
 
                         Map<String, Object> wfResponse = restClient.get()
                                 .uri(workflowUrl)
@@ -194,12 +194,14 @@ public class WorkflowService {
 
                     // Fetch work items (activity history)
                     try {
-                        String tasksDql = "SELECT r_object_id, r_act_seqno, r_runtime_state, r_performer_name, r_creation_date, r_act_def_id, a_wq_name " +
-                                          "FROM dmi_workitem WHERE r_workflow_id = '" + workflowId + "' ORDER BY r_act_seqno ASC, r_creation_date ASC";
+                        String tasksDql = "SELECT r_object_id, r_act_seqno, r_runtime_state, r_performer_name, r_creation_date, r_act_def_id, a_wq_name "
+                                +
+                                "FROM dmi_workitem WHERE r_workflow_id = '" + workflowId
+                                + "' ORDER BY r_act_seqno ASC, r_creation_date ASC";
 
                         Map<String, Object> tasksResponse = restClient.get()
                                 .uri(baseUrl + "?dql={dql}&inline=true&items-per-page={itemsPerPage}",
-                                     tasksDql, 100)
+                                        tasksDql, 100)
                                 .header("Authorization", getAuthHeader())
                                 .header("Accept", "application/vnd.emc.documentum+json")
                                 .retrieve()
@@ -207,7 +209,8 @@ public class WorkflowService {
 
                         List<Map<String, Object>> tasks = new ArrayList<>();
                         if (tasksResponse != null && tasksResponse.containsKey("entries")) {
-                            List<Map<String, Object>> taskEntries = (List<Map<String, Object>>) tasksResponse.get("entries");
+                            List<Map<String, Object>> taskEntries = (List<Map<String, Object>>) tasksResponse
+                                    .get("entries");
                             for (Map<String, Object> taskEntry : taskEntries) {
                                 Map<String, Object> taskContent = (Map<String, Object>) taskEntry.get("content");
                                 if (taskContent != null && taskContent.containsKey("properties")) {
@@ -223,12 +226,13 @@ public class WorkflowService {
 
                     // Fetch queue items (current inbox status)
                     try {
-                        String queueDql = "SELECT r_object_id, name, task_state, sent_by, date_sent, item_id, router_id " +
-                                          "FROM dmi_queue_item WHERE router_id = '" + workflowId + "'";
+                        String queueDql = "SELECT r_object_id, name, task_state, sent_by, date_sent, item_id, router_id "
+                                +
+                                "FROM dmi_queue_item WHERE router_id = '" + workflowId + "'";
 
                         Map<String, Object> queueResponse = restClient.get()
                                 .uri(baseUrl + "?dql={dql}&inline=true&items-per-page={itemsPerPage}",
-                                     queueDql, 100)
+                                        queueDql, 100)
                                 .header("Authorization", getAuthHeader())
                                 .header("Accept", "application/vnd.emc.documentum+json")
                                 .retrieve()
@@ -236,7 +240,8 @@ public class WorkflowService {
 
                         List<Map<String, Object>> queueItems = new ArrayList<>();
                         if (queueResponse != null && queueResponse.containsKey("entries")) {
-                            List<Map<String, Object>> qEntries = (List<Map<String, Object>>) queueResponse.get("entries");
+                            List<Map<String, Object>> qEntries = (List<Map<String, Object>>) queueResponse
+                                    .get("entries");
                             for (Map<String, Object> qEntry : qEntries) {
                                 Map<String, Object> qContent = (Map<String, Object>) qEntry.get("content");
                                 if (qContent != null && qContent.containsKey("properties")) {
