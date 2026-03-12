@@ -4,6 +4,7 @@ import com.example.backend.config.DctmConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -13,10 +14,12 @@ import java.util.*;
 public class UserService {
 
     private final DctmConfig dctmConfig;
+    private final OtdsService otdsService;
     private final RestClient restClient;
 
-    public UserService(DctmConfig dctmConfig, RestClient.Builder restClientBuilder) {
+    public UserService(DctmConfig dctmConfig, OtdsService otdsService, RestClient.Builder restClientBuilder) {
         this.dctmConfig = dctmConfig;
+        this.otdsService = otdsService;
         this.restClient = restClientBuilder.build();
     }
 
@@ -47,6 +50,125 @@ public class UserService {
         dqlBuilder.append("ORDER BY object_name");
 
         return executeDql(dqlBuilder.toString(), page, itemsPerPage);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> createUser(Map<String, Object> request) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/users";
+
+        List<String> allowedFields = List.of(
+            "user_name", "user_login_name", "user_address", "user_privileges",
+            "user_source", "user_state", "user_os_name", "user_db_name",
+            "user_password", "user_global_unique_id", "default_folder",
+            "home_docbase", "acl_name", "description"
+        );
+
+        Map<String, Object> props = new HashMap<>();
+        for (String field : allowedFields) {
+            if (request.containsKey(field) && request.get(field) != null) {
+                Object val = request.get(field);
+                if (val instanceof String s && s.isBlank()) continue;
+                props.put(field, val);
+            }
+        }
+
+
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("properties", props);
+
+        try {
+            Map<String, Object> response = restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "User created successfully");
+            if (response != null) {
+                result.put("data", response);
+            }
+            return result;
+        } catch (RestClientResponseException e) {
+            String body2 = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("Error creating user [{}]: {}", e.getStatusCode(), body2);
+            throw new RuntimeException("Failed to create user [" + e.getStatusCode() + "]: " + body2);
+        } catch (Exception e) {
+            log.error("Error creating user: {}", e.getMessage());
+            throw new RuntimeException("Failed to create user: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Sets the password for an inline-password dm_user via Documentum REST API.
+     * Must be called after the user has been created, as the creation body does not apply the password.
+     */
+    /**
+     * Updates the password of an inline-password dm_user via DQL —
+     * the same mechanism used for user_state updates, confirmed working.
+     */
+    /**
+     * Updates the password of an inline-password dm_user.
+     * Tries multiple Documentum REST approaches in order and logs the result of each.
+     */
+    public Map<String, Object> updateInlineUserPassword(String loginName, String newPassword) {
+        String userUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/users/" + loginName;
+        Map<String, Object> body = Map.of("properties", Map.of("user_password", newPassword));
+
+        // Attempt 1: POST /users/{loginName} + X-Method-Override: PATCH
+        log.info("[InlinePwd] Attempt POST+PATCH on /users/{}", loginName);
+        try {
+            restClient.post()
+                    .uri(userUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .header("X-Method-Override", "PATCH")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[InlinePwd] POST+PATCH succeeded for: {}", loginName);
+            return Map.of("success", true, "message", "Password updated successfully for user: " + loginName);
+        } catch (RestClientResponseException e1) {
+            String r1 = e1.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.warn("[InlinePwd] POST+PATCH failed [{}]: {}", e1.getStatusCode(), r1);
+
+            // Attempt 2: POST /users/{loginName} + X-Method-Override: PUT
+            log.info("[InlinePwd] Attempt POST+PUT on /users/{}", loginName);
+            try {
+                restClient.post()
+                        .uri(userUrl)
+                        .header("Authorization", getAuthHeader())
+                        .header("Content-Type", "application/vnd.emc.documentum+json")
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .header("X-Method-Override", "PUT")
+                        .body(body)
+                        .retrieve()
+                        .toBodilessEntity();
+                log.info("[InlinePwd] POST+PUT succeeded for: {}", loginName);
+                return Map.of("success", true, "message", "Password updated successfully for user: " + loginName);
+            } catch (RestClientResponseException e2) {
+                String r2 = e2.getResponseBodyAsString(StandardCharsets.UTF_8);
+                log.error("[InlinePwd] POST+PUT also failed [{}]: {}", e2.getStatusCode(), r2);
+                throw new RuntimeException(
+                        "Password update failed. POST+PATCH: [" + e1.getStatusCode() + "] " + r1
+                        + " | POST+PUT: [" + e2.getStatusCode() + "] " + r2);
+            }
+        }
+    }
+
+    public Map<String, Object> updateUserPassword(String loginName, String newPassword) {
+        // OTDS manages passwords for OTDS users — delegate to OtdsService
+        otdsService.updateUserPassword(loginName, newPassword);
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("message", "Password updated successfully for user: " + loginName);
+        return result;
     }
 
     public Map<String, Object> updateUserProfile(String objectId, Map<String, Object> properties) {
@@ -95,6 +217,107 @@ public class UserService {
             log.error("Error updating user profile " + objectId, e);
             throw new RuntimeException("Failed to update user profile: " + e.getMessage());
         }
+    }
+
+    /**
+     * Creates a cms_user_profile object in /UserProfile/UsersProfileBO and links it there.
+     */
+    public Map<String, Object> createCmsUserProfile(Map<String, Object> request) {
+        String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+        // Step 1 — resolve folder r_object_id for /UserProfile/UsersProfileBO
+        // r_folder_path is a repeating attribute — must use ANY keyword in DQL
+        String folderDql = "SELECT r_object_id FROM dm_folder WHERE ANY r_folder_path = '/UserProfile/UsersProfileBO'";
+        log.info("Resolving folder /UserProfile/UsersProfileBO");
+        String folderId = resolveSingleObjectId(repoUrl, folderDql, "folder /UserProfile/UsersProfileBO");
+
+        // Step 2 — build properties
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("r_object_type", "cms_user_profile");
+        putIfPresent(props, request, "object_name");
+        putIfPresent(props, request, "user_login_name");
+        putIfPresent(props, request, "user_email_address");
+        putIfPresent(props, request, "designation");
+        putIfPresent(props, request, "hindi_designation");
+        putIfPresent(props, request, "hindi_user_name");
+        putIfPresent(props, request, "uin");
+        putIfPresent(props, request, "location");
+        putIfPresent(props, request, "office_type");
+        putIfPresent(props, request, "ro_short_code");
+        putIfPresent(props, request, "user_grade");
+        putIfPresent(props, request, "department_name");
+        putIfPresent(props, request, "department_short_code");
+        if (request.get("grade_level") != null) props.put("grade_level", request.get("grade_level"));
+        if (request.containsKey("is_active"))   props.put("is_active", request.get("is_active"));
+        // department_short_code_multi is a repeating attribute — wrap in a list
+        String deptCode = (String) request.get("department_short_code");
+        if (deptCode != null && !deptCode.isBlank())
+            props.put("department_short_code_multi", List.of(deptCode));
+
+        // Step 3 — POST to /folders/{folderId}/objects.
+        // /folders/{id}/documents is restricted to dm_document subtypes only.
+        // /folders/{id}/objects accepts any SysObject subtype including cms_user_profile.
+        String createUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/folders/" + folderId + "/objects";
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("properties", props);
+        log.info("Creating cms_user_profile for '{}' in folder {} | hindi_user_name='{}' hindi_designation='{}'",
+                request.get("user_login_name"), folderId,
+                request.get("hindi_user_name"), request.get("hindi_designation"));
+        try {
+            Map<String, Object> response = restClient.post()
+                    .uri(createUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json;charset=UTF-8")
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+            log.info("cms_user_profile created for: {}", request.get("user_login_name"));
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "User profile created successfully");
+            if (response != null) result.put("data", response);
+            return result;
+        } catch (RestClientResponseException e) {
+            String respBody = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("Failed to create cms_user_profile [{}]: {}", e.getStatusCode(), respBody);
+            throw new RuntimeException("Profile creation failed [" + e.getStatusCode() + "]: " + respBody);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String resolveSingleObjectId(String repoUrl, String dql, String label) {
+        try {
+            Map<String, Object> resp = restClient.get()
+                    .uri(repoUrl + "?dql={dql}&items-per-page=1&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+            if (resp != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) resp.get("entries");
+                if (entries != null && !entries.isEmpty()) {
+                    Map<String, Object> content = (Map<String, Object>) entries.get(0).get("content");
+                    if (content != null) {
+                        Map<String, Object> p = (Map<String, Object>) content.get("properties");
+                        if (p != null && p.get("r_object_id") != null)
+                            return (String) p.get("r_object_id");
+                    }
+                }
+            }
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            throw new RuntimeException("Could not resolve " + label + " [" + e.getStatusCode() + "]: " + rb);
+        }
+        throw new RuntimeException("Could not find " + label + " — check the folder path exists in Documentum");
+    }
+
+    private void putIfPresent(Map<String, Object> target, Map<String, Object> source, String key) {
+        Object val = source.get(key);
+        if (val instanceof String s) { if (!s.isBlank()) target.put(key, s); }
+        else if (val != null) target.put(key, val);
     }
 
     @SuppressWarnings("unchecked")
