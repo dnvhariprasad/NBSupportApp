@@ -93,6 +93,15 @@ public class UserService {
             if (response != null) {
                 result.put("data", response);
             }
+
+            // Automatically add the new user to dm_superusers_dynamic.
+            // Documentum REST /users/{name} resolves by user_name (the object identifier),
+            // not user_login_name — so pass user_name here.
+            String userName = (String) props.get("user_name");
+            if (userName != null && !userName.isBlank()) {
+                addUserToGroup(userName, "dm_superusers_dynamic");
+            }
+
             return result;
         } catch (RestClientResponseException e) {
             String body2 = e.getResponseBodyAsString(StandardCharsets.UTF_8);
@@ -101,6 +110,39 @@ public class UserService {
         } catch (Exception e) {
             log.error("Error creating user: {}", e.getMessage());
             throw new RuntimeException("Failed to create user: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Adds a dm_user to a Documentum group via REST POST /groups/{groupName}/users
+     * with body {"href": ".../users/{userName}"} — the format confirmed by probing the API.
+     * userName must be the dm_user's user_name (object identifier), not user_login_name.
+     * Logs a warning on failure but does not abort the parent operation.
+     */
+    private void addUserToGroup(String userName, String groupName) {
+        log.info("[Group] Adding user '{}' to group '{}'", userName, groupName);
+        String usersUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/groups/" + groupName + "/users";
+        // Documentum REST URL lookup is case-sensitive — use user_name exactly as stored.
+        String userHref = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/users/" + userName;
+        Map<String, String> body = Map.of("href", userHref);
+        try {
+            restClient.post()
+                    .uri(usersUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",        "application/vnd.emc.documentum+json")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[Group] User '{}' successfully added to group '{}'", userName, groupName);
+        } catch (RestClientResponseException e) {
+            log.warn("[Group] Failed to add user '{}' to group '{}' [{}]: {}",
+                    userName, groupName, e.getStatusCode(),
+                    e.getResponseBodyAsString(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            log.warn("[Group] Failed to add user '{}' to group '{}': {}", userName, groupName, e.getMessage());
         }
     }
 

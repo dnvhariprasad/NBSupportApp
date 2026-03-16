@@ -8,6 +8,7 @@ import {
     Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
+import { USER_GRADES, getDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
 async function fetchAllUsers() {
@@ -271,6 +272,11 @@ const SOURCE_OPTIONS = [
     { value: 'OTDS',             label: 'OTDS',             description: 'OpenText Directory Services' },
 ];
 
+const USER_GRADE_OPTIONS = [
+    { value: '', label: '— Select grade —', level: '' },
+    ...USER_GRADES.map(g => ({ value: g.value, label: g.label, level: g.gradeLevel })),
+];
+
 const STATE_OPTIONS = [
     { value: 0, label: 'Active' },
     { value: 1, label: 'Inactive' },
@@ -488,11 +494,52 @@ const UserCreateTab = ({ onToast }) => {
     const [showPassword, setShowPassword]   = useState(false);
     const [showOtdsConfirm, setShowOtdsConfirm] = useState(false);
     const [advancedOpen, setAdvancedOpen]   = useState(false);
+    // Track which Hindi fields have been manually edited so auto-fill doesn't overwrite them
+    const hindiTouched = useRef({ profile_hindi_user_name: false, profile_hindi_designation: false });
 
     const handleChange = (field, value) => {
+        if (field === 'profile_hindi_user_name' || field === 'profile_hindi_designation') {
+            hindiTouched.current[field] = true;
+        }
         setForm(f => ({ ...f, [field]: value }));
         if (errors[field]) setErrors(e => ({ ...e, [field]: undefined }));
     };
+
+    // Debounced transliteration: user_name → profile_hindi_user_name
+    useEffect(() => {
+        if (hindiTouched.current.profile_hindi_user_name) return;
+        if (!form.user_name.trim()) {
+            setForm(f => ({ ...f, profile_hindi_user_name: '' }));
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                const res = await api.get(`/transliterate?text=${encodeURIComponent(form.user_name.trim())}`);
+                if (!hindiTouched.current.profile_hindi_user_name && res.data?.result) {
+                    setForm(f => ({ ...f, profile_hindi_user_name: res.data.result }));
+                }
+            } catch { /* silent — user can fill manually */ }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [form.user_name]);
+
+    // Debounced transliteration: profile_designation → profile_hindi_designation
+    useEffect(() => {
+        if (hindiTouched.current.profile_hindi_designation) return;
+        if (!form.profile_designation.trim()) {
+            setForm(f => ({ ...f, profile_hindi_designation: '' }));
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                const res = await api.get(`/transliterate?text=${encodeURIComponent(form.profile_designation.trim())}`);
+                if (!hindiTouched.current.profile_hindi_designation && res.data?.result) {
+                    setForm(f => ({ ...f, profile_hindi_designation: res.data.result }));
+                }
+            } catch { /* silent — user can fill manually */ }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [form.profile_designation]);
 
     const validatePassword = (pw) => {
         if (!pw) return 'Password is required';
@@ -533,11 +580,14 @@ const UserCreateTab = ({ onToast }) => {
             if (!form.profile_hindi_user_name.trim())       e.profile_hindi_user_name       = 'Hindi user name is required';
             if (!form.profile_uin.trim())                   e.profile_uin                   = 'UIN is required';
             if (!form.profile_office_type)                  e.profile_office_type           = 'Office type is required';
+            if (['RO', 'TE'].includes(form.profile_office_type)) {
+                if (!form.profile_location)                 e.profile_location              = 'Location is required';
+                if (!form.profile_ro_short_code.trim())     e.profile_ro_short_code         = 'RO/TE short code is required';
+            }
             if (!form.profile_department_name.trim())       e.profile_department_name       = 'Department name is required';
             if (!form.profile_department_short_code.trim()) e.profile_department_short_code = 'Department short code is required';
-            if (!form.profile_user_grade.trim())            e.profile_user_grade            = 'User grade is required';
-            if (!form.profile_grade_level || isNaN(Number(form.profile_grade_level)))
-                e.profile_grade_level = 'Valid grade level is required';
+            if (!form.profile_user_grade)                   e.profile_user_grade            = 'User grade is required';
+            if (form.profile_grade_level === '')            e.profile_grade_level           = 'Grade level is required';
         }
         return e;
     };
@@ -551,7 +601,14 @@ const UserCreateTab = ({ onToast }) => {
 
     const goBack = () => { setErrors({}); setStep(s => s - 1); };
 
-    const handleReset = () => { setForm(EMPTY_FORM); setErrors({}); setStep(1); setShowPassword(false); setShowOtdsConfirm(false); };
+    const handleReset = () => {
+        setForm(EMPTY_FORM);
+        setErrors({});
+        setStep(1);
+        setShowPassword(false);
+        setShowOtdsConfirm(false);
+        hindiTouched.current = { profile_hindi_user_name: false, profile_hindi_designation: false };
+    };
 
     const handleSubmit = async () => {
         setSubmitting(true);
@@ -684,12 +741,6 @@ const UserCreateTab = ({ onToast }) => {
                                                 className={`${inputCls(errors.user_login_name)} font-mono`} />
                                         </FormField>
                                     </div>
-                                    <FormField label="Description" icon={Info}>
-                                        <input type="text" value={form.description}
-                                            onChange={e => handleChange('description', e.target.value)}
-                                            placeholder="e.g. NABARD staff member — HO Dept"
-                                            className={inputCls(false)} />
-                                    </FormField>
                                     <FormField label="User Address" icon={Mail} required error={errors.user_address} hint="Email address or contact">
                                         <input type="text" value={form.user_address}
                                             onChange={e => handleChange('user_address', e.target.value)}
@@ -826,7 +877,6 @@ const UserCreateTab = ({ onToast }) => {
                                         <FormField label="Hindi Designation" icon={Briefcase} required error={errors.profile_hindi_designation}>
                                             <input type="text" value={form.profile_hindi_designation}
                                                 onChange={e => handleChange('profile_hindi_designation', e.target.value)}
-                                                placeholder="e.g. महाप्रबंधक"
                                                 className={inputCls(errors.profile_hindi_designation)} />
                                         </FormField>
                                     </div>
@@ -834,7 +884,6 @@ const UserCreateTab = ({ onToast }) => {
                                         <FormField label="Hindi User Name" icon={User} required error={errors.profile_hindi_user_name}>
                                             <input type="text" value={form.profile_hindi_user_name}
                                                 onChange={e => handleChange('profile_hindi_user_name', e.target.value)}
-                                                placeholder="e.g. राहुल शर्मा"
                                                 className={inputCls(errors.profile_hindi_user_name)} />
                                         </FormField>
                                         <FormField label="UIN" icon={Hash} required error={errors.profile_uin}>
@@ -844,59 +893,106 @@ const UserCreateTab = ({ onToast }) => {
                                                 className={`${inputCls(errors.profile_uin)} font-mono`} />
                                         </FormField>
                                     </div>
+                                    <FormField label="Office Type" icon={Building2} required error={errors.profile_office_type}>
+                                        <SelectField value={form.profile_office_type}
+                                            onChange={v => {
+                                                handleChange('profile_office_type', v);
+                                                handleChange('profile_location', v === 'HO' ? 'Mumbai' : '');
+                                                handleChange('profile_ro_short_code', '');
+                                                handleChange('profile_department_name', '');
+                                                handleChange('profile_department_short_code', '');
+                                            }}
+                                            options={[
+                                                { value: '',   label: '— Select office type —' },
+                                                { value: 'HO', label: 'HO — Head Office' },
+                                                { value: 'RO', label: 'RO — Regional Office' },
+                                                { value: 'TE', label: 'TE — Training Establishment' },
+                                            ]} />
+                                    </FormField>
+                                    {/* Location + RO/TE Short Code row */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <FormField label="Office Type" icon={Building2} required error={errors.profile_office_type}>
-                                            <SelectField value={form.profile_office_type}
-                                                onChange={v => handleChange('profile_office_type', v)}
-                                                options={[
-                                                    { value: '',   label: '— Select office type —' },
-                                                    { value: 'HO', label: 'HO — Head Office' },
-                                                    { value: 'RO', label: 'RO — Regional Office' },
-                                                    { value: 'TE', label: 'TE — Training Establishment' },
-                                                ]} />
-                                            {errors.profile_office_type && <p className="text-xs text-red-500 mt-1">{errors.profile_office_type}</p>}
+                                        <FormField label="Location" icon={MapPin}
+                                            required={['RO','TE'].includes(form.profile_office_type)}
+                                            error={errors.profile_location}>
+                                            {form.profile_office_type === 'HO' ? (
+                                                <div className="relative">
+                                                    <select disabled className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-10">
+                                                        <option>Mumbai</option>
+                                                    </select>
+                                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                                                        <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                        </svg>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <SelectField value={form.profile_location}
+                                                    onChange={v => {
+                                                        handleChange('profile_location', v);
+                                                        // Auto-fill RO/TE short code from location
+                                                        const locs = getLocations(form.profile_office_type);
+                                                        const loc = locs.find(l => l.location === v);
+                                                        handleChange('profile_ro_short_code', loc ? loc.shortCode : '');
+                                                        // Clear department when location changes
+                                                        handleChange('profile_department_name', '');
+                                                        handleChange('profile_department_short_code', '');
+                                                    }}
+                                                    options={[
+                                                        { value: '', label: '— Select location —' },
+                                                        ...getLocations(form.profile_office_type).map(l => ({ value: l.location, label: l.location })),
+                                                    ]} />
+                                            )}
                                         </FormField>
-                                        <FormField label="RO Short Code" icon={Tag} hint="Leave blank for HO users">
-                                            <input type="text" value={form.profile_ro_short_code}
-                                                onChange={e => handleChange('profile_ro_short_code', e.target.value)}
-                                                placeholder="e.g. MUM"
-                                                className={`${inputCls(false)} font-mono`} />
+                                        <FormField label="RO/TE Short Code" icon={Tag}
+                                            required={['RO','TE'].includes(form.profile_office_type)}
+                                            error={errors.profile_ro_short_code}>
+                                            <input type="text" readOnly value={form.profile_ro_short_code}
+                                                disabled={form.profile_office_type === 'HO' || !form.profile_office_type}
+                                                placeholder="Auto-filled from location"
+                                                className={`${inputCls(errors.profile_ro_short_code)} font-mono bg-slate-50 cursor-default disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed`} />
                                         </FormField>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <FormField label="Department Name" icon={Layers} required error={errors.profile_department_name}>
-                                            <input type="text" value={form.profile_department_name}
-                                                onChange={e => handleChange('profile_department_name', e.target.value)}
-                                                placeholder="e.g. DDSI"
-                                                className={inputCls(errors.profile_department_name)} />
+                                            {(() => {
+                                                const depts = getDepartments(form.profile_office_type, form.profile_location);
+                                                const needsLocation = ['RO','TE'].includes(form.profile_office_type) && !form.profile_location;
+                                                return (
+                                                    <SelectField value={form.profile_department_name}
+                                                        onChange={v => {
+                                                            handleChange('profile_department_name', v);
+                                                            const dept = depts.find(d => d.name === v);
+                                                            handleChange('profile_department_short_code', dept ? dept.shortCode : '');
+                                                        }}
+                                                        options={[
+                                                            { value: '', label: needsLocation ? '— Select location first —' : '— Select department —' },
+                                                            ...depts.map(d => ({ value: d.name, label: d.name })),
+                                                        ]} />
+                                                );
+                                            })()}
                                         </FormField>
                                         <FormField label="Department Short Code" icon={Tag} required error={errors.profile_department_short_code}>
-                                            <input type="text" value={form.profile_department_short_code}
-                                                onChange={e => handleChange('profile_department_short_code', e.target.value)}
-                                                placeholder="e.g. ddsi"
-                                                className={`${inputCls(errors.profile_department_short_code)} font-mono`} />
+                                            <input type="text" readOnly value={form.profile_department_short_code}
+                                                placeholder="Auto-filled from department"
+                                                className={`${inputCls(errors.profile_department_short_code)} font-mono bg-slate-50 cursor-default`} />
                                         </FormField>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <FormField label="User Grade" icon={GraduationCap} required error={errors.profile_user_grade}>
-                                            <input type="text" value={form.profile_user_grade}
-                                                onChange={e => handleChange('profile_user_grade', e.target.value)}
-                                                placeholder="e.g. grade_d"
-                                                className={inputCls(errors.profile_user_grade)} />
+                                            <SelectField value={form.profile_user_grade}
+                                                onChange={v => {
+                                                    handleChange('profile_user_grade', v);
+                                                    const opt = USER_GRADE_OPTIONS.find(o => o.value === v);
+                                                    handleChange('profile_grade_level', opt?.level ?? '');
+                                                }}
+                                                options={USER_GRADE_OPTIONS} />
                                         </FormField>
                                         <FormField label="Grade Level" icon={Hash} required error={errors.profile_grade_level}>
-                                            <input type="number" min="1" value={form.profile_grade_level}
-                                                onChange={e => handleChange('profile_grade_level', e.target.value)}
-                                                placeholder="e.g. 4"
-                                                className={inputCls(errors.profile_grade_level)} />
+                                            <input type="number" min="0" readOnly
+                                                value={form.profile_grade_level}
+                                                className={`${inputCls(errors.profile_grade_level)} bg-slate-50 cursor-default`} />
                                         </FormField>
                                     </div>
-                                    <FormField label="Location" icon={MapPin} hint="City or office location">
-                                        <input type="text" value={form.profile_location}
-                                            onChange={e => handleChange('profile_location', e.target.value)}
-                                            placeholder="e.g. Mumbai"
-                                            className={inputCls(false)} />
-                                    </FormField>
                                     <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
                                         <input type="checkbox" checked={form.profile_is_active}
                                             onChange={e => handleChange('profile_is_active', e.target.checked)}
@@ -936,7 +1032,13 @@ const UserCreateTab = ({ onToast }) => {
                                         Next <ChevronRight size={15} />
                                     </button>
                                 ) : (
-                                    <button type="button" onClick={handleSubmit} disabled={submitting || !form.profile_designation.trim() || !form.profile_hindi_designation.trim() || !form.profile_hindi_user_name.trim() || !form.profile_uin.trim() || !form.profile_office_type || !form.profile_department_name.trim() || !form.profile_department_short_code.trim() || !form.profile_user_grade.trim() || !form.profile_grade_level || isNaN(Number(form.profile_grade_level))}
+                                    <button type="button" onClick={handleSubmit} disabled={submitting ||
+                                        !form.profile_designation.trim() || !form.profile_hindi_designation.trim() ||
+                                        !form.profile_hindi_user_name.trim() || !form.profile_uin.trim() ||
+                                        !form.profile_office_type || !form.profile_department_name.trim() ||
+                                        !form.profile_department_short_code.trim() || !form.profile_user_grade ||
+                                        form.profile_grade_level === '' ||
+                                        (['RO','TE'].includes(form.profile_office_type) && (!form.profile_ro_short_code.trim() || !form.profile_location))}
                                         className="flex items-center gap-2 px-6 py-2 bg-[#0A66C2] hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed">
                                         {submitting
                                             ? <><Loader2 size={15} className="animate-spin" /> Creating...</>
