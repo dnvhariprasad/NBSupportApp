@@ -46,6 +46,34 @@ public class UserController {
     }
 
     /**
+     * Search dm_user objects
+     * GET /api/users/dm
+     */
+    @GetMapping("/dm")
+    public Map<String, Object> searchDmUsers(
+            @RequestParam(required = false) String query,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return userService.searchDmUsers(query, page, size);
+    }
+
+    /**
+     * Update editable properties on a dm_user
+     * PATCH /api/users/dm/{loginName}
+     */
+    @PatchMapping("/dm/{loginName}")
+    public ResponseEntity<Map<String, Object>> updateDmUser(
+            @PathVariable String loginName,
+            @RequestBody Map<String, Object> properties) {
+        try {
+            return ResponseEntity.ok(userService.updateDmUser(loginName, properties));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
      * Search user profiles
      */
     @GetMapping("/profiles")

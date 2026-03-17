@@ -213,6 +213,61 @@ public class UserService {
         return result;
     }
 
+    public Map<String, Object> searchDmUsers(String query, int page, int itemsPerPage) {
+        StringBuilder dql = new StringBuilder();
+        dql.append("SELECT user_name, user_login_name, user_address, user_source, ");
+        dql.append("user_privileges, user_state, description ");
+        dql.append("FROM dm_user WHERE user_login_name IS NOT NULL AND user_login_name != ' ' ");
+
+        if (query != null && !query.trim().isEmpty()) {
+            String q = query.trim();
+            dql.append("AND (user_name LIKE '%").append(q).append("%' ");
+            dql.append("OR user_login_name LIKE '%").append(q).append("%' ");
+            dql.append("OR user_address LIKE '%").append(q).append("%') ");
+        }
+        dql.append("ORDER BY user_name");
+        return executeDql(dql.toString(), page, itemsPerPage);
+    }
+
+    public Map<String, Object> updateDmUser(String loginName, Map<String, Object> properties) {
+        String userUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/users/" + loginName;
+
+        List<String> allowedFields = List.of(
+            "user_name", "user_address", "user_privileges", "user_state",
+            "description", "user_os_name", "user_db_name", "default_folder",
+            "home_docbase", "acl_name"
+        );
+
+        Map<String, Object> props = new HashMap<>();
+        for (String field : allowedFields) {
+            if (properties.containsKey(field) && properties.get(field) != null) {
+                props.put(field, properties.get(field));
+            }
+        }
+
+        Map<String, Object> body = Map.of("properties", props);
+        try {
+            restClient.post()
+                    .uri(userUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",        "application/vnd.emc.documentum+json")
+                    .header("X-Method-Override", "PATCH")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            return Map.of("success", true, "message", "User updated successfully");
+        } catch (RestClientResponseException e) {
+            String respBody = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("Error updating dm_user [{}]: {}", e.getStatusCode(), respBody);
+            throw new RuntimeException("Failed to update user [" + e.getStatusCode() + "]: " + respBody);
+        } catch (Exception e) {
+            log.error("Error updating dm_user: {}", e.getMessage());
+            throw new RuntimeException("Failed to update user: " + e.getMessage());
+        }
+    }
+
     public Map<String, Object> updateUserProfile(String objectId, Map<String, Object> properties) {
         String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/objects/" + objectId;
 
@@ -231,9 +286,10 @@ public class UserService {
         // 2. Prepare properties for cms_user_profile update
         Map<String, Object> body = new HashMap<>();
         Map<String, Object> props = new HashMap<>();
-        
+
         List<String> allowedProps = List.of(
-            "object_name", "uin", "department_name", "user_grade", "designation",
+            "object_name", "uin", "department_name", "department_short_code",
+            "ro_short_code", "user_grade", "grade_level", "designation",
             "user_email_address", "primary_mobile_number", "location", "office_type",
             "is_active", "hindi_user_name", "hindi_designation", "user_role"
         );
@@ -242,6 +298,15 @@ public class UserService {
             if (allowedProps.contains(key)) {
                 props.put(key, properties.get(key));
             }
+        }
+        // department_short_code_multi is a repeating attribute — handle separately
+        Object multiRaw = properties.get("department_short_code_multi");
+        if (multiRaw instanceof List<?> multiList && !multiList.isEmpty()) {
+            props.put("department_short_code_multi", multiList);
+        } else {
+            String deptCode = (String) properties.get("department_short_code");
+            if (deptCode != null && !deptCode.isBlank())
+                props.put("department_short_code_multi", List.of(deptCode));
         }
         body.put("properties", props);
 
@@ -291,10 +356,16 @@ public class UserService {
         putIfPresent(props, request, "department_short_code");
         if (request.get("grade_level") != null) props.put("grade_level", request.get("grade_level"));
         if (request.containsKey("is_active"))   props.put("is_active", request.get("is_active"));
-        // department_short_code_multi is a repeating attribute — wrap in a list
-        String deptCode = (String) request.get("department_short_code");
-        if (deptCode != null && !deptCode.isBlank())
-            props.put("department_short_code_multi", List.of(deptCode));
+        // department_short_code_multi is a repeating attribute
+        // Frontend sends it as a List<String>; fall back to single department_short_code if absent
+        Object multiRaw = request.get("department_short_code_multi");
+        if (multiRaw instanceof List<?> multiList && !multiList.isEmpty()) {
+            props.put("department_short_code_multi", multiList);
+        } else {
+            String deptCode = (String) request.get("department_short_code");
+            if (deptCode != null && !deptCode.isBlank())
+                props.put("department_short_code_multi", List.of(deptCode));
+        }
 
         // Step 3 — POST to /folders/{folderId}/objects.
         // /folders/{id}/documents is restricted to dm_document subtypes only.

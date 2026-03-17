@@ -5,7 +5,7 @@ import {
     Loader2, Edit2, ChevronsLeft, X, ArrowUpDown, ArrowUp, ArrowDown,
     CheckCircle2, AlertCircle, Shield, Mail, User, Key, Database,
     FolderOpen, Globe, Lock, Tag, Info, Eye, EyeOff, KeyRound, UserCog,
-    Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers
+    Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers, Save
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
 import { USER_GRADES, getDepartments, getLocations } from '../data/nabardMetadata.js';
@@ -63,8 +63,412 @@ const Toast = ({ toast, onDismiss }) => {
     );
 };
 
-// ─── User Directory Tab ───────────────────────────────────────────────────────
-const UserDirectoryTab = () => {
+// ─── Source label helper ──────────────────────────────────────────────────────
+const DM_SOURCE_LABELS = { 0: 'Local', 1: 'LDAP', 3: 'OTDS' };
+const DM_STATE_LABELS  = { 0: 'Active', 1: 'Inactive' };
+
+// ─── Edit dm_user Modal ───────────────────────────────────────────────────────
+const EditDmUserModal = ({ user, isOpen, onClose, onSaved, onToast }) => {
+    const [form, setForm]         = useState({});
+    const [advOpen, setAdvOpen]   = useState(false);
+    const [loading, setLoading]   = useState(false);
+    const [error, setError]       = useState(null);
+
+    useEffect(() => {
+        if (!isOpen || !user) return;
+        setForm({
+            user_address:   user.user_address   || '',
+            user_privileges: user.user_privileges ?? 0,
+            user_state:     user.user_state     ?? 0,
+            description:    user.description    || '',
+            user_os_name:   user.user_os_name   || '',
+            user_db_name:   user.user_db_name   || '',
+            default_folder: user.default_folder || '',
+            home_docbase:   user.home_docbase   || '',
+            acl_name:       user.acl_name       || '',
+        });
+        setError(null);
+        setAdvOpen(false);
+    }, [isOpen, user]);
+
+    const set = (f, v) => setForm(p => ({ ...p, [f]: v }));
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+        try {
+            await api.patch(`/users/dm/${encodeURIComponent(user.user_login_name)}`, form);
+            onToast({ type: 'success', message: `dm_user "${user.user_name}" updated.` });
+            onSaved();
+            onClose();
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to update user.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
+    const Lbl = ({ children }) => <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{children}</label>;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden max-h-[90vh]">
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <UserCog size={16} className="text-violet-600" />
+                            Edit Documentum User
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-0.5 font-mono">{user?.user_name} · {user?.user_login_name}</p>
+                    </div>
+                    <button onClick={onClose} className="p-1.5 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                    {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100">{error}</div>}
+                    <form id="editDmUserForm" onSubmit={handleSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1 sm:col-span-2">
+                                <Lbl>Email / User Address</Lbl>
+                                <input type="text" value={form.user_address}
+                                    onChange={e => set('user_address', e.target.value)}
+                                    placeholder="e.g. user@nabard.org"
+                                    className={inputCls} />
+                            </div>
+                            <div className="space-y-1">
+                                <Lbl>User Privileges</Lbl>
+                                <div className="relative">
+                                    <select value={form.user_privileges}
+                                        onChange={e => set('user_privileges', Number(e.target.value))}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer">
+                                        {PRIVILEGE_OPTIONS.map(o => (
+                                            <option key={o.value} value={o.value}>{o.label}</option>
+                                        ))}
+                                    </select>
+                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                                        <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <Lbl>User State</Lbl>
+                                <div className="relative">
+                                    <select value={form.user_state}
+                                        onChange={e => set('user_state', Number(e.target.value))}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer">
+                                        <option value={0}>Active</option>
+                                        <option value={1}>Inactive</option>
+                                    </select>
+                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                                        <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="space-y-1 sm:col-span-2">
+                                <Lbl>Description</Lbl>
+                                <input type="text" value={form.description}
+                                    onChange={e => set('description', e.target.value)}
+                                    placeholder="Optional note"
+                                    className={inputCls} />
+                            </div>
+                        </div>
+
+                        {/* Advanced */}
+                        <div className="border border-slate-200 rounded-lg overflow-hidden">
+                            <button type="button"
+                                onClick={() => setAdvOpen(o => !o)}
+                                className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors text-left">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Advanced (optional)</span>
+                                <ChevronDown size={14} className={`text-slate-400 transition-transform ${advOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {advOpen && (
+                                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {[
+                                        { field: 'user_os_name',   label: 'OS Name' },
+                                        { field: 'user_db_name',   label: 'DB Name' },
+                                        { field: 'default_folder', label: 'Default Folder' },
+                                        { field: 'home_docbase',   label: 'Home Docbase' },
+                                        { field: 'acl_name',       label: 'ACL Name' },
+                                    ].map(({ field, label }) => (
+                                        <div key={field} className="space-y-1">
+                                            <Lbl>{label}</Lbl>
+                                            <input type="text" value={form[field]}
+                                                onChange={e => set(field, e.target.value)}
+                                                className={inputCls} />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </form>
+                </div>
+
+                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                    <button onClick={onClose}
+                        className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" form="editDmUserForm" disabled={loading}
+                        className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2 transition-colors">
+                        {loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ─── dm_user Sub-Tab ──────────────────────────────────────────────────────────
+const DmUserTab = ({ onToast }) => {
+    const [allUsers, setAllUsers]         = useState([]);
+    const [loading, setLoading]           = useState(true);
+    const [searchQuery, setSearchQuery]   = useState('');
+    const [currentPage, setCurrentPage]   = useState(1);
+    const [pageSize]                      = useState(15);
+    const [sortConfig, setSortConfig]     = useState({ key: 'user_name', direction: 'asc' });
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [isEditOpen, setIsEditOpen]     = useState(false);
+
+    const fetchDmUsers = async () => {
+        setLoading(true);
+        try {
+            const PAGE_SIZE = 2000;
+            let page = 1, all = [];
+            while (true) {
+                const res = await api.get('/users/dm', { params: { page, size: PAGE_SIZE } });
+                const users = res.data.users || [];
+                all = all.concat(users);
+                if (!res.data.hasNext) break;
+                page++;
+            }
+            setAllUsers(all);
+        } catch (err) {
+            console.error('Error fetching dm_users', err);
+            setAllUsers([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { fetchDmUsers(); }, []);
+
+    const processed = useMemo(() => {
+        let result = [...allUsers];
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase().trim();
+            result = result.filter(u =>
+                (u.user_name?.toLowerCase()       || '').includes(q) ||
+                (u.user_login_name?.toLowerCase() || '').includes(q) ||
+                (u.user_address?.toLowerCase()    || '').includes(q)
+            );
+        }
+        if (sortConfig.key) {
+            result.sort((a, b) => {
+                const av = String(a[sortConfig.key] ?? '');
+                const bv = String(b[sortConfig.key] ?? '');
+                if (av < bv) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (av > bv) return sortConfig.direction === 'asc' ? 1  : -1;
+                return 0;
+            });
+        }
+        return result;
+    }, [allUsers, searchQuery, sortConfig]);
+
+    const totalItems   = processed.length;
+    const totalPages   = Math.ceil(totalItems / pageSize);
+    const rangeStart   = (currentPage - 1) * pageSize;
+    const rangeEnd     = rangeStart + pageSize;
+    const currentUsers = processed.slice(rangeStart, rangeEnd);
+
+    const handleSort = (key) => setSortConfig(c => ({
+        key, direction: c.key === key && c.direction === 'asc' ? 'desc' : 'asc',
+    }));
+
+    const SortIcon = ({ columnKey }) => {
+        if (sortConfig.key !== columnKey)
+            return <ArrowUpDown size={14} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />;
+        return sortConfig.direction === 'asc'
+            ? <ArrowUp size={14} className="text-[#0A66C2] ml-1" />
+            : <ArrowDown size={14} className="text-[#0A66C2] ml-1" />;
+    };
+
+    const SortableHeader = ({ label, columnKey, className = '' }) => (
+        <th className={`px-4 py-3 font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors group select-none ${className}`}
+            onClick={() => handleSort(columnKey)}>
+            <div className="flex items-center">{label}<SortIcon columnKey={columnKey} /></div>
+        </th>
+    );
+
+    return (
+        <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div className="text-sm text-slate-500 font-medium">
+                    {!loading && <span><span className="text-slate-900 font-semibold">{totalItems}</span> dm_users found</span>}
+                </div>
+                <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input type="text" value={searchQuery}
+                        onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                        placeholder="Search by name, login, email..."
+                        className="w-full sm:w-72 pl-9 pr-8 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] shadow-sm" />
+                    {searchQuery && (
+                        <button onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-full">
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex-1 flex flex-col overflow-hidden">
+                <div className="overflow-x-auto flex-1">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th className="px-4 py-3 font-semibold text-slate-700 w-12">#</th>
+                                <SortableHeader label="User Name"   columnKey="user_name" />
+                                <SortableHeader label="Login Name"  columnKey="user_login_name" />
+                                <SortableHeader label="Email"       columnKey="user_address" />
+                                <SortableHeader label="Source"      columnKey="user_source" />
+                                <SortableHeader label="State"       columnKey="user_state" />
+                                <SortableHeader label="Privileges"  columnKey="user_privileges" />
+                                <th className="px-4 py-3 font-semibold text-slate-700 w-16 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {loading ? (
+                                <tr><td colSpan="8" className="px-4 py-20 text-center">
+                                    <div className="flex flex-col items-center justify-center text-slate-500">
+                                        <Loader2 size={32} className="animate-spin text-violet-600 mb-3" />
+                                        <p className="text-sm font-medium">Loading Documentum users...</p>
+                                    </div>
+                                </td></tr>
+                            ) : currentUsers.length === 0 ? (
+                                <tr><td colSpan="8" className="px-4 py-16 text-center text-slate-500">
+                                    <div className="flex flex-col items-center justify-center">
+                                        <Users className="h-12 w-12 text-slate-200 mb-3" />
+                                        <p className="text-base font-medium text-slate-600">No users found</p>
+                                        <p className="text-sm mt-1">Try adjusting your search terms</p>
+                                    </div>
+                                </td></tr>
+                            ) : currentUsers.map((user, idx) => (
+                                <tr key={user.user_name || idx} className="hover:bg-violet-50/30 transition-colors group">
+                                    <td className="px-4 py-3 text-slate-400 font-mono text-xs">{rangeStart + idx + 1}</td>
+                                    <td className="px-4 py-3">
+                                        <span className="font-medium text-slate-900">{user.user_name}</span>
+                                    </td>
+                                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{user.user_login_name || '-'}</td>
+                                    <td className="px-4 py-3 text-slate-600 text-xs">{user.user_address || '-'}</td>
+                                    <td className="px-4 py-3">
+                                        {user.user_source !== undefined && user.user_source !== null ? (
+                                            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium border border-blue-100">
+                                                {DM_SOURCE_LABELS[user.user_source] || user.user_source}
+                                            </span>
+                                        ) : '-'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
+                                            user.user_state === 0
+                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                                : 'bg-red-50 text-red-600 border-red-100'
+                                        }`}>
+                                            {DM_STATE_LABELS[user.user_state] ?? user.user_state}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-600 text-xs">
+                                        {PRIVILEGE_OPTIONS.find(p => p.value === user.user_privileges)?.label ?? user.user_privileges ?? '-'}
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        <button onClick={() => { setSelectedUser(user); setIsEditOpen(true); }}
+                                            className="p-2 hover:bg-white border border-transparent hover:border-slate-200 text-slate-400 hover:text-violet-600 hover:shadow-sm rounded-lg transition-all"
+                                            title="Edit dm_user">
+                                            <Edit2 size={16} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50/50">
+                    <div className="text-sm text-slate-500">
+                        {totalItems > 0 ? (
+                            <>Showing <span className="font-medium text-slate-900">{rangeStart + 1}</span> to <span className="font-medium text-slate-900">{Math.min(rangeEnd, totalItems)}</span> of <span className="font-medium text-slate-900">{totalItems}</span> results</>
+                        ) : 'No results'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1 || loading}
+                            className="p-2 border border-slate-200 rounded-lg hover:bg-white hover:text-violet-600 disabled:opacity-40 disabled:hover:bg-transparent text-slate-500 transition-colors">
+                            <ChevronsLeft size={16} />
+                        </button>
+                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1 || loading}
+                            className="p-2 border border-slate-200 rounded-lg hover:bg-white hover:text-violet-600 disabled:opacity-40 disabled:hover:bg-transparent text-slate-500 transition-colors">
+                            <ChevronLeft size={16} />
+                        </button>
+                        <div className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 min-w-[3rem] text-center shadow-sm">
+                            {currentPage}
+                        </div>
+                        <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || loading || totalPages === 0}
+                            className="p-2 border border-slate-200 rounded-lg hover:bg-white hover:text-violet-600 disabled:opacity-40 disabled:hover:bg-transparent text-slate-500 transition-colors">
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <EditDmUserModal
+                user={selectedUser}
+                isOpen={isEditOpen}
+                onClose={() => setIsEditOpen(false)}
+                onSaved={fetchDmUsers}
+                onToast={onToast}
+            />
+        </div>
+    );
+};
+
+// ─── User Directory Tab (wrapper with cms_user_profile + dm_user sub-tabs) ────
+const UserDirectoryTab = ({ onToast }) => {
+    const [subTab, setSubTab] = useState('profiles');
+    return (
+        <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Sub-nav */}
+            <div className="flex items-center gap-1 mb-5 border-b border-slate-200">
+                {[
+                    { id: 'profiles', label: 'User Profiles',       icon: User    },
+                    { id: 'dmusers',  label: 'Documentum Users',    icon: UserCog },
+                ].map(({ id, label, icon: Icon }) => (
+                    <button key={id} type="button" onClick={() => setSubTab(id)}
+                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px ${
+                            subTab === id
+                                ? 'border-[#0A66C2] text-[#0A66C2]'
+                                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                        }`}>
+                        <Icon size={15} />{label}
+                    </button>
+                ))}
+            </div>
+            {subTab === 'profiles' && <CmsProfileTab onToast={onToast} />}
+            {subTab === 'dmusers'  && <DmUserTab     onToast={onToast} />}
+        </div>
+    );
+};
+
+// ─── cms_user_profile Sub-Tab (was UserDirectoryTab) ─────────────────────────
+const CmsProfileTab = ({ onToast }) => {
     const [allUsers, setAllUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
@@ -295,6 +699,8 @@ const EMPTY_FORM = {
     profile_office_type: '', profile_ro_short_code: '', profile_is_active: true,
     profile_user_grade: '', profile_grade_level: '', profile_department_name: '',
     profile_department_short_code: '',
+    profile_department_names: [],
+    profile_department_short_code_multi: [],
 };
 
 const SelectField = ({ value, onChange, options, className = '' }) => (
@@ -584,8 +990,12 @@ const UserCreateTab = ({ onToast }) => {
                 if (!form.profile_location)                 e.profile_location              = 'Location is required';
                 if (!form.profile_ro_short_code.trim())     e.profile_ro_short_code         = 'RO/TE short code is required';
             }
-            if (!form.profile_department_name.trim())       e.profile_department_name       = 'Department name is required';
-            if (!form.profile_department_short_code.trim()) e.profile_department_short_code = 'Department short code is required';
+            if (['RO', 'TE'].includes(form.profile_office_type)) {
+                if (form.profile_department_names.length === 0) e.profile_department_name = 'At least one department is required';
+            } else {
+                if (!form.profile_department_name.trim())       e.profile_department_name       = 'Department name is required';
+                if (!form.profile_department_short_code.trim()) e.profile_department_short_code = 'Department short code is required';
+            }
             if (!form.profile_user_grade)                   e.profile_user_grade            = 'User grade is required';
             if (form.profile_grade_level === '')            e.profile_grade_level           = 'Grade level is required';
         }
@@ -677,8 +1087,13 @@ const UserCreateTab = ({ onToast }) => {
                     is_active:                form.profile_is_active,
                     user_grade:               form.profile_user_grade.trim(),
                     grade_level:              Number(form.profile_grade_level),
-                    department_name:          form.profile_department_name.trim(),
+                    department_name:          ['RO','TE'].includes(form.profile_office_type)
+                                                  ? (form.profile_department_names[0] || '')
+                                                  : form.profile_department_name.trim(),
                     department_short_code:    form.profile_department_short_code.trim(),
+                    ...(['RO','TE'].includes(form.profile_office_type) && {
+                        department_short_code_multi: form.profile_department_short_code_multi,
+                    }),
                 });
             } catch (profileErr) {
                 const profileMsg = profileErr.response?.data?.message || profileErr.message || 'Profile creation failed';
@@ -692,7 +1107,7 @@ const UserCreateTab = ({ onToast }) => {
 
             // 409 — login name already exists: surface on the Login Name field at step 1
             if (status === 409 || msg.includes('E_CREATE_USER_EXIST') || msg.toLowerCase().includes('already exists')) {
-                setErrors({ user_login_name: 'A user with this login name already exists.' });
+                setErrors({ user_login_name: 'User Name already exists.' });
                 setStep(1);
             } else {
                 onToast({ type: 'error', message: msg });
@@ -901,6 +1316,8 @@ const UserCreateTab = ({ onToast }) => {
                                                 handleChange('profile_ro_short_code', '');
                                                 handleChange('profile_department_name', '');
                                                 handleChange('profile_department_short_code', '');
+                                                handleChange('profile_department_names', []);
+                                                handleChange('profile_department_short_code_multi', []);
                                             }}
                                             options={[
                                                 { value: '',   label: '— Select office type —' },
@@ -936,6 +1353,8 @@ const UserCreateTab = ({ onToast }) => {
                                                         // Clear department when location changes
                                                         handleChange('profile_department_name', '');
                                                         handleChange('profile_department_short_code', '');
+                                                        handleChange('profile_department_names', []);
+                                                        handleChange('profile_department_short_code_multi', []);
                                                     }}
                                                     options={[
                                                         { value: '', label: '— Select location —' },
@@ -956,7 +1375,40 @@ const UserCreateTab = ({ onToast }) => {
                                         <FormField label="Department Name" icon={Layers} required error={errors.profile_department_name}>
                                             {(() => {
                                                 const depts = getDepartments(form.profile_office_type, form.profile_location);
-                                                const needsLocation = ['RO','TE'].includes(form.profile_office_type) && !form.profile_location;
+                                                const isROTE = ['RO','TE'].includes(form.profile_office_type);
+                                                const needsLocation = isROTE && !form.profile_location;
+                                                if (isROTE) {
+                                                    return (
+                                                        <div className={`border rounded-xl overflow-hidden ${errors.profile_department_name ? 'border-red-400' : 'border-slate-200'}`}>
+                                                            {needsLocation ? (
+                                                                <p className="px-4 py-2.5 text-sm text-slate-400">— Select location first —</p>
+                                                            ) : (
+                                                                <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                                                    {depts.map(d => (
+                                                                        <label key={d.name} className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-slate-50">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={form.profile_department_names.includes(d.name)}
+                                                                                onChange={() => {
+                                                                                    const current = form.profile_department_names;
+                                                                                    const newNames = current.includes(d.name)
+                                                                                        ? current.filter(n => n !== d.name)
+                                                                                        : [...current, d.name];
+                                                                                    const newCodes = newNames.map(n => depts.find(dep => dep.name === n)?.shortCode || '').filter(Boolean);
+                                                                                    handleChange('profile_department_names', newNames);
+                                                                                    handleChange('profile_department_short_code', newCodes[0] || '');
+                                                                                    handleChange('profile_department_short_code_multi', newCodes);
+                                                                                }}
+                                                                                className="rounded accent-[#0A66C2]"
+                                                                            />
+                                                                            <span className="text-sm text-slate-700">{d.name}</span>
+                                                                        </label>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                }
                                                 return (
                                                     <SelectField value={form.profile_department_name}
                                                         onChange={v => {
@@ -965,14 +1417,17 @@ const UserCreateTab = ({ onToast }) => {
                                                             handleChange('profile_department_short_code', dept ? dept.shortCode : '');
                                                         }}
                                                         options={[
-                                                            { value: '', label: needsLocation ? '— Select location first —' : '— Select department —' },
+                                                            { value: '', label: '— Select department —' },
                                                             ...depts.map(d => ({ value: d.name, label: d.name })),
                                                         ]} />
                                                 );
                                             })()}
                                         </FormField>
                                         <FormField label="Department Short Code" icon={Tag} required error={errors.profile_department_short_code}>
-                                            <input type="text" readOnly value={form.profile_department_short_code}
+                                            <input type="text" readOnly
+                                                value={['RO','TE'].includes(form.profile_office_type)
+                                                    ? form.profile_department_short_code_multi.join(',')
+                                                    : form.profile_department_short_code}
                                                 placeholder="Auto-filled from department"
                                                 className={`${inputCls(errors.profile_department_short_code)} font-mono bg-slate-50 cursor-default`} />
                                         </FormField>
@@ -1035,8 +1490,11 @@ const UserCreateTab = ({ onToast }) => {
                                     <button type="button" onClick={handleSubmit} disabled={submitting ||
                                         !form.profile_designation.trim() || !form.profile_hindi_designation.trim() ||
                                         !form.profile_hindi_user_name.trim() || !form.profile_uin.trim() ||
-                                        !form.profile_office_type || !form.profile_department_name.trim() ||
-                                        !form.profile_department_short_code.trim() || !form.profile_user_grade ||
+                                        !form.profile_office_type ||
+                                        (['RO','TE'].includes(form.profile_office_type)
+                                            ? form.profile_department_names.length === 0
+                                            : (!form.profile_department_name.trim() || !form.profile_department_short_code.trim())) ||
+                                        !form.profile_user_grade ||
                                         form.profile_grade_level === '' ||
                                         (['RO','TE'].includes(form.profile_office_type) && (!form.profile_ro_short_code.trim() || !form.profile_location))}
                                         className="flex items-center gap-2 px-6 py-2 bg-[#0A66C2] hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed">
@@ -1790,13 +2248,13 @@ const PasswordTab = ({ onToast }) => {
 
 // ─── Main UsersPage ───────────────────────────────────────────────────────────
 const UsersPage = () => {
-    const [activeTab, setActiveTab] = useState('directory');
+    const [activeTab, setActiveTab] = useState('creation');
     const [toast, setToast] = useState(null);
 
     const tabs = [
-        { id: 'directory', label: 'User Directory',        icon: Users    },
-        { id: 'creation',  label: 'User Creation',          icon: UserPlus },
-        { id: 'password',  label: 'User Password Update',   icon: KeyRound },
+        { id: 'creation',  label: 'User Creation',        icon: UserPlus },
+        { id: 'password',  label: 'User Password Update', icon: KeyRound },
+        { id: 'directory', label: 'User Directory',       icon: Users    },
     ];
 
     return (
@@ -1833,9 +2291,9 @@ const UsersPage = () => {
 
             {/* Tab content */}
             <div className="flex-1 flex flex-col overflow-hidden">
-                {activeTab === 'directory' && <UserDirectoryTab />}
-                {activeTab === 'creation'  && <UserCreateTab onToast={setToast} />}
-                {activeTab === 'password'  && <PasswordTab onToast={setToast} />}
+                {activeTab === 'creation'  && <UserCreateTab   onToast={setToast} />}
+                {activeTab === 'password'  && <PasswordTab     onToast={setToast} />}
+                {activeTab === 'directory' && <UserDirectoryTab onToast={setToast} />}
             </div>
         </div>
     );
