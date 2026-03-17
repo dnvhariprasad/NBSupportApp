@@ -7,6 +7,7 @@ import WorkflowsPage from './pages/WorkflowsPage';
 import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
 import QueryPage from './pages/QueryPage';
+import VerticalsPage from './pages/VerticalsPage';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="groups" element={<GroupsPage />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="verticals" element={<VerticalsPage />} />
             <Route path="query" element={<QueryPage />} />
         </Route>
         

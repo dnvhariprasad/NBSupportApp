@@ -275,6 +275,43 @@ public class GroupService {
     }
 
     /**
+     * Resolve dm_user.user_name from a user_login_name via DQL.
+     * DCTM REST /users/{name} and group membership require user_name, not user_login_name.
+     */
+    @SuppressWarnings("unchecked")
+    private String resolveDmUserName(String userLoginName) {
+        String safe = userLoginName.replace("'", "''");
+        String dql  = "SELECT user_name, user_login_name FROM dm_user WHERE user_login_name = '" + safe + "'";
+        String url  = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                    + "?dql={dql}&items-per-page=1&page=1&inline=true";
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(url, dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+            List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+            if (entries != null && !entries.isEmpty()) {
+                Map<String, Object> content = (Map<String, Object>) entries.get(0).get("content");
+                if (content != null) {
+                    Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                    if (props != null) {
+                        String userName = (String) props.get("user_name");
+                        if (userName != null && !userName.isBlank()) {
+                            log.info("Resolved user_login_name '{}' → dm_user.user_name '{}'", userLoginName, userName);
+                            return userName;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve dm_user.user_name for login_name '{}': {}", userLoginName, e.getMessage());
+        }
+        return userLoginName; // fallback
+    }
+
+    /**
      * Add a member to a group using DCTM REST API
      * The API expects a simple href reference to the user/group resource
      */
@@ -290,8 +327,11 @@ public class GroupService {
             String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
 
             if ("user".equalsIgnoreCase(memberType)) {
+                // DCTM /users/{name} requires dm_user.user_name, not user_login_name
+                String dctmUserName = resolveDmUserName(memberName);
                 addUrl = baseUrl + "/groups/" + groupName + "/users";
-                memberHref = baseUrl + "/users/" + memberName;
+                String encodedName = java.net.URLEncoder.encode(dctmUserName, StandardCharsets.UTF_8).replace("+", "%20");
+                memberHref = baseUrl + "/users/" + encodedName;
             } else {
                 addUrl = baseUrl + "/groups/" + groupName + "/groups";
                 memberHref = baseUrl + "/groups/" + memberName;
@@ -323,10 +363,7 @@ public class GroupService {
 
         } catch (Exception e) {
             log.error("Error adding member '{}' to group '{}': {}", memberName, groupName, e.getMessage(), e);
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", false);
-            result.put("message", "Failed to add member: " + e.getMessage());
-            return result;
+            throw new RuntimeException("Failed to add member: " + e.getMessage());
         }
     }
 
@@ -342,8 +379,10 @@ public class GroupService {
             String url;
             if ("user".equalsIgnoreCase(memberType)) {
                 // DELETE /repositories/{repo}/groups/{groupName}/users/{userName}
+                String dctmUserName = resolveDmUserName(memberName);
+                String encodedName = java.net.URLEncoder.encode(dctmUserName, StandardCharsets.UTF_8).replace("+", "%20");
                 url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
-                        + "/groups/" + groupName + "/users/" + memberName;
+                        + "/groups/" + groupName + "/users/" + encodedName;
             } else {
                 // DELETE /repositories/{repo}/groups/{groupName}/groups/{memberName}
                 url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
@@ -370,6 +409,149 @@ public class GroupService {
             result.put("success", false);
             result.put("message", "Failed to remove member: " + e.getMessage());
             return result;
+        }
+    }
+
+    /**
+     * Search dm_groups by name prefix using DQL (avoids REST filter LIKE issues).
+     * Returns a flat list of {group_name} maps.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, String>> searchGroupsByPrefix(String prefix, int maxResults) {
+        String safe = prefix.replace("'", "''");
+        String dql  = "SELECT group_name FROM dm_group WHERE group_name LIKE '" + safe + "%' ORDER BY group_name";
+        String url  = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                    + "?dql={dql}&items-per-page={max}&page=1&inline=true";
+
+        log.info("Searching groups by prefix '{}' via DQL", prefix);
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(url, dql, maxResults)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, String>> results = new ArrayList<>();
+            List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+            if (entries != null) {
+                for (Map<String, Object> entry : entries) {
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        if (props != null) {
+                            Map<String, String> item = new HashMap<>();
+                            item.put("group_name", (String) props.get("group_name"));
+                            results.add(item);
+                        }
+                    }
+                }
+            }
+            return results;
+        } catch (Exception e) {
+            log.error("Error searching groups by prefix '{}': {}", prefix, e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Return all dm_groups the given user belongs to.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, String>> getGroupsByUser(String username) {
+        // dm_group.users_names stores dm_user.user_name, not user_login_name — resolve first
+        String resolved = resolveDmUserName(username);
+        String safe   = resolved.replace("'", "''");
+        String dql    = "SELECT group_name FROM dm_group WHERE ANY users_names = '" + safe + "' ORDER BY group_name";
+        String url    = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                      + "?dql={dql}&items-per-page=200&page=1&inline=true";
+
+        log.info("Fetching groups for user '{}'", username);
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(url, dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, String>> results = new ArrayList<>();
+            List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+            if (entries != null) {
+                for (Map<String, Object> entry : entries) {
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        if (props != null) {
+                            Map<String, String> item = new HashMap<>();
+                            item.put("group_name", (String) props.get("group_name"));
+                            results.add(item);
+                        }
+                    }
+                }
+            }
+            return results;
+        } catch (Exception e) {
+            log.error("Error fetching groups for user '{}': {}", username, e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Check whether a dm_group with the given name exists.
+     */
+    public Map<String, Object> checkGroupExists(String groupName) {
+        try {
+            Map<String, Object> details = getGroupDetails(groupName);
+            boolean exists = details != null && details.containsKey("properties");
+            Map<String, Object> result = new HashMap<>();
+            result.put("exists", exists);
+            if (exists) {
+                result.put("properties", details.get("properties"));
+            }
+            return result;
+        } catch (Exception e) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("exists", false);
+            return result;
+        }
+    }
+
+    /**
+     * Create a new dm_group with the given group_name and group_display_name
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> createGroup(String groupName, String groupDisplayName) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/groups";
+
+        Map<String, Object> props = new HashMap<>();
+        props.put("group_name", groupName);
+        props.put("group_display_name", groupDisplayName);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("properties", props);
+
+        log.info("Creating dm_group: group_name='{}', group_display_name='{}'", groupName, groupDisplayName);
+
+        try {
+            Map<String, Object> response = restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Vertical '" + groupName + "' created successfully");
+            if (response != null) result.put("group", response);
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error creating group '{}': {}", groupName, e.getMessage(), e);
+            throw new RuntimeException("Failed to create group: " + e.getMessage());
         }
     }
 

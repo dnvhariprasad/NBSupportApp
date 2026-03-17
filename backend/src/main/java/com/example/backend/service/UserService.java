@@ -452,6 +452,24 @@ public class UserService {
         }
     }
 
+    /**
+     * Fetch cms_user_profile objects for a given HO department short code.
+     * department_short_code_multi is a repeating attribute → use ANY keyword.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getUsersByDeptShortCode(String shortCode) {
+        String safe = shortCode.replace("'", "''");
+        String dql  = "SELECT object_name, user_login_name FROM cms_user_profile"
+                    + " WHERE ANY department_short_code_multi = '" + safe + "'"
+                    + " ORDER BY object_name";
+        Map<String, Object> result = executeDql(dql, 1, 500);
+        List<?> raw = (List<?>) result.get("users");
+        if (raw == null) return Collections.emptyList();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Object o : raw) { if (o instanceof Map<?,?> m) list.add((Map<String, Object>) m); }
+        return list;
+    }
+
     private void executeDqlUpdate(String dql) {
          String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
          try {

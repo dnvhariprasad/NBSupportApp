@@ -3,6 +3,7 @@ package com.example.backend.controller;
 import com.example.backend.service.GroupService;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -14,6 +15,16 @@ public class GroupController {
 
     public GroupController(GroupService groupService) {
         this.groupService = groupService;
+    }
+
+    /**
+     * Create a new dm_group (vertical)
+     */
+    @PostMapping
+    public Map<String, Object> createGroup(@RequestBody Map<String, Object> request) {
+        String groupName        = (String) request.get("group_name");
+        String groupDisplayName = (String) request.get("group_display_name");
+        return groupService.createGroup(groupName, groupDisplayName);
     }
 
     /**
@@ -65,6 +76,35 @@ public class GroupController {
             @PathVariable String memberName,
             @RequestParam(defaultValue = "user") String memberType) {
         return groupService.removeMember(groupName, memberName, memberType);
+    }
+
+    /**
+     * Search dm_groups by name prefix using DQL.
+     * GET /api/groups/by-prefix?prefix=ecm_ho_ddsi&size=50
+     */
+    @GetMapping("/by-prefix")
+    public List<Map<String, String>> searchGroupsByPrefix(
+            @RequestParam String prefix,
+            @RequestParam(defaultValue = "50") int size) {
+        return groupService.searchGroupsByPrefix(prefix, size);
+    }
+
+    /**
+     * Get all groups a user belongs to.
+     * GET /api/groups/by-user?username=xxx
+     */
+    @GetMapping("/by-user")
+    public List<Map<String, String>> getGroupsByUser(@RequestParam String username) {
+        return groupService.getGroupsByUser(username);
+    }
+
+    /**
+     * Check whether a dm_group with the given name exists.
+     * GET /api/groups/exists/{groupName}
+     */
+    @GetMapping("/exists/{groupName}")
+    public Map<String, Object> checkGroupExists(@PathVariable String groupName) {
+        return groupService.checkGroupExists(groupName);
     }
 
     /**

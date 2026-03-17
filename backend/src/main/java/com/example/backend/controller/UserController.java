@@ -5,6 +5,7 @@ import com.example.backend.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -55,6 +56,15 @@ public class UserController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return userService.searchDmUsers(query, page, size);
+    }
+
+    /**
+     * List cms_user_profile users belonging to an HO department short code.
+     * GET /api/users/by-dept?shortCode=ddsi
+     */
+    @GetMapping("/by-dept")
+    public List<Map<String, Object>> getUsersByDept(@RequestParam String shortCode) {
+        return userService.getUsersByDeptShortCode(shortCode);
     }
 
     /**
