@@ -178,6 +178,20 @@ public class UserController {
     }
 
     /**
+     * Get a single user profile by object ID (returns all properties including repeating attrs).
+     * GET /api/users/profiles/{objectId}
+     */
+    @GetMapping("/profiles/{objectId}")
+    public ResponseEntity<Map<String, Object>> getProfileById(@PathVariable String objectId) {
+        try {
+            return ResponseEntity.ok(userService.getProfileById(objectId));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
      * Update user profile
      */
     @PatchMapping("/profiles/{objectId}")

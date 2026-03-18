@@ -30,10 +30,9 @@ const PRIVILEGE_OPTIONS = [
     { value: 0,  label: 'None',          description: 'Regular user with no special privileges' },
     { value: 1,  label: 'Create Type',   description: 'Can create new object types' },
     { value: 2,  label: 'Create Cabinet',description: 'Can create cabinets in the repository' },
-    { value: 4,  label: 'Create User',   description: 'Can create new users' },
-    { value: 8,  label: 'Create Group',  description: 'Can create new groups' },
-    { value: 16, label: 'Sysadmin',      description: 'System administrator privileges' },
-    { value: 32, label: 'Superuser',     description: 'Full superuser access' },
+    { value: 4,  label: 'Create Group',  description: 'Can create new groups' },
+    { value: 8,  label: 'Sysadmin',      description: 'System administrator privileges' },
+    { value: 16, label: 'Superuser',     description: 'Full superuser access' },
 ];
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
@@ -98,7 +97,7 @@ const EditDmUserModal = ({ user, isOpen, onClose, onSaved, onToast }) => {
         setLoading(true);
         setError(null);
         try {
-            await api.patch(`/users/dm/${encodeURIComponent(user.user_login_name)}`, form);
+            await api.patch(`/users/dm/${encodeURIComponent(user.user_name)}`, form);
             onToast({ type: 'success', message: `dm_user "${user.user_name}" updated.` });
             onSaved();
             onClose();
@@ -174,42 +173,8 @@ const EditDmUserModal = ({ user, isOpen, onClose, onSaved, onToast }) => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="space-y-1 sm:col-span-2">
-                                <Lbl>Description</Lbl>
-                                <input type="text" value={form.description}
-                                    onChange={e => set('description', e.target.value)}
-                                    placeholder="Optional note"
-                                    className={inputCls} />
-                            </div>
                         </div>
 
-                        {/* Advanced */}
-                        <div className="border border-slate-200 rounded-lg overflow-hidden">
-                            <button type="button"
-                                onClick={() => setAdvOpen(o => !o)}
-                                className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors text-left">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Advanced (optional)</span>
-                                <ChevronDown size={14} className={`text-slate-400 transition-transform ${advOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            {advOpen && (
-                                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {[
-                                        { field: 'user_os_name',   label: 'OS Name' },
-                                        { field: 'user_db_name',   label: 'DB Name' },
-                                        { field: 'default_folder', label: 'Default Folder' },
-                                        { field: 'home_docbase',   label: 'Home Docbase' },
-                                        { field: 'acl_name',       label: 'ACL Name' },
-                                    ].map(({ field, label }) => (
-                                        <div key={field} className="space-y-1">
-                                            <Lbl>{label}</Lbl>
-                                            <input type="text" value={form[field]}
-                                                onChange={e => set(field, e.target.value)}
-                                                className={inputCls} />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
                     </form>
                 </div>
 

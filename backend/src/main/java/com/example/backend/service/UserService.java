@@ -159,7 +159,8 @@ public class UserService {
      * Tries multiple Documentum REST approaches in order and logs the result of each.
      */
     public Map<String, Object> updateInlineUserPassword(String loginName, String newPassword) {
-        String userUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/users/" + loginName;
+        String encoded = java.net.URLEncoder.encode(loginName, StandardCharsets.UTF_8).replace("+", "%20");
+        String userUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/users/" + encoded;
         Map<String, Object> body = Map.of("properties", Map.of("user_password", newPassword));
 
         // Attempt 1: POST /users/{loginName} + X-Method-Override: PATCH
@@ -230,8 +231,9 @@ public class UserService {
     }
 
     public Map<String, Object> updateDmUser(String loginName, Map<String, Object> properties) {
+        String encoded = java.net.URLEncoder.encode(loginName, StandardCharsets.UTF_8).replace("+", "%20");
         String userUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
-                + "/users/" + loginName;
+                + "/users/" + encoded;
 
         List<String> allowedFields = List.of(
             "user_name", "user_address", "user_privileges", "user_state",
@@ -241,7 +243,8 @@ public class UserService {
 
         Map<String, Object> props = new HashMap<>();
         for (String field : allowedFields) {
-            if (properties.containsKey(field) && properties.get(field) != null) {
+            if (properties.containsKey(field) && properties.get(field) != null
+                    && !properties.get(field).toString().trim().isEmpty()) {
                 props.put(field, properties.get(field));
             }
         }
@@ -449,6 +452,31 @@ public class UserService {
                 log.info("Syncing dm_user status for {}: user_state={}", loginName, userState);
                 executeDqlUpdate(updateDql);
             }
+        }
+    }
+
+    /**
+     * Fetch a single cms_user_profile by r_object_id directly from DCTM /objects/{id}.
+     * Returns all properties including repeating attributes (e.g. department_short_code_multi) as arrays.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getProfileById(String objectId) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/objects/" + objectId;
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+            if (response != null && response.containsKey("properties")) {
+                return (Map<String, Object>) response.get("properties");
+            }
+            return Map.of();
+        } catch (Exception e) {
+            log.error("Error fetching profile {}: {}", objectId, e.getMessage());
+            throw new RuntimeException("Failed to fetch profile: " + e.getMessage());
         }
     }
 

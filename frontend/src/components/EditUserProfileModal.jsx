@@ -35,68 +35,63 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
     useEffect(() => {
         if (!isOpen || !user) return;
-        const officeType = user.office_type || '';
-        const location   = user.location   || '';
-        const deptName   = user.department_name || '';
 
-        // Derive RO/TE short code from location metadata
-        const locs    = getLocations(officeType);
-        const locObj  = locs.find(l => l.location === location);
-        const roShortCode = locObj ? locObj.shortCode : (user.ro_short_code || '');
+        // Fetch full profile to get repeating attrs (e.g. department_short_code_multi)
+        api.get(`/users/profiles/${user.r_object_id}`)
+            .then(res => initForm({ ...user, ...res.data }))
+            .catch(() => initForm(user)); // fallback to list data on error
+    }, [isOpen, user]);
 
-        const depts = getDepartments(officeType, location);
+    const initForm = (profile) => {
+        const officeType = profile.office_type || '';
+        const location   = profile.location   || '';
+        const deptName   = profile.department_name || '';
+
+        const locs        = getLocations(officeType);
+        const locObj      = locs.find(l => l.location === location);
+        const roShortCode = locObj ? locObj.shortCode : (profile.ro_short_code || '');
+
+        const depts  = getDepartments(officeType, location);
         const isROTE = ['RO', 'TE'].includes(officeType);
 
-        // For RO/TE: restore multi-selection from department_short_code_multi
-        let deptNames         = [];
-        let deptShortCode     = '';
+        let deptShortCode      = '';
         let deptShortCodeMulti = [];
 
         if (isROTE) {
-            const multiCodes = Array.isArray(user.department_short_code_multi)
-                ? user.department_short_code_multi
-                : [];
-            if (multiCodes.length > 0) {
-                deptNames          = multiCodes.map(code => depts.find(d => d.shortCode === code)?.name).filter(Boolean);
-                deptShortCodeMulti = multiCodes;
-                deptShortCode      = multiCodes[0] || '';
-            } else if (deptName) {
-                const deptObj = depts.find(d => d.name === deptName);
-                deptNames          = [deptName];
-                deptShortCode      = deptObj ? deptObj.shortCode : (user.department_short_code || '');
-                deptShortCodeMulti = deptShortCode ? [deptShortCode] : [];
-            }
+            const multiCodes = Array.isArray(profile.department_short_code_multi)
+                ? profile.department_short_code_multi
+                : (profile.department_short_code ? [profile.department_short_code] : []);
+            deptShortCodeMulti = multiCodes;
+            deptShortCode      = multiCodes[0] || '';
         } else {
             const deptObj = depts.find(d => d.name === deptName);
-            deptShortCode = deptObj ? deptObj.shortCode : (user.department_short_code || '');
+            deptShortCode = deptObj ? deptObj.shortCode : (profile.department_short_code || '');
         }
 
-        // Derive grade_level from grade value
-        const gradeObj   = USER_GRADES.find(g => g.value === user.user_grade);
-        const gradeLevel = gradeObj !== undefined ? gradeObj.gradeLevel : (user.grade_level ?? '');
+        const gradeObj   = USER_GRADES.find(g => g.value === profile.user_grade);
+        const gradeLevel = gradeObj !== undefined ? gradeObj.gradeLevel : (profile.grade_level ?? '');
 
         setForm({
-            object_name:               user.object_name            || '',
-            uin:                       user.uin                    || '',
-            designation:               user.designation            || '',
-            hindi_designation:         user.hindi_designation      || '',
-            hindi_user_name:           user.hindi_user_name        || '',
-            user_role:                 user.user_role              || '',
-            user_email_address:        user.user_email_address     || '',
-            primary_mobile_number:     user.primary_mobile_number  || '',
-            office_type:               officeType,
-            location:                  officeType === 'HO' ? 'Mumbai' : location,
-            ro_short_code:             officeType === 'HO' ? '' : roShortCode,
-            department_name:           isROTE ? (deptNames[0] || '') : deptName,
-            department_short_code:     deptShortCode,
-            department_names:          deptNames,
+            object_name:                 profile.object_name            || '',
+            uin:                         profile.uin                    || '',
+            designation:                 profile.designation            || '',
+            hindi_designation:           profile.hindi_designation      || '',
+            hindi_user_name:             profile.hindi_user_name        || '',
+            user_role:                   profile.user_role              || '',
+            user_email_address:          profile.user_email_address     || '',
+            primary_mobile_number:       profile.primary_mobile_number  || '',
+            office_type:                 officeType,
+            location:                    officeType === 'HO' ? 'Mumbai' : location,
+            ro_short_code:               officeType === 'HO' ? '' : roShortCode,
+            department_name:             deptName,
+            department_short_code:       deptShortCode,
             department_short_code_multi: deptShortCodeMulti,
-            user_grade:                user.user_grade             || '',
-            grade_level:               gradeLevel,
-            is_active:                 user.is_active              ?? false,
+            user_grade:                  profile.user_grade             || '',
+            grade_level:                 gradeLevel,
+            is_active:                   profile.is_active              ?? false,
         });
         setError(null);
-    }, [isOpen, user]);
+    };
 
     const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -140,11 +135,9 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setError(null);
         try {
             const isROTE = ['RO', 'TE'].includes(form.office_type);
-            // eslint-disable-next-line no-unused-vars
-            const { department_names, department_short_code_multi, ...rest } = form;
+            const { department_short_code_multi, ...rest } = form;
             const payload = {
                 ...rest,
-                department_name:  isROTE ? (department_names[0] || '') : rest.department_name,
                 ...(isROTE && { department_short_code_multi }),
             };
             await api.patch(`/users/profiles/${user.r_object_id}`, payload);
@@ -314,15 +307,13 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                             <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
                                                                 <input
                                                                     type="checkbox"
-                                                                    checked={(form.department_names || []).includes(d.name)}
+                                                                    checked={(form.department_short_code_multi || []).includes(d.shortCode)}
                                                                     onChange={() => {
-                                                                        const current  = form.department_names || [];
-                                                                        const newNames = current.includes(d.name)
-                                                                            ? current.filter(n => n !== d.name)
-                                                                            : [...current, d.name];
-                                                                        const newCodes = newNames.map(n => depts.find(dep => dep.name === n)?.shortCode || '').filter(Boolean);
-                                                                        set('department_names',          newNames);
-                                                                        set('department_short_code',     newCodes[0] || '');
+                                                                        const currentCodes = form.department_short_code_multi || [];
+                                                                        const newCodes = currentCodes.includes(d.shortCode)
+                                                                            ? currentCodes.filter(c => c !== d.shortCode)
+                                                                            : [...currentCodes, d.shortCode];
+                                                                        set('department_short_code',       newCodes[0] || '');
                                                                         set('department_short_code_multi', newCodes);
                                                                     }}
                                                                     className="rounded accent-[#0A66C2]"
