@@ -590,6 +590,73 @@ public class UserService {
         }
     }
 
+    /**
+     * Removes a vertical folder's r_object_id from the vertical_ids repeating attribute
+     * on a cms_user_profile identified by user_login_name. Steps:
+     *  1. Fetch r_object_id from dm_folder WHERE subject = verticalGroupName
+     *  2. DQL to find cms_user_profile r_object_id WHERE user_login_name = userLoginName
+     *  3. Fetch current vertical_ids from the profile
+     *  4. Remove the folder ID and PATCH
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> removeVerticalIdFromProfile(String userLoginName, String verticalGroupName) {
+        // Step 1: Resolve folder ID by subject
+        String safeName = verticalGroupName.replace("'", "''");
+        String folderDql = "SELECT r_object_id FROM dm_folder WHERE subject = '" + safeName + "'";
+        Map<String, Object> folderResult = executeDql(folderDql, 1, 1);
+        List<?> folderEntries = (List<?>) folderResult.get("users");
+        if (folderEntries == null || folderEntries.isEmpty()) {
+            log.warn("[VerticalId] No folder found with subject '{}', skipping remove", verticalGroupName);
+            return Map.of("success", true, "message", "No folder found, nothing to remove");
+        }
+        String folderId = (String) ((Map<String, Object>) folderEntries.get(0)).get("r_object_id");
+
+        // Step 2: Find cms_user_profile by object_name (dm_group stores dm_user.user_name, which matches object_name in cms_user_profile)
+        String safeLogin = userLoginName.replace("'", "''");
+        String profileDql = "SELECT r_object_id FROM cms_user_profile WHERE object_name = '" + safeLogin + "'";
+        Map<String, Object> profileResult = executeDql(profileDql, 1, 1);
+        List<?> profileEntries = (List<?>) profileResult.get("users");
+        if (profileEntries == null || profileEntries.isEmpty()) {
+            log.warn("[VerticalId] No profile found for user_login_name '{}', skipping remove", userLoginName);
+            return Map.of("success", true, "message", "No profile found, nothing to remove");
+        }
+        String profileObjectId = (String) ((Map<String, Object>) profileEntries.get(0)).get("r_object_id");
+
+        // Step 3: Fetch current vertical_ids
+        Map<String, Object> profile = getProfileById(profileObjectId);
+        List<String> currentIds = new ArrayList<>();
+        Object existing = profile.get("vertical_ids");
+        if (existing instanceof List<?> existingList) {
+            for (Object id : existingList) { if (id instanceof String s) currentIds.add(s); }
+        }
+        if (!currentIds.contains(folderId)) {
+            return Map.of("success", true, "message", "Vertical ID not present in profile");
+        }
+
+        // Step 4: Remove and PATCH
+        currentIds.remove(folderId);
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/objects/" + profileObjectId;
+        Map<String, Object> body = Map.of("properties", Map.of("vertical_ids", currentIds));
+        try {
+            restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",        "application/vnd.emc.documentum+json")
+                    .header("X-Method-Override", "PATCH")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[VerticalId] Removed folder '{}' from profile of '{}'", folderId, userLoginName);
+            return Map.of("success", true, "message", "Vertical ID removed from profile");
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            String resp = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[VerticalId] Failed to remove vertical_id [{}]: {}", e.getStatusCode(), resp);
+            throw new RuntimeException("Failed to update vertical_ids [" + e.getStatusCode() + "]: " + resp);
+        }
+    }
+
     private void executeDqlUpdate(String dql) {
          String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
          try {

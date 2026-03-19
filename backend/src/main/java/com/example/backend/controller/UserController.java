@@ -94,6 +94,22 @@ public class UserController {
     }
 
     /**
+     * Remove a vertical folder's r_object_id from vertical_ids on cms_user_profile.
+     * DELETE /api/users/profile-vertical-ids?userLoginName=abc&verticalGroupName=ecm_ho_ddsi_bpe
+     */
+    @DeleteMapping("/profile-vertical-ids")
+    public ResponseEntity<Map<String, Object>> removeVerticalIdFromProfile(
+            @RequestParam String userLoginName,
+            @RequestParam String verticalGroupName) {
+        try {
+            return ResponseEntity.ok(userService.removeVerticalIdFromProfile(userLoginName, verticalGroupName));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
      * Update editable properties on a dm_user
      * PATCH /api/users/dm/{loginName}
      */

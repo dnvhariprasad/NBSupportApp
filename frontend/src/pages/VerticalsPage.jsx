@@ -649,6 +649,9 @@ const AddMembersTab = ({ setToast }) => {
 
 // ─── Remove Members Tab ───────────────────────────────────────────────────────
 const RemoveMembersTab = ({ setToast }) => {
+    const [officeType,     setOfficeType]     = useState('');
+    const [location,       setLocation]       = useState('');
+    const [roShortCode,    setRoShortCode]    = useState('');
     const [dept,           setDept]           = useState('');
     const [verticals,      setVerticals]      = useState([]);
     const [selectedGroup,  setSelectedGroup]  = useState('');
@@ -656,16 +659,48 @@ const RemoveMembersTab = ({ setToast }) => {
     const [loadingVerts,   setLoadingVerts]   = useState(false);
     const [loadingMembers, setLoadingMembers] = useState(false);
 
+    const isROTE = ['RO', 'TE'].includes(officeType);
+
+    const resetBelow = (level) => {
+        if (level === 'officeType') { setLocation(''); setRoShortCode(''); }
+        setDept(''); setSelectedGroup(''); setVerticals([]); setMembers({ users: [], groups: [] });
+    };
+
+    const handleOfficeTypeChange = (v) => {
+        setOfficeType(v);
+        resetBelow('officeType');
+    };
+
+    const handleLocationChange = async (v) => {
+        const locs   = getLocations(officeType);
+        const locObj = locs.find(l => l.location === v);
+        const roCode = locObj?.shortCode || '';
+        setLocation(v);
+        setRoShortCode(roCode);
+        setDept(''); setSelectedGroup(''); setVerticals([]); setMembers({ users: [], groups: [] });
+        if (!v || !roCode) return;
+        // Fetch all RO/TE verticals by ecm_<roCode> prefix on location select
+        setLoadingVerts(true);
+        try {
+            const res = await api.get('/groups/by-prefix', { params: { prefix: `ecm_${roCode.toLowerCase()}` } });
+            const all = res.data || [];
+            setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('cgm_sec')));
+        } catch { setVerticals([]); }
+        finally { setLoadingVerts(false); }
+    };
+
     const handleDeptChange = async (v) => {
         setDept(v); setSelectedGroup(''); setVerticals([]); setMembers({ users: [], groups: [] });
         if (!v) return;
-        const d = HO_DEPARTMENTS.find(d => d.name === v);
+        const depts = getDepartments(officeType, location);
+        const d = depts.find(d => d.name === v);
         if (!d) return;
+        const prefix = officeType === 'HO'
+            ? `ecm_ho_${d.shortCode.toLowerCase()}`
+            : `ecm_${roShortCode.toLowerCase()}_${d.shortCode.toLowerCase()}`;
         setLoadingVerts(true);
         try {
-            const res = await api.get('/groups/by-prefix', {
-                params: { prefix: `ecm_ho_${d.shortCode.toLowerCase()}` },
-            });
+            const res = await api.get('/groups/by-prefix', { params: { prefix } });
             const all = res.data || [];
             setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('cgm_sec')));
         } catch { setVerticals([]); }
@@ -693,6 +728,12 @@ const RemoveMembersTab = ({ setToast }) => {
                 users:  prev.users.filter(u => u.name !== member.name),
                 groups: prev.groups.filter(g => g.name !== member.name),
             }));
+            // Remove the vertical_id from cms_user_profile (fire-and-forget)
+            if (member.type === 'user') {
+                api.delete('/users/profile-vertical-ids', {
+                    params: { userLoginName: member.name, verticalGroupName: selectedGroup },
+                }).catch(e => console.warn('vertical_ids remove failed:', e?.response?.data?.message || e.message));
+            }
         } catch (err) {
             setToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove member.' });
         }
@@ -704,23 +745,51 @@ const RemoveMembersTab = ({ setToast }) => {
         <div className="space-y-5">
             <Card className="space-y-4">
                 <SectionTitle>Select Group</SectionTitle>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* Office Type */}
+                    <div>
+                        <Label icon={Building2}>Office Type</Label>
+                        <Select value={officeType} onChange={handleOfficeTypeChange}
+                            placeholder="— Select office type —"
+                            options={[
+                                { value: 'HO', label: 'HO — Head Office' },
+                                { value: 'RO', label: 'RO — Regional Office' },
+                                { value: 'TE', label: 'TE — Training Establishment' },
+                            ]} />
+                    </div>
+                    {/* Location (RO/TE only) */}
+                    {isROTE && (
+                        <div>
+                            <Label icon={MapPin}>Location</Label>
+                            <Select value={location} onChange={handleLocationChange}
+                                disabled={!officeType}
+                                placeholder="— Select location —"
+                                options={getLocations(officeType).map(l => ({ value: l.location, label: l.location }))} />
+                        </div>
+                    )}
+                    {/* Department */}
                     <div>
                         <Label icon={Layers}>Department</Label>
                         <Select value={dept} onChange={handleDeptChange}
-                            placeholder="— Select dept —"
-                            options={HO_DEPARTMENTS.map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
+                            disabled={!officeType || (isROTE && !location)}
+                            placeholder={!officeType ? '— Select office type first —' : (isROTE && !location) ? '— Select location first —' : '— Select dept —'}
+                            options={getDepartments(officeType, location).map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
                     </div>
-                    <div>
-                        <Label icon={UsersRound}>Vertical / Group</Label>
-                        {loadingVerts
-                            ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
-                            : <Select value={selectedGroup} onChange={handleGroupChange}
-                                disabled={!dept || verticals.length === 0}
-                                placeholder={!dept ? '— Select dept first —' : verticals.length === 0 ? 'No groups found' : '— Select group —'}
-                                options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
-                        }
-                    </div>
+                </div>
+                <div>
+                    <Label icon={UsersRound}>Vertical / Group</Label>
+                    {loadingVerts
+                        ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
+                        : <Select value={selectedGroup} onChange={handleGroupChange}
+                            disabled={!officeType || (isROTE ? !location : !dept) || verticals.length === 0}
+                            placeholder={
+                                !officeType ? '— Select office type first —'
+                                : (isROTE && !location) ? '— Select location first —'
+                                : verticals.length === 0 ? 'No groups found'
+                                : '— Select group —'
+                            }
+                            options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
+                    }
                 </div>
             </Card>
 
