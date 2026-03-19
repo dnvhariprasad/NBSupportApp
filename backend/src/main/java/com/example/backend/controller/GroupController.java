@@ -1,6 +1,7 @@
 package com.example.backend.controller;
 
 import com.example.backend.service.GroupService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -105,6 +106,41 @@ public class GroupController {
     @GetMapping("/exists/{groupName}")
     public Map<String, Object> checkGroupExists(@PathVariable String groupName) {
         return groupService.checkGroupExists(groupName);
+    }
+
+    /**
+     * Create a dm_folder for a vertical under the HO department folder.
+     * POST /api/groups/vertical-folder
+     */
+    @PostMapping("/vertical-folder")
+    public ResponseEntity<Map<String, Object>> createVerticalFolder(@RequestBody Map<String, Object> request) {
+        String verticalFullName  = (String) request.get("verticalFullName");
+        String verticalShortcode = (String) request.get("verticalShortcode");
+        String groupName         = (String) request.get("groupName");
+        String deptName          = (String) request.get("deptName");
+        try {
+            return ResponseEntity.ok(groupService.createVerticalFolder(verticalFullName, verticalShortcode, groupName, deptName));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Update the group_display_name of a dm_group.
+     * PUT /api/groups/{groupName}/display-name
+     */
+    @PutMapping("/{groupName}/display-name")
+    public ResponseEntity<Map<String, Object>> updateGroupDisplayName(
+            @PathVariable String groupName,
+            @RequestBody Map<String, Object> request) {
+        String newDisplayName = (String) request.get("displayName");
+        try {
+            return ResponseEntity.ok(groupService.updateGroupDisplayName(groupName, newDisplayName));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
     }
 
     /**

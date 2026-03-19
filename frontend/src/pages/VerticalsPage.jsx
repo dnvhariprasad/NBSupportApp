@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
 import {
     Layers, Tag, Users, UserPlus, X, Loader2,
-    CheckCircle2, AlertCircle, ChevronDown, Building2,
+    CheckCircle2, AlertCircle, ChevronDown, Building2, MapPin,
     UserCheck, UsersRound, Star,
 } from 'lucide-react';
-import { HO_DEPARTMENTS } from '../data/nabardMetadata.js';
+import { HO_DEPARTMENTS, getDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -84,23 +84,43 @@ const Toast = ({ toast, onDismiss }) => {
 
 // ─── Vertical Creation Tab ────────────────────────────────────────────────────
 const VerticalCreationTab = ({ setToast }) => {
-    const [dept,     setDept]     = useState('');
-    const [suffix,   setSuffix]   = useState('');
-    const [creating, setCreating] = useState(false);
+    const [dept,               setDept]               = useState('');
+    const [suffix,             setSuffix]             = useState('');
+    const [verticalFullName,   setVerticalFullName]   = useState('');
+    const [verticalShortcode,  setVerticalShortcode]  = useState('');
+    const [creating,           setCreating]           = useState(false);
 
     const deptObj         = HO_DEPARTMENTS.find(d => d.name === dept);
     const prefix          = deptObj ? `ecm_ho_${deptObj.shortCode.toLowerCase()}_` : 'ecm_ho_';
     const cleanSuffix     = normalizeSuffix(suffix);
     const groupName       = cleanSuffix ? `${prefix}${cleanSuffix}` : '';
     const groupDisplayName = groupName ? groupName.replace(/_/g, '-').toUpperCase() : '';
-    const canCreate       = !!deptObj && cleanSuffix.length > 0;
+    const canCreate       = !!deptObj && cleanSuffix.length > 0
+                            && verticalFullName.trim().length > 0
+                            && verticalShortcode.trim().length > 0;
 
     const handleCreate = async () => {
         setCreating(true);
         try {
             await api.post('/groups', { group_name: groupName, group_display_name: groupDisplayName });
-            setToast({ type: 'success', message: `Vertical '${groupName}' created successfully.` });
-            setDept(''); setSuffix('');
+
+            // Create the associated dm_folder
+            try {
+                await api.post('/groups/vertical-folder', {
+                    verticalFullName:  verticalFullName.trim(),
+                    verticalShortcode: verticalShortcode.trim(),
+                    groupName,
+                    deptName: dept,
+                });
+            } catch (folderErr) {
+                const folderMsg = folderErr.response?.data?.message || folderErr.message;
+                setToast({ type: 'error', message: `Vertical created but folder creation failed: ${folderMsg}` });
+                setDept(''); setSuffix(''); setVerticalFullName(''); setVerticalShortcode('');
+                return;
+            }
+
+            setToast({ type: 'success', message: `Vertical '${groupName}' and folder created successfully.` });
+            setDept(''); setSuffix(''); setVerticalFullName(''); setVerticalShortcode('');
         } catch (err) {
             setToast({ type: 'error', message: `Failed: ${err.response?.data?.message || err.message}` });
         } finally {
@@ -144,6 +164,20 @@ const VerticalCreationTab = ({ setToast }) => {
                     className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 text-slate-600 cursor-default" />
             </div>
 
+            <div>
+                <Label icon={Tag}>Vertical Full Name <span className="text-red-500">*</span></Label>
+                <input type="text" value={verticalFullName} onChange={e => setVerticalFullName(e.target.value)}
+                    placeholder="e.g. Digital Initiatives and Technology"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
+            </div>
+
+            <div>
+                <Label icon={Tag}>Vertical Shortcode <span className="text-red-500">*</span></Label>
+                <input type="text" value={verticalShortcode} onChange={e => setVerticalShortcode(e.target.value)}
+                    placeholder="e.g. DIT"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
+            </div>
+
             <button onClick={handleCreate} disabled={!canCreate || creating}
                 className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-[#0A66C2] hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                 {creating ? <><Loader2 size={15} className="animate-spin" /> Creating...</> : 'Create Vertical'}
@@ -154,18 +188,25 @@ const VerticalCreationTab = ({ setToast }) => {
 
 // ─── Add Members Tab ──────────────────────────────────────────────────────────
 const AddMembersTab = ({ setToast }) => {
+    const [officeType,        setOfficeType]        = useState('');
+    const [location,          setLocation]          = useState('');
+    const [roShortCode,       setRoShortCode]       = useState('');
     const [dept,              setDept]              = useState('');
     const [verticals,         setVerticals]         = useState([]);
     const [selectedVertical,  setSelectedVertical]  = useState('');
     const [users,             setUsers]             = useState([]);
-    const [selectedUser,      setSelectedUser]      = useState('');   // user_login_name (DCTM identifier)
-    const [selectedUserObjectName, setSelectedUserObjectName] = useState(''); // full name for display
+    const [selectedUser,      setSelectedUser]      = useState('');
+    const [selectedUserObjectName,  setSelectedUserObjectName]  = useState('');
+    const [selectedUserProfileId,   setSelectedUserProfileId]   = useState('');
 
     const [verticalMembers,   setVerticalMembers]   = useState({ users: [], groups: [] });
     const [userGroups,        setUserGroups]        = useState([]);
-    const [vhGroupName,       setVhGroupName]       = useState('');
-    const [vhExists,          setVhExists]          = useState(false);
-    const [vhMembers,         setVhMembers]         = useState([]);
+    const [vhGroupName,           setVhGroupName]           = useState('');
+    const [vhExists,              setVhExists]              = useState(false);
+    const [vhMembers,             setVhMembers]             = useState([]);
+    const [vhCurrentDisplayName,  setVhCurrentDisplayName]  = useState('');
+    const [modifyVHSelectedUser,  setModifyVHSelectedUser]  = useState('');
+    const [modifyingVH,           setModifyingVH]           = useState(false);
 
     const [loadingVerticals,  setLoadingVerticals]  = useState(false);
     const [loadingUsers,      setLoadingUsers]      = useState(false);
@@ -174,30 +215,81 @@ const AddMembersTab = ({ setToast }) => {
     const [adding,            setAdding]            = useState(false);
     const [creatingVH,        setCreatingVH]        = useState(false);
 
-    // On dept change
+    const isROTE = ['RO', 'TE'].includes(officeType);
+
+    const resetBelow = (level) => {
+        if (level === 'location') { setLocation(''); setRoShortCode(''); }
+        setDept('');
+        setSelectedVertical(''); setVerticals([]);
+        setSelectedUser(''); setUsers([]); setSelectedUserObjectName(''); setSelectedUserProfileId('');
+        setVerticalMembers({ users: [], groups: [] });
+        setUserGroups([]); setVhGroupName(''); setVhExists(false); setVhMembers([]);
+        setVhCurrentDisplayName(''); setModifyVHSelectedUser('');
+    };
+
+    const handleOfficeTypeChange = (v) => {
+        setOfficeType(v);
+        resetBelow('location');
+    };
+
+    // RO/TE: on location change → fetch users by location
+    const handleLocationChange = async (v) => {
+        const locs   = getLocations(officeType);
+        const locObj = locs.find(l => l.location === v);
+        const roCode = locObj?.shortCode || '';
+        setLocation(v);
+        setRoShortCode(roCode);
+        resetBelow('dept');
+        if (!v || !roCode) return;
+
+        // Fetch users by location + verticals by ecm_<roShortCode> in parallel
+        setLoadingUsers(true); setLoadingVerticals(true);
+        const [uRes, vRes] = await Promise.allSettled([
+            api.get('/users/by-location', { params: { location: v } }),
+            api.get('/groups/by-prefix',  { params: { prefix: `ecm_${roCode.toLowerCase()}` } }),
+        ]);
+        if (uRes.status === 'fulfilled') setUsers(uRes.value.data || []);
+        else setUsers([]);
+        if (vRes.status === 'fulfilled') {
+            const all = vRes.value.data || [];
+            setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('_cgm_sec')));
+        } else setVerticals([]);
+        setLoadingUsers(false); setLoadingVerticals(false);
+    };
+
+    // On dept change — fetch verticals (for HO also fetch users by dept)
     const handleDeptChange = async (v) => {
         setDept(v);
         setSelectedVertical(''); setVerticals([]);
-        setSelectedUser(''); setUsers([]);
         setVerticalMembers({ users: [], groups: [] });
         setUserGroups([]); setVhGroupName(''); setVhExists(false); setVhMembers([]);
         if (!v) return;
-        const d = HO_DEPARTMENTS.find(d => d.name === v);
+        const depts = getDepartments(officeType, location);
+        const d = depts.find(d => d.name === v);
         if (!d) return;
 
-        // Load verticals + users in parallel
-        setLoadingVerticals(true); setLoadingUsers(true);
-        const [vRes, uRes] = await Promise.allSettled([
-            api.get('/groups/by-prefix', { params: { prefix: `ecm_ho_${d.shortCode.toLowerCase()}` } }),
-            api.get('/users/by-dept',    { params: { shortCode: d.shortCode.toLowerCase() } }),
-        ]);
-        setLoadingVerticals(false); setLoadingUsers(false);
-        if (vRes.status === 'fulfilled') {
-            // Exclude vertical_head groups from the list
-            const all = vRes.value.data || [];
+        const prefix = officeType === 'HO'
+            ? `ecm_ho_${d.shortCode.toLowerCase()}`
+            : `ecm_${roShortCode.toLowerCase()}_${d.shortCode.toLowerCase()}`;
+
+        setLoadingVerticals(true);
+        try {
+            const res = await api.get('/groups/by-prefix', { params: { prefix } });
+            const all = res.data || [];
             setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('_cgm_sec')));
+        } catch { setVerticals([]); }
+        finally { setLoadingVerticals(false); }
+
+        // HO: also fetch users by dept short code
+        if (officeType === 'HO') {
+            setUsers([]); setSelectedUser(''); setSelectedUserObjectName(''); setSelectedUserProfileId('');
+            setLoadingUsers(true);
+            try {
+                const res = await api.get('/users/by-dept', { params: { shortCode: d.shortCode.toLowerCase() } });
+                setUsers(res.data || []);
+            } catch { setUsers([]); }
+            finally { setLoadingUsers(false); }
         }
-        if (uRes.status === 'fulfilled') setUsers(uRes.value.data || []);
     };
 
     // On vertical change
@@ -226,17 +318,20 @@ const AddMembersTab = ({ setToast }) => {
         }
         if (vhRes.status === 'fulfilled') {
             setVhExists(vhRes.value.data.exists);
+            const vhProps = vhRes.value.data.properties;
+            setVhCurrentDisplayName(vhProps?.group_display_name || '');
         }
         if (vhMembersRes.status === 'fulfilled') {
             setVhMembers(vhMembersRes.value.data.users || []);
         }
     }, []);
 
-    // On user change — loginName = user_login_name (used for DCTM ops via resolveDmUserName)
+    // On user change
     const handleUserChange = async (loginName) => {
         const userObj = users.find(u => u.user_login_name === loginName);
         setSelectedUser(loginName);
-        setSelectedUserObjectName(userObj?.object_name || loginName); // full name for VH display
+        setSelectedUserObjectName(userObj?.object_name || loginName);
+        setSelectedUserProfileId(userObj?.r_object_id || '');
         setUserGroups([]);
         if (!loginName) return;
         setLoadingUserGroups(true);
@@ -265,6 +360,12 @@ const AddMembersTab = ({ setToast }) => {
                 return;
             }
             setToast({ type: 'success', message: `'${selectedUser}' added to '${selectedVertical}'.` });
+            // Update vertical_ids in cms_user_profile
+            if (selectedUserProfileId) {
+                api.post(`/users/profiles/${selectedUserProfileId}/vertical-ids`, {
+                    verticalGroupName: selectedVertical,
+                }).catch(e => console.warn('vertical_ids update failed:', e?.response?.data?.message || e.message));
+            }
             // Refresh members
             const res = await api.get(`/groups/${selectedVertical}/members`);
             setVerticalMembers({ users: res.data.users || [], groups: res.data.groups || [] });
@@ -305,38 +406,98 @@ const AddMembersTab = ({ setToast }) => {
         } finally { setCreatingVH(false); }
     };
 
+    const handleModifyVerticalHead = async () => {
+        if (!vhGroupName || !modifyVHSelectedUser) return;
+        setModifyingVH(true);
+        const newUserObj = users.find(u => u.user_login_name === modifyVHSelectedUser);
+        const newObjectName = newUserObj?.object_name || modifyVHSelectedUser;
+        try {
+            // 1. Add new user to VH group
+            await api.post(`/groups/${vhGroupName}/members`, {
+                memberName: modifyVHSelectedUser, memberType: 'user',
+            });
+            // 2. Remove all existing VH members (except the one just added)
+            for (const m of vhMembers) {
+                await api.delete(`/groups/${vhGroupName}/members/${m.name}`, {
+                    params: { memberType: 'user' },
+                });
+            }
+            // 3. Update display name: replace part after last ' -' with new user's name
+            const dashIdx = vhCurrentDisplayName.lastIndexOf(' -');
+            const prefix  = dashIdx >= 0 ? vhCurrentDisplayName.substring(0, dashIdx) : vhCurrentDisplayName;
+            const newDisplayName = `${prefix} -${newObjectName}`;
+            await api.put(`/groups/${vhGroupName}/display-name`, { displayName: newDisplayName });
+
+            setVhCurrentDisplayName(newDisplayName);
+            setModifyVHSelectedUser('');
+            setToast({ type: 'success', message: `Vertical head updated to '${newObjectName}'.` });
+            // Refresh VH members
+            const res = await api.get(`/groups/${vhGroupName}/members`);
+            setVhMembers(res.data.users || []);
+        } catch (err) {
+            setToast({ type: 'error', message: err.response?.data?.message || 'Failed to update vertical head.' });
+        } finally { setModifyingVH(false); }
+    };
+
     const showMarkVHButton = selectedVertical && selectedUser;
     const canAdd = selectedVertical && selectedUser && !userAlreadyInGroup;
 
     return (
         <div className="space-y-5">
-            {/* ── Step 1: Department + Vertical + User ── */}
+            {/* ── Step 1: Office Type + Location + Department + Vertical + User ── */}
             <Card className="space-y-4">
                 <SectionTitle>Selection</SectionTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* Office Type */}
+                    <div>
+                        <Label icon={Building2}>Office Type</Label>
+                        <Select value={officeType} onChange={handleOfficeTypeChange}
+                            placeholder="— Select office type —"
+                            options={[
+                                { value: 'HO', label: 'HO — Head Office' },
+                                { value: 'RO', label: 'RO — Regional Office' },
+                                { value: 'TE', label: 'TE — Training Establishment' },
+                            ]} />
+                    </div>
+                    {/* Location (RO/TE only) */}
+                    {isROTE && (
+                        <div>
+                            <Label icon={MapPin}>Location</Label>
+                            <Select value={location} onChange={handleLocationChange}
+                                disabled={!officeType}
+                                placeholder="— Select location —"
+                                options={getLocations(officeType).map(l => ({ value: l.location, label: l.location }))} />
+                        </div>
+                    )}
+                    {/* Department */}
                     <div>
                         <Label icon={Layers}>Department</Label>
                         <Select value={dept} onChange={handleDeptChange}
-                            placeholder="— Select dept —"
-                            options={HO_DEPARTMENTS.map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
+                            disabled={!officeType || (isROTE && !location)}
+                            placeholder={!officeType ? '— Select office type first —' : (isROTE && !location) ? '— Select location first —' : '— Select dept —'}
+                            options={getDepartments(officeType, location).map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
                     </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Vertical */}
                     <div>
                         <Label icon={UsersRound}>Vertical</Label>
                         {loadingVerticals
                             ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
                             : <Select value={selectedVertical} onChange={handleVerticalChange}
-                                disabled={!dept || verticals.length === 0}
-                                placeholder={!dept ? '— Select dept first —' : verticals.length === 0 ? 'No verticals found' : '— Select vertical —'}
+                                disabled={(isROTE ? !location : !dept) || verticals.length === 0}
+                                placeholder={isROTE ? (!location ? '— Select location first —' : verticals.length === 0 ? 'No verticals found' : '— Select vertical —') : (!dept ? '— Select dept first —' : verticals.length === 0 ? 'No verticals found' : '— Select vertical —')}
                                 options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
                         }
                     </div>
+                    {/* User */}
                     <div>
                         <Label icon={Users}>User</Label>
                         {loadingUsers
                             ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
                             : <Select value={selectedUser} onChange={handleUserChange}
-                                disabled={!dept || users.length === 0}
-                                placeholder={!dept ? '— Select dept first —' : users.length === 0 ? 'No users found' : '— Select user —'}
+                                disabled={!officeType || users.length === 0}
+                                placeholder={!officeType ? '— Select office type first —' : users.length === 0 ? 'No users found' : '— Select user —'}
                                 options={users.map(u => ({ value: u.user_login_name, label: `${u.object_name} (${u.user_login_name})` }))} />
                         }
                     </div>
@@ -380,7 +541,7 @@ const AddMembersTab = ({ setToast }) => {
                                             <CheckCircle2 size={12} /> Exists
                                         </div>
                                         {vhMembers.length > 0 && (
-                                            <div className="space-y-1 mt-1">
+                                            <div className="space-y-1 mb-3">
                                                 {vhMembers.map(m => (
                                                     <div key={m.name} className="flex items-center gap-2 text-xs">
                                                         <MemberTag type="user" />
@@ -389,6 +550,34 @@ const AddMembersTab = ({ setToast }) => {
                                                 ))}
                                             </div>
                                         )}
+                                        {/* Modify Vertical Head */}
+                                        <div className="border-t border-slate-100 pt-3 mt-2 space-y-2">
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Modify Vertical Head</p>
+                                            <select
+                                                value={modifyVHSelectedUser}
+                                                onChange={e => setModifyVHSelectedUser(e.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2]"
+                                            >
+                                                <option value="">— Select new head —</option>
+                                                {verticalMembers.users.map(u => {
+                                                    const obj = users.find(x => x.user_login_name === u.name);
+                                                    return (
+                                                        <option key={u.name} value={u.name}>
+                                                            {obj ? `${obj.object_name} (${u.name})` : u.name}
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
+                                            <button
+                                                onClick={handleModifyVerticalHead}
+                                                disabled={!modifyVHSelectedUser || modifyingVH}
+                                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {modifyingVH
+                                                    ? <><Loader2 size={12} className="animate-spin" /> Updating…</>
+                                                    : <><Star size={12} /> Update Vertical Head</>}
+                                            </button>
+                                        </div>
                                     </>
                                     : <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
                                         <AlertCircle size={12} /> Not yet created

@@ -68,6 +68,32 @@ public class UserController {
     }
 
     /**
+     * List cms_user_profile users by location (for RO/TE offices).
+     * GET /api/users/by-location?location=Chennai
+     */
+    @GetMapping("/by-location")
+    public List<Map<String, Object>> getUsersByLocation(@RequestParam String location) {
+        return userService.getUsersByLocation(location);
+    }
+
+    /**
+     * Append a vertical folder's r_object_id to vertical_ids on cms_user_profile.
+     * POST /api/users/profiles/{objectId}/vertical-ids
+     */
+    @PostMapping("/profiles/{objectId}/vertical-ids")
+    public ResponseEntity<Map<String, Object>> addVerticalIdToProfile(
+            @PathVariable String objectId,
+            @RequestBody Map<String, Object> request) {
+        String verticalGroupName = (String) request.get("verticalGroupName");
+        try {
+            return ResponseEntity.ok(userService.addVerticalIdToProfile(objectId, verticalGroupName));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
      * Update editable properties on a dm_user
      * PATCH /api/users/dm/{loginName}
      */

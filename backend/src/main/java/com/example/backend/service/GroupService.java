@@ -556,6 +556,109 @@ public class GroupService {
     }
 
     /**
+     * Create a dm_folder under /Cabinets/ECM CONFIG/Office Type/HO/<deptName>.
+     * object_name = verticalFullName, title = verticalShortcode, subject = groupName.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> createVerticalFolder(String verticalFullName, String verticalShortcode,
+                                                     String groupName, String deptName) {
+        // 1. Resolve parent folder by path via DQL
+        String parentPath = "/ECM CONFIG/Office Type/HO/" + deptName;
+        String safe = parentPath.replace("'", "''");
+        String dql  = "SELECT r_object_id FROM dm_folder WHERE ANY r_folder_path = '" + safe + "'";
+        String dqlUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "?dql={dql}&items-per-page=1&page=1&inline=true";
+
+        log.info("[Folder] Resolving parent folder path: {}", parentPath);
+        String parentId;
+        try {
+            Map<String, Object> dqlResp = restClient.get()
+                    .uri(dqlUrl, dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, Object>> entries = dqlResp != null
+                    ? (List<Map<String, Object>>) dqlResp.get("entries") : null;
+            if (entries == null || entries.isEmpty()) {
+                throw new RuntimeException("Parent folder not found for path: " + parentPath);
+            }
+            Map<String, Object> content = (Map<String, Object>) entries.get(0).get("content");
+            Map<String, Object> props   = (Map<String, Object>) content.get("properties");
+            parentId = (String) props.get("r_object_id");
+            log.info("[Folder] Resolved parent folder id: {}", parentId);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to resolve parent folder: " + e.getMessage());
+        }
+
+        // 2. Create dm_folder under the resolved parent
+        String folderUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/folders/" + parentId + "/folders";
+
+        Map<String, Object> folderProps = new HashMap<>();
+        folderProps.put("object_name", verticalFullName);
+        folderProps.put("title",       verticalShortcode);
+        folderProps.put("subject",     groupName);
+
+        Map<String, Object> body = Map.of("properties", folderProps);
+
+        log.info("[Folder] Creating folder '{}' under parent {}", verticalFullName, parentId);
+        try {
+            restClient.post()
+                    .uri(folderUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",        "application/vnd.emc.documentum+json")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[Folder] Folder '{}' created successfully", verticalFullName);
+            return Map.of("success", true, "message", "Folder created successfully");
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            String resp = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[Folder] Failed to create folder [{}]: {}", e.getStatusCode(), resp);
+            throw new RuntimeException("Failed to create folder [" + e.getStatusCode() + "]: " + resp);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create folder: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Update the group_display_name of a dm_group.
+     * PATCH /repositories/{repo}/groups/{groupName}
+     */
+    public Map<String, Object> updateGroupDisplayName(String groupName, String newDisplayName) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/groups/" + groupName;
+
+        Map<String, Object> props = new HashMap<>();
+        props.put("group_display_name", newDisplayName);
+        Map<String, Object> body = new HashMap<>();
+        body.put("properties", props);
+
+        log.info("Updating group_display_name for '{}' to '{}'", groupName, newDisplayName);
+        try {
+            restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .header("X-HTTP-Method-Override", "PATCH")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+
+            return Map.of("success", true, "message", "Display name updated successfully");
+        } catch (Exception e) {
+            log.error("Error updating display name for group '{}': {}", groupName, e.getMessage(), e);
+            throw new RuntimeException("Failed to update display name: " + e.getMessage());
+        }
+    }
+
+    /**
      * Search for users or groups to add as members using DQL
      */
     @SuppressWarnings("unchecked")

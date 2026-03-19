@@ -511,7 +511,7 @@ public class UserService {
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getUsersByDeptShortCode(String shortCode) {
         String safe = shortCode.replace("'", "''");
-        String dql  = "SELECT object_name, user_login_name FROM cms_user_profile"
+        String dql  = "SELECT r_object_id, object_name, user_login_name FROM cms_user_profile"
                     + " WHERE ANY department_short_code_multi = '" + safe + "'"
                     + " ORDER BY object_name";
         Map<String, Object> result = executeDql(dql, 1, 500);
@@ -520,6 +520,74 @@ public class UserService {
         List<Map<String, Object>> list = new ArrayList<>();
         for (Object o : raw) { if (o instanceof Map<?,?> m) list.add((Map<String, Object>) m); }
         return list;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getUsersByLocation(String location) {
+        String safe = location.replace("'", "''");
+        String dql  = "SELECT r_object_id, object_name, user_login_name FROM cms_user_profile"
+                    + " WHERE location = '" + safe + "'"
+                    + " ORDER BY object_name";
+        Map<String, Object> result = executeDql(dql, 1, 500);
+        List<?> raw = (List<?>) result.get("users");
+        if (raw == null) return Collections.emptyList();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Object o : raw) { if (o instanceof Map<?,?> m) list.add((Map<String, Object>) m); }
+        return list;
+    }
+
+    /**
+     * Adds a vertical folder's r_object_id to the vertical_ids repeating attribute
+     * on a cms_user_profile. Steps:
+     *  1. Fetch r_object_id from dm_folder WHERE subject = verticalGroupName
+     *  2. Fetch current vertical_ids from the profile
+     *  3. PATCH the profile with the appended list
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> addVerticalIdToProfile(String profileObjectId, String verticalGroupName) {
+        // Step 1: Resolve folder ID by subject
+        String safe = verticalGroupName.replace("'", "''");
+        String dql  = "SELECT r_object_id FROM dm_folder WHERE subject = '" + safe + "'";
+        Map<String, Object> dqlResult = executeDql(dql, 1, 1);
+        List<?> entries = (List<?>) dqlResult.get("users");
+        if (entries == null || entries.isEmpty()) {
+            throw new RuntimeException("No folder found with subject: " + verticalGroupName);
+        }
+        Map<String, Object> folderProps = (Map<String, Object>) entries.get(0);
+        String folderId = (String) folderProps.get("r_object_id");
+
+        // Step 2: Fetch current vertical_ids
+        Map<String, Object> profile = getProfileById(profileObjectId);
+        List<String> currentIds = new ArrayList<>();
+        Object existing = profile.get("vertical_ids");
+        if (existing instanceof List<?> existingList) {
+            for (Object id : existingList) { if (id instanceof String s) currentIds.add(s); }
+        }
+        if (currentIds.contains(folderId)) {
+            return Map.of("success", true, "message", "Vertical ID already present in profile");
+        }
+
+        // Step 3: PATCH profile with appended vertical_ids
+        currentIds.add(folderId);
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/objects/" + profileObjectId;
+        Map<String, Object> body = Map.of("properties", Map.of("vertical_ids", currentIds));
+        try {
+            restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",        "application/vnd.emc.documentum+json")
+                    .header("X-Method-Override", "PATCH")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            return Map.of("success", true, "message", "Vertical ID added to profile");
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            String resp = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[VerticalId] Failed to update profile [{}]: {}", e.getStatusCode(), resp);
+            throw new RuntimeException("Failed to update vertical_ids [" + e.getStatusCode() + "]: " + resp);
+        }
     }
 
     private void executeDqlUpdate(String dql) {
