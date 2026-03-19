@@ -477,7 +477,8 @@ const RemoveMembersTab = ({ setToast }) => {
             const res = await api.get('/groups/by-prefix', {
                 params: { prefix: `ecm_ho_${d.shortCode.toLowerCase()}` },
             });
-            setVerticals(res.data || []);
+            const all = res.data || [];
+            setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('cgm_sec')));
         } catch { setVerticals([]); }
         finally { setLoadingVerts(false); }
     };

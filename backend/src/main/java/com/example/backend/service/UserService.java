@@ -33,7 +33,7 @@ public class UserService {
     @SuppressWarnings("unchecked")
     public Map<String, Object> searchUserProfiles(String query, int page, int itemsPerPage) {
         StringBuilder dqlBuilder = new StringBuilder();
-        dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, user_grade, designation, ");
+        dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, department_short_code, user_grade, designation, ");
         dqlBuilder.append("user_email_address, user_login_name, primary_mobile_number, location, office_type, ");
         dqlBuilder.append("is_active, hindi_user_name, hindi_designation, user_role ");
         dqlBuilder.append("FROM cms_user_profile WHERE object_name IS NOT NULL AND object_name != ' ' ");
@@ -100,6 +100,30 @@ public class UserService {
             String userName = (String) props.get("user_name");
             if (userName != null && !userName.isBlank()) {
                 addUserToGroup(userName, "dm_superusers_dynamic");
+
+                // Add office-type-specific groups
+                String officeType   = (String) request.get("profile_office_type");
+                String roShortCode  = (String) request.get("profile_ro_short_code");
+                if ("HO".equals(officeType)) {
+                    String deptCode = (String) request.get("profile_department_short_code");
+                    if (deptCode != null && !deptCode.isBlank()) {
+                        addUserToGroup(userName, "ecm_ho_" + deptCode.toLowerCase());
+                    }
+                } else if ("RO".equals(officeType) || "TE".equals(officeType)) {
+                    if (roShortCode != null && !roShortCode.isBlank()) {
+                        String roGroup = "ecm_" + roShortCode.toLowerCase();
+                        addUserToGroup(userName, roGroup);
+                        @SuppressWarnings("unchecked")
+                        List<String> deptCodes = (List<String>) request.get("profile_department_short_code_multi");
+                        if (deptCodes != null) {
+                            for (String deptCode : deptCodes) {
+                                if (deptCode != null && !deptCode.isBlank()) {
+                                    addUserToGroup(userName, roGroup + "_" + deptCode.toLowerCase());
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             return result;

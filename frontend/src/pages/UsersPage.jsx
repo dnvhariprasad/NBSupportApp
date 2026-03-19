@@ -307,20 +307,19 @@ const DmUserTab = ({ onToast }) => {
                                 <SortableHeader label="Email"       columnKey="user_address" />
                                 <SortableHeader label="Source"      columnKey="user_source" />
                                 <SortableHeader label="State"       columnKey="user_state" />
-                                <SortableHeader label="Privileges"  columnKey="user_privileges" />
                                 <th className="px-4 py-3 font-semibold text-slate-700 w-16 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
-                                <tr><td colSpan="8" className="px-4 py-20 text-center">
+                                <tr><td colSpan="6" className="px-4 py-20 text-center">
                                     <div className="flex flex-col items-center justify-center text-slate-500">
                                         <Loader2 size={32} className="animate-spin text-violet-600 mb-3" />
                                         <p className="text-sm font-medium">Loading Documentum users...</p>
                                     </div>
                                 </td></tr>
                             ) : currentUsers.length === 0 ? (
-                                <tr><td colSpan="8" className="px-4 py-16 text-center text-slate-500">
+                                <tr><td colSpan="6" className="px-4 py-16 text-center text-slate-500">
                                     <div className="flex flex-col items-center justify-center">
                                         <Users className="h-12 w-12 text-slate-200 mb-3" />
                                         <p className="text-base font-medium text-slate-600">No users found</p>
@@ -350,9 +349,6 @@ const DmUserTab = ({ onToast }) => {
                                         }`}>
                                             {DM_STATE_LABELS[user.user_state] ?? user.user_state}
                                         </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-600 text-xs">
-                                        {PRIVILEGE_OPTIONS.find(p => p.value === user.user_privileges)?.label ?? user.user_privileges ?? '-'}
                                     </td>
                                     <td className="px-4 py-3 text-center">
                                         <button onClick={() => { setSelectedUser(user); setIsEditOpen(true); }}
@@ -545,7 +541,6 @@ const CmsProfileTab = ({ onToast }) => {
                                 <th className="px-4 py-3 font-semibold text-slate-700 w-16">#</th>
                                 <SortableHeader label="Name"        columnKey="object_name" />
                                 <SortableHeader label="UIN"         columnKey="uin" />
-                                <SortableHeader label="Department"  columnKey="department_name" />
                                 <SortableHeader label="Grade"       columnKey="user_grade" />
                                 <SortableHeader label="Designation" columnKey="designation" />
                                 <th className="px-4 py-3 font-semibold text-slate-700 w-16 text-center">Actions</th>
@@ -553,14 +548,14 @@ const CmsProfileTab = ({ onToast }) => {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
-                                <tr><td colSpan="7" className="px-4 py-20 text-center">
+                                <tr><td colSpan="6" className="px-4 py-20 text-center">
                                     <div className="flex flex-col items-center justify-center text-slate-500">
                                         <Loader2 size={32} className="animate-spin text-[#0A66C2] mb-3" />
                                         <p className="text-sm font-medium">Loading user profiles...</p>
                                     </div>
                                 </td></tr>
                             ) : currentUsers.length === 0 ? (
-                                <tr><td colSpan="7" className="px-4 py-16 text-center text-slate-500">
+                                <tr><td colSpan="6" className="px-4 py-16 text-center text-slate-500">
                                     <div className="flex flex-col items-center justify-center">
                                         <Users className="h-12 w-12 text-slate-200 mb-3" />
                                         <p className="text-base font-medium text-slate-600">No users found</p>
@@ -577,7 +572,6 @@ const CmsProfileTab = ({ onToast }) => {
                                         </div>
                                     </td>
                                     <td className="px-4 py-3 text-slate-600 font-mono text-xs">{user.uin || '-'}</td>
-                                    <td className="px-4 py-3 text-slate-600">{user.department_name || '-'}</td>
                                     <td className="px-4 py-3 text-slate-600">
                                         {user.user_grade ? (
                                             <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-medium border border-slate-200">
@@ -1004,6 +998,11 @@ const UserCreateTab = ({ onToast }) => {
             home_docbase:         form.home_docbase,
             acl_name:             form.acl_name,
             ...(form.user_source === 'inline password' && { user_password: form.user_password }),
+            // Profile fields for office-type group assignment
+            profile_office_type:              form.profile_office_type,
+            profile_ro_short_code:            form.profile_ro_short_code,
+            profile_department_short_code:    form.profile_department_short_code,
+            profile_department_short_code_multi: form.profile_department_short_code_multi,
         };
         try {
             await api.post('/users', payload);
@@ -2218,8 +2217,8 @@ const UsersPage = () => {
 
     const tabs = [
         { id: 'creation',  label: 'User Creation',        icon: UserPlus },
-        { id: 'password',  label: 'User Password Update', icon: KeyRound },
         { id: 'directory', label: 'User Directory',       icon: Users    },
+        { id: 'password',  label: 'User Password Update', icon: KeyRound },
     ];
 
     return (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { X, Save, Loader2, User, Building2, MapPin, Tag, GraduationCap, Layers } from 'lucide-react';
 import { USER_GRADES, getDepartments, getLocations } from '../data/nabardMetadata.js';
@@ -32,6 +32,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [form, setForm] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [] });
 
     useEffect(() => {
         if (!isOpen || !user) return;
@@ -63,9 +64,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 : (profile.department_short_code ? [profile.department_short_code] : []);
             deptShortCodeMulti = multiCodes;
             deptShortCode      = multiCodes[0] || '';
+            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: multiCodes };
         } else {
             const deptObj = depts.find(d => d.name === deptName);
             deptShortCode = deptObj ? deptObj.shortCode : (profile.department_short_code || '');
+            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: deptShortCode ? [deptShortCode] : [] };
         }
 
         const gradeObj   = USER_GRADES.find(g => g.value === profile.user_grade);
@@ -141,6 +144,39 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 ...(isROTE && { department_short_code_multi }),
             };
             await api.patch(`/users/profiles/${user.r_object_id}`, payload);
+
+            // Compute all groups for a given office config
+            const getGroups = (offType, roCode, codes) => {
+                const groups = [];
+                if (offType === 'HO') {
+                    for (const c of codes) if (c) groups.push(`ecm_ho_${c.toLowerCase()}`);
+                } else if (['RO', 'TE'].includes(offType) && roCode) {
+                    const ro = roCode.toLowerCase();
+                    if (codes.length > 0) groups.push(`ecm_${ro}`);
+                    for (const c of codes) if (c) groups.push(`ecm_${ro}_${c.toLowerCase()}`);
+                }
+                return groups;
+            };
+
+            const loginName = user.user_login_name;
+            const old = originalGroupInfoRef.current;
+            const newDeptCodes = isROTE
+                ? (form.department_short_code_multi || [])
+                : (form.department_short_code ? [form.department_short_code] : []);
+            const newRoShortCode = (form.ro_short_code || '').toLowerCase();
+
+            const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
+            const newGroups = getGroups(form.office_type, newRoShortCode, newDeptCodes);
+
+            for (const g of oldGroups) {
+                if (!newGroups.includes(g))
+                    api.delete(`/groups/${g}/members/${encodeURIComponent(loginName)}`).catch(() => {});
+            }
+            for (const g of newGroups) {
+                if (!oldGroups.includes(g))
+                    api.post(`/groups/${g}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+            }
+
             onUpdate();
             onClose();
         } catch (err) {
@@ -186,9 +222,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <Label>Name</Label>
-                                    <input type="text" value={form.object_name}
-                                        onChange={e => set('object_name', e.target.value)}
-                                        className={inputCls} />
+                                    <input type="text" value={form.object_name} readOnly
+                                        className={readonlyCls} />
                                 </div>
                                 <div className="space-y-1">
                                     <Label>UIN</Label>
@@ -313,8 +348,10 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                                         const newCodes = currentCodes.includes(d.shortCode)
                                                                             ? currentCodes.filter(c => c !== d.shortCode)
                                                                             : [...currentCodes, d.shortCode];
+                                                                        const firstDept = depts.find(dept => dept.shortCode === newCodes[0]);
                                                                         set('department_short_code',       newCodes[0] || '');
                                                                         set('department_short_code_multi', newCodes);
+                                                                        set('department_name',             firstDept?.name || '');
                                                                     }}
                                                                     className="rounded accent-[#0A66C2]"
                                                                 />
