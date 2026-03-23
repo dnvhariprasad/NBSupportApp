@@ -8,6 +8,7 @@ import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
 import QueryPage from './pages/QueryPage';
 import VerticalsPage from './pages/VerticalsPage';
+import MetadataPage from './pages/MetadataPage';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             <Route path="groups" element={<GroupsPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="verticals" element={<VerticalsPage />} />
+            <Route path="metadata" element={<MetadataPage />} />
             <Route path="query" element={<QueryPage />} />
         </Route>
         

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network } from 'lucide-react';
+import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, FolderCog } from 'lucide-react';
 
 const Sidebar = () => {
     const navItems = [
@@ -9,6 +9,7 @@ const Sidebar = () => {
         { name: 'Groups', path: '/dashboard/groups', icon: UsersRound },
         { name: 'Users', path: '/dashboard/users', icon: Users },
         { name: 'Verticals', path: '/dashboard/verticals', icon: Network },
+        { name: 'Metadata', path: '/dashboard/metadata', icon: FolderCog },
         { name: 'Query', path: '/dashboard/query', icon: Database },
     ];
 
