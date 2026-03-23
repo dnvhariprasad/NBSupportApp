@@ -1,12 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network } from 'lucide-react';
+import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList } from 'lucide-react';
 
 const Sidebar = () => {
     const navItems = [
         { name: 'Cases', path: '/dashboard/cases', icon: Briefcase },
         { name: 'Workflows', path: '/dashboard/workflows', icon: GitBranch },
         { name: 'Groups', path: '/dashboard/groups', icon: UsersRound },
+        { name: 'Case Inbox', path: '/dashboard/inbox', icon: ClipboardList },
         { name: 'Users', path: '/dashboard/users', icon: Users },
         { name: 'Verticals', path: '/dashboard/verticals', icon: Network },
         { name: 'Query', path: '/dashboard/query', icon: Database },
