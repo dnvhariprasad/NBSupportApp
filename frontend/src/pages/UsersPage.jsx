@@ -35,6 +35,21 @@ const PRIVILEGE_OPTIONS = [
     { value: 16, label: 'Superuser',     description: 'Full superuser access' },
 ];
 
+// ─── Designation options (from Nabard metadata) ───────────────────────────────
+const DESIGNATION_OPTIONS = [
+    { value: '',         hindi: '',              label: '— Select designation —' },
+    { value: 'DA',       hindi: 'विस',           label: 'DA' },
+    { value: 'AM',       hindi: 'सप्र',          label: 'AM' },
+    { value: 'MGR',      hindi: 'प्र',           label: 'MGR' },
+    { value: 'AGM',      hindi: 'समप्र',         label: 'AGM' },
+    { value: 'DGM',      hindi: 'उमप्र',         label: 'DGM' },
+    { value: 'GM',       hindi: 'मप्र',          label: 'GM' },
+    { value: 'GM(OIC)',  hindi: 'मप्र(काप्र)',   label: 'GM(OIC)' },
+    { value: 'CGM',      hindi: 'मुमप्र',        label: 'CGM' },
+    { value: 'DMD',      hindi: 'उप्रनि',        label: 'DMD' },
+    { value: 'CHAIRMAN', hindi: 'अध्यक्ष',      label: 'CHAIRMAN' },
+];
+
 // ─── Toast Notification ───────────────────────────────────────────────────────
 const Toast = ({ toast, onDismiss }) => {
     useEffect(() => {
@@ -68,17 +83,17 @@ const DM_STATE_LABELS  = { 0: 'Active', 1: 'Inactive' };
 
 // ─── Edit dm_user Modal ───────────────────────────────────────────────────────
 const EditDmUserModal = ({ user, isOpen, onClose, onSaved, onToast }) => {
-    const [form, setForm]         = useState({});
-    const [advOpen, setAdvOpen]   = useState(false);
-    const [loading, setLoading]   = useState(false);
-    const [error, setError]       = useState(null);
+    const [form, setForm]               = useState({});
+    const [loading, setLoading]         = useState(false);
+    const [loadingState, setLoadingState] = useState(false);
+    const [error, setError]             = useState(null);
 
     useEffect(() => {
         if (!isOpen || !user) return;
         setForm({
             user_address:   user.user_address   || '',
             user_privileges: user.user_privileges ?? 0,
-            user_state:     user.user_state     ?? 0,
+            user_state:     0,   // default Active; overwritten once OTDS status loads
             description:    user.description    || '',
             user_os_name:   user.user_os_name   || '',
             user_db_name:   user.user_db_name   || '',
@@ -87,7 +102,21 @@ const EditDmUserModal = ({ user, isOpen, onClose, onSaved, onToast }) => {
             acl_name:       user.acl_name       || '',
         });
         setError(null);
-        setAdvOpen(false);
+
+        // Fetch OTDS accountDisabled to initialise User State dropdown
+        if (user.user_login_name) {
+            setLoadingState(true);
+            const userId = encodeURIComponent(user.user_login_name + '@DCTMPartitions');
+            api.get(`/users/otds/inspect?userId=${userId}`)
+                .then(res => {
+                    const values = res.data?.values || [];
+                    const attr = values.find(v => v.name === 'accountDisabled');
+                    const isDisabled = attr?.values?.[0] === 'true';
+                    setForm(f => ({ ...f, user_state: isDisabled ? 1 : 0 }));
+                })
+                .catch(() => { /* keep default Active on error */ })
+                .finally(() => setLoadingState(false));
+        }
     }, [isOpen, user]);
 
     const set = (f, v) => setForm(p => ({ ...p, [f]: v }));
@@ -97,8 +126,15 @@ const EditDmUserModal = ({ user, isOpen, onClose, onSaved, onToast }) => {
         setLoading(true);
         setError(null);
         try {
-            await api.patch(`/users/dm/${encodeURIComponent(user.user_name)}`, form);
-            onToast({ type: 'success', message: `dm_user "${user.user_name}" updated.` });
+            const res = await api.patch(`/users/dm/${encodeURIComponent(user.user_name)}`, {
+                ...form,
+                user_login_name: user.user_login_name,
+            });
+            if (res.data?.otdsWarning) {
+                onToast({ type: 'error', message: `Documentum updated. OTDS warning: ${res.data.otdsWarning}` });
+            } else {
+                onToast({ type: 'success', message: `dm_user "${user.user_name}" updated${form.user_state === 1 ? ' and OTDS account disabled' : ''}.` });
+            }
             onSaved();
             onClose();
         } catch (err) {
@@ -132,49 +168,46 @@ const EditDmUserModal = ({ user, isOpen, onClose, onSaved, onToast }) => {
                 <div className="flex-1 overflow-y-auto p-6">
                     {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100">{error}</div>}
                     <form id="editDmUserForm" onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="space-y-1 sm:col-span-2">
-                                <Lbl>Email / User Address</Lbl>
-                                <input type="text" value={form.user_address}
-                                    onChange={e => set('user_address', e.target.value)}
-                                    placeholder="e.g. user@nabard.org"
-                                    className={inputCls} />
-                            </div>
-                            <div className="space-y-1">
-                                <Lbl>User Privileges</Lbl>
-                                <div className="relative">
-                                    <select value={form.user_privileges}
-                                        onChange={e => set('user_privileges', Number(e.target.value))}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer">
-                                        {PRIVILEGE_OPTIONS.map(o => (
-                                            <option key={o.value} value={o.value}>{o.label}</option>
-                                        ))}
-                                    </select>
-                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                                        <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="space-y-1">
-                                <Lbl>User State</Lbl>
-                                <div className="relative">
-                                    <select value={form.user_state}
-                                        onChange={e => set('user_state', Number(e.target.value))}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer">
-                                        <option value={0}>Active</option>
-                                        <option value={1}>Inactive</option>
-                                    </select>
-                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                                        <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    </div>
-                                </div>
-                            </div>
+                        <div className="space-y-1">
+                            <Lbl>Email / User Address</Lbl>
+                            <input type="text" value={form.user_address}
+                                onChange={e => set('user_address', e.target.value)}
+                                placeholder="e.g. user@nabard.org"
+                                className={inputCls} />
                         </div>
-
+                        <div className="space-y-1">
+                            <Lbl className="flex items-center gap-2">
+                                User State (OTDS)
+                                {loadingState && <Loader2 size={11} className="animate-spin text-slate-400 inline ml-1" />}
+                            </Lbl>
+                            <div className="relative">
+                                <select value={form.user_state}
+                                    disabled={loadingState}
+                                    onChange={e => set('user_state', Number(e.target.value))}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer disabled:bg-slate-50 disabled:cursor-wait">
+                                    <option value={0}>Active</option>
+                                    <option value={1}>Inactive</option>
+                                </select>
+                                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                                    {loadingState
+                                        ? <Loader2 size={13} className="animate-spin text-slate-400" />
+                                        : <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                          </svg>
+                                    }
+                                </div>
+                            </div>
+                            {form.user_state === 1 && !loadingState && (
+                                <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
+                                    <AlertCircle size={12} /> Saving will disable the OTDS account.
+                                </p>
+                            )}
+                            {form.user_state === 0 && !loadingState && (
+                                <p className="text-xs text-emerald-600 flex items-center gap-1 mt-1">
+                                    <CheckCircle2 size={12} /> Saving will enable the OTDS account.
+                                </p>
+                            )}
+                        </div>
                     </form>
                 </div>
 
@@ -306,20 +339,19 @@ const DmUserTab = ({ onToast }) => {
                                 <SortableHeader label="Login Name"  columnKey="user_login_name" />
                                 <SortableHeader label="Email"       columnKey="user_address" />
                                 <SortableHeader label="Source"      columnKey="user_source" />
-                                <SortableHeader label="State"       columnKey="user_state" />
                                 <th className="px-4 py-3 font-semibold text-slate-700 w-16 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
-                                <tr><td colSpan="6" className="px-4 py-20 text-center">
+                                <tr><td colSpan="5" className="px-4 py-20 text-center">
                                     <div className="flex flex-col items-center justify-center text-slate-500">
                                         <Loader2 size={32} className="animate-spin text-violet-600 mb-3" />
                                         <p className="text-sm font-medium">Loading Documentum users...</p>
                                     </div>
                                 </td></tr>
                             ) : currentUsers.length === 0 ? (
-                                <tr><td colSpan="6" className="px-4 py-16 text-center text-slate-500">
+                                <tr><td colSpan="5" className="px-4 py-16 text-center text-slate-500">
                                     <div className="flex flex-col items-center justify-center">
                                         <Users className="h-12 w-12 text-slate-200 mb-3" />
                                         <p className="text-base font-medium text-slate-600">No users found</p>
@@ -340,15 +372,6 @@ const DmUserTab = ({ onToast }) => {
                                                 {DM_SOURCE_LABELS[user.user_source] || user.user_source}
                                             </span>
                                         ) : '-'}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
-                                            user.user_state === 0
-                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                                : 'bg-red-50 text-red-600 border-red-100'
-                                        }`}>
-                                            {DM_STATE_LABELS[user.user_state] ?? user.user_state}
-                                        </span>
                                     </td>
                                     <td className="px-4 py-3 text-center">
                                         <button onClick={() => { setSelectedUser(user); setIsEditOpen(true); }}
@@ -548,14 +571,14 @@ const CmsProfileTab = ({ onToast }) => {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
-                                <tr><td colSpan="6" className="px-4 py-20 text-center">
+                                <tr><td colSpan="5" className="px-4 py-20 text-center">
                                     <div className="flex flex-col items-center justify-center text-slate-500">
                                         <Loader2 size={32} className="animate-spin text-[#0A66C2] mb-3" />
                                         <p className="text-sm font-medium">Loading user profiles...</p>
                                     </div>
                                 </td></tr>
                             ) : currentUsers.length === 0 ? (
-                                <tr><td colSpan="6" className="px-4 py-16 text-center text-slate-500">
+                                <tr><td colSpan="5" className="px-4 py-16 text-center text-slate-500">
                                     <div className="flex flex-col items-center justify-center">
                                         <Users className="h-12 w-12 text-slate-200 mb-3" />
                                         <p className="text-base font-medium text-slate-600">No users found</p>
@@ -649,7 +672,7 @@ const EMPTY_FORM = {
     user_name: '', user_login_name: '', user_address: '', description: '',
     user_source: 'OTDS', user_password: '', user_os_name: '', user_db_name: '',
     user_global_unique_id: '', default_folder: '', home_docbase: '', acl_name: '',
-    user_privileges: 0, user_state: 0,
+    user_privileges: 4, user_state: 0,
     // OTDS-specific (only used when user_source === 'OTDS')
     otds_password: '', otds_confirm_pw: '', otds_partition: 'DCTMPartitions', otds_no_reset: true,
     // Step 4 — cms_user_profile fields
@@ -837,13 +860,7 @@ const SourcePasswordBlock = ({ form, handleChange, showPassword, setShowPassword
                         </div>
                         {errors?.otds_partition && <p className="text-xs text-red-500 mt-1">{errors.otds_partition}</p>}
                     </div>
-                    {/* No-reset checkbox */}
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input type="checkbox" checked={form.otds_no_reset}
-                            onChange={e => handleChange('otds_no_reset', e.target.checked)}
-                            className="w-4 h-4 rounded accent-[#0A66C2] cursor-pointer" />
-                        <span className="text-xs text-slate-600">Do not require password change on reset</span>
-                    </label>
+                    {/* No-reset always true — hidden */}
                 </div>
             ) : null}
         </div>
@@ -858,7 +875,7 @@ const UserCreateTab = ({ onToast }) => {
     const [submitting, setSubmitting]     = useState(false);
     const [showPassword, setShowPassword]   = useState(false);
     const [showOtdsConfirm, setShowOtdsConfirm] = useState(false);
-    const [advancedOpen, setAdvancedOpen]   = useState(false);
+    const [profileOpen, setProfileOpen]     = useState(false);
     // Track which Hindi fields have been manually edited so auto-fill doesn't overwrite them
     const hindiTouched = useRef({ profile_hindi_user_name: false, profile_hindi_designation: false });
 
@@ -888,22 +905,11 @@ const UserCreateTab = ({ onToast }) => {
         return () => clearTimeout(timer);
     }, [form.user_name]);
 
-    // Debounced transliteration: profile_designation → profile_hindi_designation
+    // Auto-populate Hindi designation from lookup when designation changes
     useEffect(() => {
         if (hindiTouched.current.profile_hindi_designation) return;
-        if (!form.profile_designation.trim()) {
-            setForm(f => ({ ...f, profile_hindi_designation: '' }));
-            return;
-        }
-        const timer = setTimeout(async () => {
-            try {
-                const res = await api.get(`/transliterate?text=${encodeURIComponent(form.profile_designation.trim())}`);
-                if (!hindiTouched.current.profile_hindi_designation && res.data?.result) {
-                    setForm(f => ({ ...f, profile_hindi_designation: res.data.result }));
-                }
-            } catch { /* silent — user can fill manually */ }
-        }, 500);
-        return () => clearTimeout(timer);
+        const opt = DESIGNATION_OPTIONS.find(d => d.value === form.profile_designation);
+        setForm(f => ({ ...f, profile_hindi_designation: opt?.hindi || '' }));
     }, [form.profile_designation]);
 
     const validatePassword = (pw) => {
@@ -944,17 +950,6 @@ const UserCreateTab = ({ onToast }) => {
             if (!form.profile_hindi_designation.trim())     e.profile_hindi_designation     = 'Hindi designation is required';
             if (!form.profile_hindi_user_name.trim())       e.profile_hindi_user_name       = 'Hindi user name is required';
             if (!form.profile_uin.trim())                   e.profile_uin                   = 'UIN is required';
-            if (!form.profile_office_type)                  e.profile_office_type           = 'Office type is required';
-            if (['RO', 'TE'].includes(form.profile_office_type)) {
-                if (!form.profile_location)                 e.profile_location              = 'Location is required';
-                if (!form.profile_ro_short_code.trim())     e.profile_ro_short_code         = 'RO/TE short code is required';
-            }
-            if (['RO', 'TE'].includes(form.profile_office_type)) {
-                if (form.profile_department_names.length === 0) e.profile_department_name = 'At least one department is required';
-            } else {
-                if (!form.profile_department_name.trim())       e.profile_department_name       = 'Department name is required';
-                if (!form.profile_department_short_code.trim()) e.profile_department_short_code = 'Department short code is required';
-            }
             if (!form.profile_user_grade)                   e.profile_user_grade            = 'User grade is required';
             if (form.profile_grade_level === '')            e.profile_grade_level           = 'Grade level is required';
         }
@@ -1147,66 +1142,33 @@ const UserCreateTab = ({ onToast }) => {
                                         showPassword={showPassword} setShowPassword={setShowPassword}
                                         showOtdsConfirm={showOtdsConfirm} setShowOtdsConfirm={setShowOtdsConfirm}
                                         errors={errors} />
-                                    {/* Advanced optional fields accordion */}
-                                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                        <button type="button"
-                                            onClick={() => setAdvancedOpen(o => !o)}
-                                            className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left">
-                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Advanced (optional)</span>
-                                            <ChevronDown size={15} className={`text-slate-400 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        {advancedOpen && (
-                                            <div className="p-4 space-y-4 border-t border-slate-200">
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                    <FormField label="OS Username" icon={Database} hint="Operating system login name">
-                                                        <input type="text" value={form.user_os_name}
-                                                            onChange={e => handleChange('user_os_name', e.target.value)}
-                                                            placeholder={`e.g. NABARD\\john.doe`}
-                                                            className={`${inputCls(false)} font-mono`} />
-                                                    </FormField>
-                                                    <FormField label="DB Username" icon={Database} hint="Database-level login name">
-                                                        <input type="text" value={form.user_db_name}
-                                                            onChange={e => handleChange('user_db_name', e.target.value)}
-                                                            placeholder="e.g. john_doe_db"
-                                                            className={`${inputCls(false)} font-mono`} />
-                                                    </FormField>
-                                                </div>
-                                                <FormField label="Global Unique ID" icon={Tag} hint="Cross-system unique identifier (GUID)">
-                                                    <input type="text" value={form.user_global_unique_id}
-                                                        onChange={e => handleChange('user_global_unique_id', e.target.value)}
-                                                        placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                                                        className={`${inputCls(false)} font-mono`} />
-                                                </FormField>
-                                            </div>
-                                        )}
-                                    </div>
-
                                     {/* ── Repository settings ── */}
                                     <div className="border-t border-slate-100 pt-4 space-y-4">
                                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Repository & Permissions</p>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <FormField label="Home Docbase" icon={Globe} required error={errors.home_docbase}>
-                                                <SelectField value={form.home_docbase}
-                                                    onChange={v => handleChange('home_docbase', v)}
-                                                    options={[
-                                                        { value: '',         label: '— Select docbase —' },
-                                                        { value: 'EDMS',     label: 'EDMS' },
-                                                        { value: 'NABARDUAT',label: 'NABARDUAT' },
-                                                    ]} />
-                                                {errors.home_docbase && <p className="text-xs text-red-500 mt-1">{errors.home_docbase}</p>}
-                                            </FormField>
-                                            <FormField label="User Privileges" icon={Shield}
-                                                hint={PRIVILEGE_OPTIONS.find(p => p.value === Number(form.user_privileges))?.description}>
-                                                <SelectField value={form.user_privileges}
-                                                    onChange={v => handleChange('user_privileges', v)}
-                                                    options={PRIVILEGE_OPTIONS.map(p => ({ value: p.value, label: `${p.label} (${p.value})` }))} />
-                                            </FormField>
-                                        </div>
-                                        <FormField label="User State" icon={User}
-                                            hint={Number(form.user_state) === 0 ? 'User can log in to the repository' : 'User login is disabled'}>
-                                            <SelectField value={form.user_state}
-                                                onChange={v => handleChange('user_state', v)}
-                                                options={STATE_OPTIONS} />
+                                        <FormField label="Home Docbase" icon={Globe} required error={errors.home_docbase}>
+                                            <SelectField value={form.home_docbase}
+                                                onChange={v => handleChange('home_docbase', v)}
+                                                options={[
+                                                    { value: '',         label: '— Select docbase —' },
+                                                    { value: 'EDMS',     label: 'EDMS' },
+                                                    { value: 'NABARDUAT',label: 'NABARDUAT' },
+                                                ]} />
+                                            {errors.home_docbase && <p className="text-xs text-red-500 mt-1">{errors.home_docbase}</p>}
+                                        </FormField>
+                                        {/* User Privileges — fixed at Create Group (4), hidden */}
+                                        {/* User State — always Active (0), shown as disabled */}
+                                        <FormField label="User State" icon={User} hint="User can log in to the repository">
+                                            <div className="relative">
+                                                <select disabled value={0}
+                                                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-10">
+                                                    <option value={0}>Active</option>
+                                                </select>
+                                                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                                                    <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </div>
+                                            </div>
                                         </FormField>
                                     </div>
 
@@ -1218,8 +1180,8 @@ const UserCreateTab = ({ onToast }) => {
                                                 ['User Name',   form.user_name],
                                                 ['Login Name',  form.user_login_name],
                                                 ['Source',      SOURCE_OPTIONS.find(s => s.value === form.user_source)?.label || 'Local'],
-                                                ['Privileges',  PRIVILEGE_OPTIONS.find(p => p.value === Number(form.user_privileges))?.label],
-                                                ['State',       Number(form.user_state) === 0 ? 'Active' : 'Inactive'],
+                                                ['Privileges',  'Create Group (4)'],
+                                                ['State',       'Active'],
                                                 ['Address',     form.user_address || '—'],
                                             ].map(([k, v]) => (
                                                 <div key={k} className="flex items-baseline gap-1.5 min-w-0">
@@ -1248,10 +1210,9 @@ const UserCreateTab = ({ onToast }) => {
                                 <div className="p-6 space-y-4">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <FormField label="Designation" icon={Briefcase} required error={errors.profile_designation}>
-                                            <input type="text" value={form.profile_designation}
-                                                onChange={e => handleChange('profile_designation', e.target.value)}
-                                                placeholder="e.g. DGM"
-                                                className={inputCls(errors.profile_designation)} />
+                                            <SelectField value={form.profile_designation}
+                                                onChange={v => handleChange('profile_designation', v)}
+                                                options={DESIGNATION_OPTIONS} />
                                         </FormField>
                                         <FormField label="Hindi Designation" icon={Briefcase} required error={errors.profile_hindi_designation}>
                                             <input type="text" value={form.profile_hindi_designation}
@@ -1272,130 +1233,6 @@ const UserCreateTab = ({ onToast }) => {
                                                 className={`${inputCls(errors.profile_uin)} font-mono`} />
                                         </FormField>
                                     </div>
-                                    <FormField label="Office Type" icon={Building2} required error={errors.profile_office_type}>
-                                        <SelectField value={form.profile_office_type}
-                                            onChange={v => {
-                                                handleChange('profile_office_type', v);
-                                                handleChange('profile_location', v === 'HO' ? 'Mumbai' : '');
-                                                handleChange('profile_ro_short_code', '');
-                                                handleChange('profile_department_name', '');
-                                                handleChange('profile_department_short_code', '');
-                                                handleChange('profile_department_names', []);
-                                                handleChange('profile_department_short_code_multi', []);
-                                            }}
-                                            options={[
-                                                { value: '',   label: '— Select office type —' },
-                                                { value: 'HO', label: 'HO — Head Office' },
-                                                { value: 'RO', label: 'RO — Regional Office' },
-                                                { value: 'TE', label: 'TE — Training Establishment' },
-                                            ]} />
-                                    </FormField>
-                                    {/* Location + RO/TE Short Code row */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <FormField label="Location" icon={MapPin}
-                                            required={['RO','TE'].includes(form.profile_office_type)}
-                                            error={errors.profile_location}>
-                                            {form.profile_office_type === 'HO' ? (
-                                                <div className="relative">
-                                                    <select disabled className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-10">
-                                                        <option>Mumbai</option>
-                                                    </select>
-                                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                                                        <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                                        </svg>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <SelectField value={form.profile_location}
-                                                    onChange={v => {
-                                                        handleChange('profile_location', v);
-                                                        // Auto-fill RO/TE short code from location
-                                                        const locs = getLocations(form.profile_office_type);
-                                                        const loc = locs.find(l => l.location === v);
-                                                        handleChange('profile_ro_short_code', loc ? loc.shortCode : '');
-                                                        // Clear department when location changes
-                                                        handleChange('profile_department_name', '');
-                                                        handleChange('profile_department_short_code', '');
-                                                        handleChange('profile_department_names', []);
-                                                        handleChange('profile_department_short_code_multi', []);
-                                                    }}
-                                                    options={[
-                                                        { value: '', label: '— Select location —' },
-                                                        ...getLocations(form.profile_office_type).map(l => ({ value: l.location, label: l.location })),
-                                                    ]} />
-                                            )}
-                                        </FormField>
-                                        <FormField label="RO/TE Short Code" icon={Tag}
-                                            required={['RO','TE'].includes(form.profile_office_type)}
-                                            error={errors.profile_ro_short_code}>
-                                            <input type="text" readOnly value={form.profile_ro_short_code}
-                                                disabled={form.profile_office_type === 'HO' || !form.profile_office_type}
-                                                placeholder="Auto-filled from location"
-                                                className={`${inputCls(errors.profile_ro_short_code)} font-mono bg-slate-50 cursor-default disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed`} />
-                                        </FormField>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <FormField label="Department Name" icon={Layers} required error={errors.profile_department_name}>
-                                            {(() => {
-                                                const depts = getDepartments(form.profile_office_type, form.profile_location);
-                                                const isROTE = ['RO','TE'].includes(form.profile_office_type);
-                                                const needsLocation = isROTE && !form.profile_location;
-                                                if (isROTE) {
-                                                    return (
-                                                        <div className={`border rounded-xl overflow-hidden ${errors.profile_department_name ? 'border-red-400' : 'border-slate-200'}`}>
-                                                            {needsLocation ? (
-                                                                <p className="px-4 py-2.5 text-sm text-slate-400">— Select location first —</p>
-                                                            ) : (
-                                                                <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
-                                                                    {depts.map(d => (
-                                                                        <label key={d.name} className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-slate-50">
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                checked={form.profile_department_names.includes(d.name)}
-                                                                                onChange={() => {
-                                                                                    const current = form.profile_department_names;
-                                                                                    const newNames = current.includes(d.name)
-                                                                                        ? current.filter(n => n !== d.name)
-                                                                                        : [...current, d.name];
-                                                                                    const newCodes = newNames.map(n => depts.find(dep => dep.name === n)?.shortCode || '').filter(Boolean);
-                                                                                    handleChange('profile_department_names', newNames);
-                                                                                    handleChange('profile_department_short_code', newCodes[0] || '');
-                                                                                    handleChange('profile_department_short_code_multi', newCodes);
-                                                                                }}
-                                                                                className="rounded accent-[#0A66C2]"
-                                                                            />
-                                                                            <span className="text-sm text-slate-700">{d.name}</span>
-                                                                        </label>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                }
-                                                return (
-                                                    <SelectField value={form.profile_department_name}
-                                                        onChange={v => {
-                                                            handleChange('profile_department_name', v);
-                                                            const dept = depts.find(d => d.name === v);
-                                                            handleChange('profile_department_short_code', dept ? dept.shortCode : '');
-                                                        }}
-                                                        options={[
-                                                            { value: '', label: '— Select department —' },
-                                                            ...depts.map(d => ({ value: d.name, label: d.name })),
-                                                        ]} />
-                                                );
-                                            })()}
-                                        </FormField>
-                                        <FormField label="Department Short Code" icon={Tag} required error={errors.profile_department_short_code}>
-                                            <input type="text" readOnly
-                                                value={['RO','TE'].includes(form.profile_office_type)
-                                                    ? form.profile_department_short_code_multi.join(',')
-                                                    : form.profile_department_short_code}
-                                                placeholder="Auto-filled from department"
-                                                className={`${inputCls(errors.profile_department_short_code)} font-mono bg-slate-50 cursor-default`} />
-                                        </FormField>
-                                    </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <FormField label="User Grade" icon={GraduationCap} required error={errors.profile_user_grade}>
                                             <SelectField value={form.profile_user_grade}
@@ -1412,13 +1249,70 @@ const UserCreateTab = ({ onToast }) => {
                                                 className={`${inputCls(errors.profile_grade_level)} bg-slate-50 cursor-default`} />
                                         </FormField>
                                     </div>
-                                    <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
-                                        <input type="checkbox" checked={form.profile_is_active}
-                                            onChange={e => handleChange('profile_is_active', e.target.checked)}
-                                            className="w-4 h-4 rounded accent-[#0A66C2] cursor-pointer" />
-                                        <span className="text-sm text-slate-700 font-medium">Active user</span>
-                                        <span className="text-xs text-slate-400">(sets is_active = true on profile)</span>
-                                    </label>
+
+                                    {/* ── Office & Department (disabled, accordion) ── */}
+                                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                        <button type="button"
+                                            onClick={() => setProfileOpen(o => !o)}
+                                            className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left">
+                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                                                <Building2 size={13} className="text-slate-400" />
+                                                Office &amp; Department Details
+                                            </span>
+                                            <ChevronDown size={15} className={`text-slate-400 transition-transform ${profileOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {profileOpen && (
+                                            <div className="p-4 space-y-4 border-t border-slate-200">
+                                                <FormField label="Office Type" icon={Building2}>
+                                                    <div className="relative">
+                                                        <select disabled value={form.profile_office_type}
+                                                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-10">
+                                                            <option value="">— Select office type —</option>
+                                                            <option value="HO">HO — Head Office</option>
+                                                            <option value="RO">RO — Regional Office</option>
+                                                            <option value="TE">TE — Training Establishment</option>
+                                                        </select>
+                                                        <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                                                            <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                </FormField>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <FormField label="Location" icon={MapPin}>
+                                                        <input type="text" disabled value={form.profile_location}
+                                                            placeholder="—"
+                                                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed" />
+                                                    </FormField>
+                                                    <FormField label="RO/TE Short Code" icon={Tag}>
+                                                        <input type="text" disabled value={form.profile_ro_short_code}
+                                                            placeholder="—"
+                                                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed font-mono" />
+                                                    </FormField>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <FormField label="Department Name" icon={Layers}>
+                                                        <input type="text" disabled
+                                                            value={['RO','TE'].includes(form.profile_office_type)
+                                                                ? form.profile_department_names.join(', ')
+                                                                : form.profile_department_name}
+                                                            placeholder="—"
+                                                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed" />
+                                                    </FormField>
+                                                    <FormField label="Department Short Code" icon={Tag}>
+                                                        <input type="text" disabled
+                                                            value={['RO','TE'].includes(form.profile_office_type)
+                                                                ? form.profile_department_short_code_multi.join(',')
+                                                                : form.profile_department_short_code}
+                                                            placeholder="—"
+                                                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed font-mono" />
+                                                    </FormField>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Active user — always true, hidden */}
                                 </div>
                             </>
                         )}
@@ -1454,13 +1348,7 @@ const UserCreateTab = ({ onToast }) => {
                                     <button type="button" onClick={handleSubmit} disabled={submitting ||
                                         !form.profile_designation.trim() || !form.profile_hindi_designation.trim() ||
                                         !form.profile_hindi_user_name.trim() || !form.profile_uin.trim() ||
-                                        !form.profile_office_type ||
-                                        (['RO','TE'].includes(form.profile_office_type)
-                                            ? form.profile_department_names.length === 0
-                                            : (!form.profile_department_name.trim() || !form.profile_department_short_code.trim())) ||
-                                        !form.profile_user_grade ||
-                                        form.profile_grade_level === '' ||
-                                        (['RO','TE'].includes(form.profile_office_type) && (!form.profile_ro_short_code.trim() || !form.profile_location))}
+                                        !form.profile_user_grade || form.profile_grade_level === ''}
                                         className="flex items-center gap-2 px-6 py-2 bg-[#0A66C2] hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed">
                                         {submitting
                                             ? <><Loader2 size={15} className="animate-spin" /> Creating...</>
