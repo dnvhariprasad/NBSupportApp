@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
 import {
     FolderOpen, FileText, Layers, Building2, MapPin, Tag,
-    CheckCircle2, AlertCircle, X, Loader2, Plus, Hash, RefreshCw, Trash2
+    CheckCircle2, AlertCircle, X, Loader2, Plus, Hash, RefreshCw, Trash2, Pencil
 } from 'lucide-react';
 import { getDepartments, getLocations } from '../data/nabardMetadata.js';
 
@@ -68,6 +68,9 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
     // confirmId = r_object_id of the row awaiting delete confirmation; null otherwise
     const [confirmId, setConfirmId] = useState(null);
     const [deleting, setDeleting]   = useState(null); // r_object_id being deleted
+    const [editingId, setEditingId] = useState(null);
+    const [editValues, setEditValues] = useState({ object_name: '', description: '' });
+    const [saving, setSaving]       = useState(false);
 
     const canFetch = hoRo && deptShortCode && (hoRo === 'HO' || roShortCode);
 
@@ -89,6 +92,37 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
     }, [hoRo, deptShortCode, roShortCode, canFetch]);
 
     useEffect(() => { loadList(); }, [loadList, refreshKey]);
+
+    const startEdit = (item) => {
+        setEditingId(item.r_object_id);
+        setEditValues({ object_name: item.object_name || '', description: item.description || '' });
+        setConfirmId(null);
+    };
+
+    const cancelEdit = () => {
+        setEditingId(null);
+        setEditValues({ object_name: '', description: '' });
+    };
+
+    const handleSave = async (item) => {
+        setSaving(true);
+        try {
+            await api.put(`/metadata/file-numbers/${item.r_object_id}`, {
+                object_name: editValues.object_name.trim(),
+                description: editValues.description.trim(),
+            });
+            onToast({ type: 'success', message: `File number '${item.object_name}' updated.` });
+            setItems(prev => prev.map(i => i.r_object_id === item.r_object_id
+                ? { ...i, object_name: editValues.object_name.trim(), description: editValues.description.trim() }
+                : i));
+            cancelEdit();
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Update failed';
+            onToast({ type: 'error', message: msg });
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const handleDelete = async (item) => {
         setDeleting(item.r_object_id);
@@ -150,22 +184,38 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                 {hoRo !== 'HO' && (
                                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Location Code</th>
                                 )}
-                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-500 w-24">Action</th>
+                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-500 w-32">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {items.map((item, idx) => {
                                 const isConfirming = confirmId === item.r_object_id;
                                 const isDeleting   = deleting  === item.r_object_id;
+                                const isEditing    = editingId === item.r_object_id;
+                                const rowBg = isEditing ? 'bg-blue-50' : isConfirming ? 'bg-red-50' : 'hover:bg-indigo-50/30';
                                 return (
                                     <tr key={item.r_object_id || idx}
-                                        className={`transition-colors ${isConfirming ? 'bg-red-50' : 'hover:bg-indigo-50/30'}`}>
+                                        className={`transition-colors ${rowBg}`}>
                                         <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
                                         <td className="px-4 py-2.5 font-mono text-sm font-semibold text-slate-800">
-                                            {item.object_name || '—'}
+                                            {isEditing ? (
+                                                <input
+                                                    value={editValues.object_name}
+                                                    onChange={e => setEditValues(v => ({ ...v, object_name: e.target.value }))}
+                                                    className="w-full px-2 py-1 border border-blue-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                                                />
+                                            ) : (item.object_name || '—')}
                                         </td>
-                                        <td className="px-4 py-2.5 text-slate-600 text-xs max-w-xs truncate">
-                                            {item.description || '—'}
+                                        <td className="px-4 py-2.5 text-slate-600 text-xs max-w-xs">
+                                            {isEditing ? (
+                                                <input
+                                                    value={editValues.description}
+                                                    onChange={e => setEditValues(v => ({ ...v, description: e.target.value }))}
+                                                    className="w-full px-2 py-1 border border-blue-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                                                />
+                                            ) : (
+                                                <span className="truncate block">{item.description || '—'}</span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-2.5">
                                             <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono">
@@ -180,7 +230,19 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                             </td>
                                         )}
                                         <td className="px-4 py-2.5 text-center">
-                                            {isDeleting ? (
+                                            {isEditing ? (
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button onClick={() => handleSave(item)} disabled={saving}
+                                                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1">
+                                                        {saving ? <Loader2 size={11} className="animate-spin" /> : null}
+                                                        Save
+                                                    </button>
+                                                    <button onClick={cancelEdit} disabled={saving}
+                                                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium rounded-lg transition-all disabled:opacity-50">
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            ) : isDeleting ? (
                                                 <Loader2 size={15} className="animate-spin text-red-400 mx-auto" />
                                             ) : isConfirming ? (
                                                 <div className="flex items-center justify-center gap-1">
@@ -194,11 +256,18 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <button onClick={() => setConfirmId(item.r_object_id)}
-                                                    className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                                                    title="Remove file number">
-                                                    <Trash2 size={15} />
-                                                </button>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button onClick={() => startEdit(item)}
+                                                        className="p-1.5 rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
+                                                        title="Edit file number">
+                                                        <Pencil size={14} />
+                                                    </button>
+                                                    <button onClick={() => { setConfirmId(item.r_object_id); setEditingId(null); }}
+                                                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                                                        title="Remove file number">
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </div>
                                             )}
                                         </td>
                                     </tr>
@@ -475,14 +544,327 @@ const CaseSection = ({ onToast }) => {
     );
 };
 
-// ─── Digidak section (placeholder) ───────────────────────────────────────────
-const DigidakSection = () => (
-    <div className="flex flex-col items-center justify-center py-24 text-slate-400">
-        <FolderOpen size={40} className="mb-3 text-slate-200" />
-        <p className="text-base font-medium text-slate-500">Digidak</p>
-        <p className="text-sm mt-1">Coming soon</p>
-    </div>
-);
+// ─── Nature of Correspondence — reusable tab ─────────────────────────────────
+// inputValue   : 'nature_of_correspondence_internal' | 'nature_of_correspondence_external'
+// folderPath   : '/Digidak Config/Nature of correspondence Internal' | ...External
+// listLabel    : heading shown in the list panel
+const NatureOfCorrespondenceTab = ({ inputValue, folderPath, listLabel, formTitle, fieldLabel, onToast }) => {
+    const [value, setValue]           = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [items, setItems]           = useState([]);
+    const [loading, setLoading]       = useState(false);
+    const [error, setError]           = useState(null);
+    const [refreshKey, setRefreshKey] = useState(0);
+
+    // edit / delete state
+    const [confirmId, setConfirmId]   = useState(null);
+    const [deleting, setDeleting]     = useState(null);
+    const [editingId, setEditingId]   = useState(null);
+    const [editValue, setEditValue]   = useState('');
+    const [saving, setSaving]         = useState(false);
+
+    const loadList = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await api.get('/metadata/digidak/metadata', { params: { input: inputValue } });
+            setItems(Array.isArray(res.data) ? res.data : []);
+        } catch (err) {
+            setError(err.response?.data?.message || err.message || 'Failed to load');
+            setItems([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [inputValue]);
+
+    useEffect(() => { loadList(); }, [loadList, refreshKey]);
+
+    const handleAdd = async (e) => {
+        e.preventDefault();
+        if (!value.trim()) return;
+        setSubmitting(true);
+        try {
+            const res = await api.post('/metadata/digidak/metadata', {
+                input: inputValue, results: value.trim(), folder_path: folderPath,
+            });
+            onToast({ type: 'success', message: res.data?.message || 'Added successfully' });
+            setValue('');
+            setRefreshKey(k => k + 1);
+        } catch (err) {
+            onToast({ type: 'error', message: err.response?.data?.message || err.message || 'Failed to add' });
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const startEdit = (item) => {
+        setEditingId(item.r_object_id);
+        setEditValue(item.results || '');
+        setConfirmId(null);
+    };
+
+    const cancelEdit = () => { setEditingId(null); setEditValue(''); };
+
+    const handleSave = async (item) => {
+        setSaving(true);
+        try {
+            await api.put(`/metadata/digidak/metadata/${item.r_object_id}`, { results: editValue.trim() });
+            onToast({ type: 'success', message: `'${item.results}' updated.` });
+            setItems(prev => prev.map(i => i.r_object_id === item.r_object_id
+                ? { ...i, results: editValue.trim() } : i));
+            cancelEdit();
+        } catch (err) {
+            onToast({ type: 'error', message: err.response?.data?.message || err.message || 'Update failed' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (item) => {
+        setDeleting(item.r_object_id);
+        setConfirmId(null);
+        try {
+            await api.delete(`/metadata/digidak/metadata/${item.r_object_id}`);
+            onToast({ type: 'success', message: `'${item.results}' deleted.` });
+            setItems(prev => prev.filter(i => i.r_object_id !== item.r_object_id));
+        } catch (err) {
+            onToast({ type: 'error', message: err.response?.data?.message || err.message || 'Delete failed' });
+        } finally {
+            setDeleting(null);
+        }
+    };
+
+    const resolvedFormTitle = formTitle ?? (inputValue.includes('internal') ? 'Add Nature of Correspondence (Internal)' : 'Add Nature of Correspondence (External)');
+    const resolvedFieldLabel = fieldLabel ?? 'Nature of Correspondence';
+
+    return (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+            {/* Left: form */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-slate-50 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm shrink-0">
+                        <Tag size={17} className="text-white" />
+                    </div>
+                    <div>
+                        <p className="text-sm font-semibold text-slate-900">{resolvedFormTitle}</p>
+                        <p className="text-xs text-slate-500">
+                            Creates a <code className="font-mono bg-slate-100 px-1 rounded">cms_digidak_metadata</code> under {folderPath}
+                        </p>
+                    </div>
+                </div>
+                <form onSubmit={handleAdd} className="p-6 space-y-4">
+                    <div>
+                        <FieldLabel icon={Tag} label={resolvedFieldLabel} required />
+                        <input type="text" value={value} onChange={e => setValue(e.target.value)}
+                            placeholder="e.g. Circular"
+                            className={inputCls(false)} />
+                    </div>
+                    <div className="flex items-center justify-end pt-2 border-t border-slate-100">
+                        <button type="submit" disabled={submitting || !value.trim()}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl shadow-sm transition-all">
+                            {submitting ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                            {submitting ? 'Adding…' : 'Add'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            {/* Right: list with edit + delete */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Hash size={14} className="text-slate-400" />
+                        <span className="text-sm font-semibold text-slate-700">{listLabel}</span>
+                        {!loading && (
+                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full">
+                                {items.length}
+                            </span>
+                        )}
+                    </div>
+                    <button onClick={loadList} disabled={loading}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-all disabled:opacity-40">
+                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="flex items-center justify-center gap-2 py-10 text-slate-400">
+                        <Loader2 size={18} className="animate-spin text-indigo-500" />
+                        <span className="text-sm">Loading…</span>
+                    </div>
+                ) : error ? (
+                    <div className="px-5 py-4 text-sm text-red-600 flex items-center gap-2">
+                        <AlertCircle size={15} /> {error}
+                    </div>
+                ) : items.length === 0 ? (
+                    <div className="px-5 py-8 text-center text-sm text-slate-400">No values found</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 w-8">#</th>
+                                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Nature of Correspondence</th>
+                                    <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-500 w-32">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {items.map((item, idx) => {
+                                    const isEditing    = editingId  === item.r_object_id;
+                                    const isConfirming = confirmId  === item.r_object_id;
+                                    const isDeleting   = deleting   === item.r_object_id;
+                                    const rowBg = isEditing ? 'bg-blue-50' : isConfirming ? 'bg-red-50' : 'hover:bg-indigo-50/30';
+                                    return (
+                                        <tr key={item.r_object_id || idx} className={`transition-colors ${rowBg}`}>
+                                            <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                            <td className="px-4 py-2.5 text-slate-800 text-sm">
+                                                {isEditing ? (
+                                                    <input value={editValue}
+                                                        onChange={e => setEditValue(e.target.value)}
+                                                        className="w-full px-2 py-1 border border-blue-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white" />
+                                                ) : (item.results || '—')}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-center">
+                                                {isEditing ? (
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <button onClick={() => handleSave(item)} disabled={saving}
+                                                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1">
+                                                            {saving ? <Loader2 size={11} className="animate-spin" /> : null}
+                                                            Save
+                                                        </button>
+                                                        <button onClick={cancelEdit} disabled={saving}
+                                                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium rounded-lg transition-all disabled:opacity-50">
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                ) : isDeleting ? (
+                                                    <Loader2 size={15} className="animate-spin text-red-400 mx-auto" />
+                                                ) : isConfirming ? (
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <button onClick={() => handleDelete(item)}
+                                                            className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-all">
+                                                            Delete
+                                                        </button>
+                                                        <button onClick={() => setConfirmId(null)}
+                                                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium rounded-lg transition-all">
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <button onClick={() => startEdit(item)}
+                                                            className="p-1.5 rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
+                                                            title="Edit">
+                                                            <Pencil size={14} />
+                                                        </button>
+                                                        <button onClick={() => { setConfirmId(item.r_object_id); setEditingId(null); }}
+                                                            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                                                            title="Delete">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// ─── Digidak section ──────────────────────────────────────────────────────────
+const NATURE_TABS = [
+    { id: 'internal', label: 'Nature of correspondence Internal' },
+    { id: 'external', label: 'Nature of correspondence External' },
+];
+
+const NatureOfCorrespondenceSection = ({ onToast }) => {
+    const [activeTab, setActiveTab] = useState('internal');
+    return (
+        <div className="space-y-4">
+            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+                {NATURE_TABS.map(t => (
+                    <button key={t.id} onClick={() => setActiveTab(t.id)}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                            activeTab === t.id
+                                ? 'bg-white text-indigo-700 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700'
+                        }`}>
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+            {activeTab === 'internal' && (
+                <NatureOfCorrespondenceTab
+                    inputValue="nature_of_correspondence_internal"
+                    folderPath="/Digidak Config/Nature of correspondence Internal"
+                    listLabel="Internal Values"
+                    onToast={onToast}
+                />
+            )}
+            {activeTab === 'external' && (
+                <NatureOfCorrespondenceTab
+                    inputValue="nature_of_correspondence_external"
+                    folderPath="/Digidak Config/Nature of correspondence External"
+                    listLabel="External Values"
+                    onToast={onToast}
+                />
+            )}
+        </div>
+    );
+};
+
+const DIGIDAK_TABS = [
+    { id: 'nature_of_correspondence', label: 'Nature of correspondence' },
+    { id: 'mode_of_dispatch',         label: 'Mode of Dispatch' },
+    { id: 'category_external',        label: 'Category External' },
+];
+
+const DigidakSection = ({ onToast }) => {
+    const [activeTab, setActiveTab] = useState('nature_of_correspondence');
+    return (
+        <div className="space-y-4">
+            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+                {DIGIDAK_TABS.map(t => (
+                    <button key={t.id} onClick={() => setActiveTab(t.id)}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                            activeTab === t.id
+                                ? 'bg-white text-indigo-700 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700'
+                        }`}>
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+            {activeTab === 'nature_of_correspondence' && <NatureOfCorrespondenceSection onToast={onToast} />}
+            {activeTab === 'mode_of_dispatch' && (
+                <NatureOfCorrespondenceTab
+                    inputValue="mode_of_receipt"
+                    folderPath="/Digidak Config/Mode of Dispatch"
+                    listLabel="Mode of Dispatch Values"
+                    formTitle="Add Mode of Dispatch"
+                    fieldLabel="Mode of Dispatch"
+                    onToast={onToast}
+                />
+            )}
+            {activeTab === 'category_external' && (
+                <NatureOfCorrespondenceTab
+                    inputValue="received_from"
+                    folderPath="/Digidak Config/Category External"
+                    listLabel="Category External Values"
+                    formTitle="Add Category External"
+                    fieldLabel="Category External"
+                    onToast={onToast}
+                />
+            )}
+        </div>
+    );
+};
 
 // ─── Top-level tabs ───────────────────────────────────────────────────────────
 const TOP_TABS = [
@@ -525,7 +907,7 @@ const MetadataPage = () => {
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6">
                 {activeTab === 'case'    && <CaseSection onToast={setToast} />}
-                {activeTab === 'digidak' && <DigidakSection />}
+                {activeTab === 'digidak' && <DigidakSection onToast={setToast} />}
             </div>
         </div>
     );

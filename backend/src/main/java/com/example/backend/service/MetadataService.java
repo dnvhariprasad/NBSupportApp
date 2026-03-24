@@ -90,6 +90,38 @@ public class MetadataService {
     }
 
     /**
+     * Updates object_name and/or description of a cms_file_number by its r_object_id.
+     * PUT /repositories/{repo}/objects/{objectId}
+     */
+    public Map<String, Object> updateFileNumber(String objectId, Map<String, Object> request) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/objects/" + objectId;
+        Map<String, Object> props = new LinkedHashMap<>();
+        if (request.containsKey("object_name")) props.put("object_name", request.get("object_name"));
+        if (request.containsKey("description")) props.put("description", request.get("description"));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("properties", props);
+        log.info("[FileNumber] Updating object '{}' with {}", objectId, props.keySet());
+        try {
+            restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",       "application/vnd.emc.documentum+json")
+                    .header("X-HTTP-Method-Override", "PATCH")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[FileNumber] Updated '{}'", objectId);
+            return Map.of("success", true, "message", "File number updated successfully");
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[FileNumber] Update failed [{}]: {}", e.getStatusCode(), rb);
+            throw new RuntimeException("File number update failed [" + e.getStatusCode() + "]: " + rb);
+        }
+    }
+
+    /**
      * Deletes a cms_file_number object by its r_object_id.
      * DELETE /repositories/{repo}/objects/{objectId}
      */
@@ -178,6 +210,175 @@ public class MetadataService {
 
         log.info("[FileNumber] Total fetched: {}", allResults.size());
         return allResults;
+    }
+
+    /**
+     * Creates a cms_digidak_metadata object under the given Digidak config folder.
+     * Body: { input, results, folder_path }
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> createDigidakMetadata(Map<String, Object> request) {
+        String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+        String input      = (String) request.get("input");
+        String results    = (String) request.get("results");
+        String folderPath = (String) request.get("folder_path");
+
+        // Resolve folder: r_object_id, acl_name, acl_domain
+        String safePath = folderPath.replace("'", "''");
+        String folderDql = "SELECT r_object_id, acl_name, acl_domain FROM dm_folder"
+                + " WHERE ANY r_folder_path = '" + safePath + "'";
+        log.info("[Digidak] Resolving folder '{}'", folderPath);
+        Map<String, String> folderInfo = resolveFolderInfo(repoUrl, folderDql, folderPath);
+        String folderId  = folderInfo.get("r_object_id");
+        String aclName   = folderInfo.get("acl_name");
+        String aclDomain = folderInfo.get("acl_domain");
+        log.info("[Digidak] folder={} acl={} aclDomain={}", folderId, aclName, aclDomain);
+
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("r_object_type", "cms_digidak_metadata");
+        props.put("object_name",   results);
+        props.put("input",         input);
+        props.put("results",       results);
+        if (aclName   != null && !aclName.isBlank())   props.put("acl_name",   aclName);
+        if (aclDomain != null && !aclDomain.isBlank()) props.put("acl_domain", aclDomain);
+
+        String createUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/folders/" + folderId + "/objects";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("properties", props);
+
+        log.info("[Digidak] Creating input='{}' results='{}'", input, results);
+        try {
+            Map<String, Object> response = restClient.post()
+                    .uri(createUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json;charset=UTF-8")
+                    .header("Accept",       "application/vnd.emc.documentum+json")
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "'" + results + "' added successfully");
+            if (response != null) result.put("data", response);
+            return result;
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[Digidak] Create failed [{}]: {}", e.getStatusCode(), rb);
+            throw new RuntimeException("Digidak metadata creation failed [" + e.getStatusCode() + "]: " + rb);
+        }
+    }
+
+    /**
+     * Lists cms_digidak_metadata objects filtered by input value.
+     * DQL: SELECT r_object_id, results FROM cms_digidak_metadata WHERE input = '...' ORDER BY results ASC
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listDigidakMetadata(String input) {
+        String safeInput = input.replace("'", "''");
+        String dql = "SELECT r_object_id, results FROM cms_digidak_metadata"
+                + " WHERE input = '" + safeInput + "' ORDER BY results ASC";
+
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+        final int PAGE_SIZE = 100;
+        List<Map<String, Object>> allResults = new ArrayList<>();
+        int page = 1;
+
+        log.info("[Digidak] Listing input='{}': {}", input, dql);
+        try {
+            while (true) {
+                Map<String, Object> resp = restClient.get()
+                        .uri(baseUrl + "?dql={dql}&items-per-page={size}&page={page}&inline=true",
+                                dql, PAGE_SIZE, page)
+                        .header("Authorization", getAuthHeader())
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .retrieve()
+                        .body(Map.class);
+
+                if (resp == null) break;
+
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) resp.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> p = (Map<String, Object>) content.get("properties");
+                            if (p != null) allResults.add(p);
+                        }
+                    }
+                }
+
+                List<Map<String, Object>> links = (List<Map<String, Object>>) resp.get("links");
+                boolean hasNext = links != null && links.stream()
+                        .anyMatch(l -> "next".equals(l.get("rel")));
+                if (!hasNext) break;
+                page++;
+            }
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[Digidak] List failed [{}]: {}", e.getStatusCode(), rb);
+            throw new RuntimeException("Digidak metadata list failed [" + e.getStatusCode() + "]: " + rb);
+        }
+
+        log.info("[Digidak] Total fetched for input='{}': {}", input, allResults.size());
+        return allResults;
+    }
+
+    /**
+     * Updates results (and object_name) of a cms_digidak_metadata object.
+     * Uses POST + X-HTTP-Method-Override: PATCH (same pattern as group update).
+     */
+    public Map<String, Object> updateDigidakMetadata(String objectId, Map<String, Object> request) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/objects/" + objectId;
+        Map<String, Object> props = new LinkedHashMap<>();
+        if (request.containsKey("results")) {
+            props.put("results",     request.get("results"));
+            props.put("object_name", request.get("results")); // keep object_name in sync
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("properties", props);
+        log.info("[Digidak] Updating object '{}'", objectId);
+        try {
+            restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",       "application/vnd.emc.documentum+json")
+                    .header("X-HTTP-Method-Override", "PATCH")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[Digidak] Updated '{}'", objectId);
+            return Map.of("success", true, "message", "Updated successfully");
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[Digidak] Update failed [{}]: {}", e.getStatusCode(), rb);
+            throw new RuntimeException("Digidak metadata update failed [" + e.getStatusCode() + "]: " + rb);
+        }
+    }
+
+    /**
+     * Deletes a cms_digidak_metadata object by its r_object_id.
+     */
+    public Map<String, Object> deleteDigidakMetadata(String objectId) {
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                + "/objects/" + objectId;
+        log.info("[Digidak] Deleting object '{}'", objectId);
+        try {
+            restClient.delete()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[Digidak] Deleted '{}'", objectId);
+            return Map.of("success", true, "message", "Deleted successfully");
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[Digidak] Delete failed [{}]: {}", e.getStatusCode(), rb);
+            throw new RuntimeException("Digidak metadata deletion failed [" + e.getStatusCode() + "]: " + rb);
+        }
     }
 
     /** Resolves a folder by DQL, returning its r_object_id and acl_name. */

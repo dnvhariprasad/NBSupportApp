@@ -35,6 +35,24 @@ public class MetadataController {
     }
 
     /**
+     * Update object_name and/or description of a cms_file_number.
+     * PUT /api/metadata/file-numbers/{objectId}
+     *
+     * Body: { object_name, description }
+     */
+    @PutMapping("/file-numbers/{objectId}")
+    public ResponseEntity<Map<String, Object>> updateFileNumber(
+            @PathVariable String objectId,
+            @RequestBody Map<String, Object> request) {
+        try {
+            return ResponseEntity.ok(metadataService.updateFileNumber(objectId, request));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
      * Delete a cms_file_number object by its r_object_id.
      * DELETE /api/metadata/file-numbers/{objectId}
      */
@@ -61,6 +79,68 @@ public class MetadataController {
         try {
             List<Map<String, Object>> results = metadataService.listFileNumbers(hoRo, deptShortCode, roShortCode);
             return ResponseEntity.ok(results);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Create a cms_digidak_metadata object under the specified Digidak config folder.
+     * POST /api/metadata/digidak/metadata
+     *
+     * Body: { input, results, folder_path }
+     */
+    @PostMapping("/digidak/metadata")
+    public ResponseEntity<Map<String, Object>> createDigidakMetadata(@RequestBody Map<String, Object> request) {
+        try {
+            return ResponseEntity.ok(metadataService.createDigidakMetadata(request));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * List cms_digidak_metadata objects filtered by input value.
+     * GET /api/metadata/digidak/metadata?input=nature_of_correspondence_internal
+     */
+    @GetMapping("/digidak/metadata")
+    public ResponseEntity<?> listDigidakMetadata(@RequestParam String input) {
+        try {
+            return ResponseEntity.ok(metadataService.listDigidakMetadata(input));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Update results (and object_name) of a cms_digidak_metadata by r_object_id.
+     * PUT /api/metadata/digidak/metadata/{objectId}
+     *
+     * Body: { results }
+     */
+    @PutMapping("/digidak/metadata/{objectId}")
+    public ResponseEntity<Map<String, Object>> updateDigidakMetadata(
+            @PathVariable String objectId,
+            @RequestBody Map<String, Object> request) {
+        try {
+            return ResponseEntity.ok(metadataService.updateDigidakMetadata(objectId, request));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete a cms_digidak_metadata object by r_object_id.
+     * DELETE /api/metadata/digidak/metadata/{objectId}
+     */
+    @DeleteMapping("/digidak/metadata/{objectId}")
+    public ResponseEntity<Map<String, Object>> deleteDigidakMetadata(@PathVariable String objectId) {
+        try {
+            return ResponseEntity.ok(metadataService.deleteDigidakMetadata(objectId));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage()));
