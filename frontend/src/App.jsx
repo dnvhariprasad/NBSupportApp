@@ -9,6 +9,7 @@ import UsersPage from './pages/UsersPage';
 import QueryPage from './pages/QueryPage';
 import VerticalsPage from './pages/VerticalsPage';
 import MetadataPage from './pages/MetadataPage';
+import DelegatePage from './pages/DelegatePage';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
             <Route path="verticals" element={<VerticalsPage />} />
             <Route path="metadata" element={<MetadataPage />} />
             <Route path="query" element={<QueryPage />} />
+            <Route path="delegate" element={<DelegatePage />} />
         </Route>
         
         <Route path="/" element={<Navigate to="/login" replace />} />
