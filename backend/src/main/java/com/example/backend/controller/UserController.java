@@ -2,6 +2,7 @@ package com.example.backend.controller;
 
 import com.example.backend.service.OtdsService;
 import com.example.backend.service.UserService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,6 +12,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/users")
 @CrossOrigin(origins = { "http://localhost:5173", "http://localhost:5174" })
+@Slf4j
 public class UserController {
 
     private final UserService userService;
@@ -110,15 +112,40 @@ public class UserController {
     }
 
     /**
-     * Update editable properties on a dm_user
+     * Update editable properties on a dm_user.
+     * user_state is stripped from the Documentum payload — only the OTDS account is
+     * enabled/disabled based on it (user_state=1 → disable OTDS, user_state=0 → enable).
      * PATCH /api/users/dm/{loginName}
      */
-    @PatchMapping("/dm/{loginName}")
+    @PatchMapping("/dm/{loginName:.+}")
     public ResponseEntity<Map<String, Object>> updateDmUser(
             @PathVariable String loginName,
             @RequestBody Map<String, Object> properties) {
         try {
-            return ResponseEntity.ok(userService.updateDmUser(loginName, properties));
+            // Extract OTDS-only fields before passing to DCTM
+            Object userStateRaw    = properties.get("user_state");
+            String userLoginName   = (String) properties.get("user_login_name");
+            Map<String, Object> dctmProps = new java.util.HashMap<>(properties);
+            dctmProps.remove("user_state");
+            dctmProps.remove("user_login_name");
+
+            Map<String, Object> result = userService.updateDmUser(loginName, dctmProps);
+
+            // Sync OTDS account enable/disable based on user_state
+            if (userStateRaw != null && userLoginName != null && !userLoginName.isBlank()) {
+                int state = ((Number) userStateRaw).intValue();
+                String otdsUserId = userLoginName + "@DCTMPartitions";
+                try {
+                    otdsService.setAccountDisabled(otdsUserId, state == 1);
+                    log.info("OTDS account {} for '{}'", state == 1 ? "disabled" : "enabled", otdsUserId);
+                } catch (Exception otdsEx) {
+                    log.warn("OTDS account status sync failed for '{}': {}", otdsUserId, otdsEx.getMessage());
+                    result = new java.util.HashMap<>(result);
+                    result.put("otdsWarning", "OTDS sync failed: " + otdsEx.getMessage());
+                }
+            }
+
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage()));
@@ -187,7 +214,7 @@ public class UserController {
     /**
      * Update password for a dm_user by login name (OTDS-sourced users)
      */
-    @PatchMapping("/{loginName}/password")
+    @PatchMapping("/{loginName:.+}/password")
     public ResponseEntity<Map<String, Object>> updateUserPassword(
             @PathVariable String loginName,
             @RequestBody Map<String, Object> request) {
@@ -205,7 +232,7 @@ public class UserController {
      * Update password for an inline-password dm_user directly in Documentum (no OTDS).
      * PATCH /api/users/{loginName}/inline-password
      */
-    @PatchMapping("/{loginName}/inline-password")
+    @PatchMapping("/{loginName:.+}/inline-password")
     public ResponseEntity<Map<String, Object>> updateInlineUserPassword(
             @PathVariable String loginName,
             @RequestBody Map<String, Object> request) {

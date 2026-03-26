@@ -194,6 +194,40 @@ public class OtdsService {
         log.info("[OTDS] setupNewOtdsUser complete for: {}", loginName);
     }
 
+    // ─── Account Enable / Disable ─────────────────────────────────────────────
+
+    /**
+     * Enables or disables an OTDS account via PUT /users/{userId}.
+     * Sets attribute: { "name": "accountDisabled", "values": ["true"|"false"] }
+     * userId should be the qualified ID, e.g. "loginName@DCTMPartitions".
+     */
+    public void setAccountDisabled(String userId, boolean disabled) {
+        String ticket = getAdminTicket();
+        String url = otdsConfig.getUrl() + "/users/{userId}";
+        log.info("[OTDS] {} account for '{}'", disabled ? "Disabling" : "Enabling", userId);
+
+        // accountDisabled = "true" → Account is disabled in OTDS admin UI
+        List<Map<String, Object>> valuesList = List.of(
+                Map.of("name", "accountDisabled", "values", List.of(disabled ? "true" : "false"))
+        );
+        Map<String, Object> body = Map.of("values", valuesList);
+
+        try {
+            restClient.put()
+                    .uri(url, userId)
+                    .header("OTDSTicket", ticket)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[OTDS] Account {} for '{}'", disabled ? "disabled" : "enabled", userId);
+        } catch (RestClientException e) {
+            log.error("[OTDS] Account status change failed for '{}': {}", userId, e.getMessage());
+            throw new RuntimeException("OTDS account status change failed for '" + userId + "': " + e.getMessage(), e);
+        }
+    }
+
     // ─── User Attribute Inspection (diagnostic) ───────────────────────────────
 
     /**
