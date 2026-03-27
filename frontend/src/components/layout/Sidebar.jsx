@@ -1,7 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList } from 'lucide-react';
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, FolderCog, ArrowRightLeft } from 'lucide-react';
+import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft } from 'lucide-react';
 
 const Sidebar = () => {
     const navItems = [
