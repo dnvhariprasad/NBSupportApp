@@ -2,16 +2,17 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api/axios';
 import {
     ClipboardList, Loader2, X, CheckCircle2, AlertCircle,
-    User, Calendar, SendHorizonal
+    User, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
-const PAGE_SIZE = 2000;
+const USERS_PAGE_SIZE = 2000;
+const TASKS_PAGE_SIZE = 50;
 
 async function fetchAllUsers() {
     let page = 1;
     let all = [];
     while (true) {
-        const res = await api.get('/users/profiles', { params: { page, size: PAGE_SIZE } });
+        const res = await api.get('/users/profiles', { params: { page, size: USERS_PAGE_SIZE } });
         const users = res.data.users || [];
         all = all.concat(users);
         if (!res.data.hasNext) break;
@@ -45,16 +46,19 @@ const Toast = ({ toast, onDismiss }) => {
 
 // ─── InboxPage ────────────────────────────────────────────────────────────────
 const InboxPage = () => {
-    const [toast, setToast]                 = useState(null);
-    const [allUsers, setAllUsers]           = useState([]);
-    const [loadingUsers, setLoadingUsers]   = useState(false);
-    const [searchQuery, setSearchQuery]     = useState('');
-    const [showDropdown, setShowDropdown]   = useState(false);
-    const [selectedUser, setSelectedUser]   = useState(null);
-    const [tasks, setTasks]                 = useState([]);
-    const [total, setTotal]                 = useState(0);
-    const [loadingTasks, setLoadingTasks]   = useState(false);
-    const dropdownRef                       = useRef(null);
+    const [toast, setToast]               = useState(null);
+    const [allUsers, setAllUsers]         = useState([]);
+    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [searchQuery, setSearchQuery]   = useState('');
+    const [showDropdown, setShowDropdown] = useState(false);
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [tasks, setTasks]               = useState([]);
+    const [total, setTotal]               = useState(0);
+    const [page, setPage]                 = useState(1);
+    const [loadingTasks, setLoadingTasks] = useState(false);
+    const dropdownRef                     = useRef(null);
+
+    const totalPages = Math.max(1, Math.ceil(total / TASKS_PAGE_SIZE));
 
     // Load all users on mount
     useEffect(() => {
@@ -64,6 +68,11 @@ const InboxPage = () => {
             .catch(() => setToast({ type: 'error', message: 'Failed to load users.' }))
             .finally(() => setLoadingUsers(false));
     }, []);
+
+    // Reset to page 1 when user changes
+    useEffect(() => {
+        setPage(1);
+    }, [selectedUser]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -75,11 +84,11 @@ const InboxPage = () => {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // Fetch tasks when user is selected
+    // Fetch tasks when user or page changes
     useEffect(() => {
         if (!selectedUser) { setTasks([]); setTotal(0); return; }
         setLoadingTasks(true);
-        api.get('/inbox', { params: { username: selectedUser.user_login_name, page: 1, size: 50 } })
+        api.get('/inbox', { params: { username: selectedUser.object_name, page, size: TASKS_PAGE_SIZE } })
             .then(res => {
                 setTasks(res.data.tasks || []);
                 setTotal(res.data.total || 0);
@@ -89,7 +98,7 @@ const InboxPage = () => {
                 setTasks([]);
             })
             .finally(() => setLoadingTasks(false));
-    }, [selectedUser]);
+    }, [selectedUser, page]);
 
     const filteredUsers = useMemo(() =>
         allUsers.filter(u => {
@@ -101,6 +110,9 @@ const InboxPage = () => {
     );
 
     const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
+
+    const start = total === 0 ? 0 : (page - 1) * TASKS_PAGE_SIZE + 1;
+    const end   = Math.min(page * TASKS_PAGE_SIZE, total);
 
     return (
         <div className="p-6 max-w-7xl mx-auto h-full flex flex-col">
@@ -151,18 +163,21 @@ const InboxPage = () => {
 
             {/* Tasks panel */}
             <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+
+                {/* Panel header */}
                 <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3">
                     <ClipboardList size={15} className="text-[#0A66C2]" />
                     <span className="text-sm font-semibold text-slate-700">
                         {selectedUser ? `Inbox — ${selectedUser.object_name}` : 'Inbox Tasks'}
                     </span>
-                    {selectedUser && !loadingTasks && (
+                    {selectedUser && !loadingTasks && total > 0 && (
                         <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded-full">
                             {total} task{total !== 1 ? 's' : ''}
                         </span>
                     )}
                 </div>
 
+                {/* Table area */}
                 <div className="flex-1 overflow-auto">
                     {!selectedUser && (
                         <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 py-16">
@@ -188,10 +203,7 @@ const InboxPage = () => {
                         <table className="w-full text-left text-sm">
                             <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
                                 <tr>
-                                    {[
-                                        'Case Name', 'Status', 'Task Priority', 'Case Nature',
-                                        'Sender', 'Task Received', 'Department', 'Created By'
-                                    ].map(h => (
+                                    {['Case Name', 'Description', 'Status', 'Initiator', 'Priority'].map(h => (
                                         <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
                                             {h}
                                         </th>
@@ -201,48 +213,78 @@ const InboxPage = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {tasks.map((task, idx) => (
                                     <tr key={task.objectId || idx} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-4 py-3 font-medium text-slate-800">
-                                            {task.caseName || '—'}
-                                        </td>
+                                        <td className="px-4 py-3 font-medium text-slate-800">{task.caseName || '—'}</td>
+                                        <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{task.description || '—'}</td>
                                         <td className="px-4 py-3">
                                             {task.status
                                                 ? <span className="px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium">{task.status}</span>
                                                 : '—'}
                                         </td>
+                                        <td className="px-4 py-3 text-slate-600">{task.initiator || '—'}</td>
                                         <td className="px-4 py-3">
-                                            {task.taskPriority
+                                            {task.priority
                                                 ? <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
-                                                    task.taskPriority === 'High'   ? 'bg-red-100 text-red-700' :
-                                                    task.taskPriority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                    task.priority === 'High'   ? 'bg-red-100 text-red-700' :
+                                                    task.priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
                                                     'bg-slate-100 text-slate-600'
-                                                  }`}>{task.taskPriority}</span>
+                                                  }`}>{task.priority}</span>
                                                 : '—'}
                                         </td>
-                                        <td className="px-4 py-3 text-slate-600">{task.caseNature || '—'}</td>
-                                        <td className="px-4 py-3 text-slate-600">
-                                            <div className="flex items-center gap-1.5">
-                                                <SendHorizonal size={13} className="text-slate-400 shrink-0" />
-                                                {task.senderName || '—'}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                                            <div className="flex items-center gap-1.5">
-                                                <Calendar size={13} className="text-slate-400 shrink-0" />
-                                                {task.taskReceived
-                                                    ? new Date(task.taskReceived).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                                                    : task.dateSent
-                                                        ? new Date(task.dateSent).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                                                        : '—'}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-600">{task.department || '—'}</td>
-                                        <td className="px-4 py-3 text-slate-600">{task.createdBy || '—'}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     )}
                 </div>
+
+                {/* Pagination footer */}
+                {selectedUser && !loadingTasks && total > TASKS_PAGE_SIZE && (
+                    <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-white">
+                        <span className="text-xs text-slate-500">
+                            Showing {start}–{end} of {total}
+                        </span>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setPage(p => p - 1)}
+                                disabled={page === 1}
+                                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                                .reduce((acc, p, i, arr) => {
+                                    if (i > 0 && p - arr[i - 1] > 1) acc.push('...');
+                                    acc.push(p);
+                                    return acc;
+                                }, [])
+                                .map((item, i) =>
+                                    item === '...'
+                                        ? <span key={`ellipsis-${i}`} className="px-1 text-xs text-slate-400">…</span>
+                                        : <button
+                                            key={item}
+                                            onClick={() => setPage(item)}
+                                            className={`min-w-[28px] h-7 rounded-lg text-xs font-medium ${
+                                                item === page
+                                                    ? 'bg-[#0A66C2] text-white'
+                                                    : 'text-slate-600 hover:bg-slate-100'
+                                            }`}
+                                          >{item}</button>
+                                )
+                            }
+                            <button
+                                onClick={() => setPage(p => p + 1)}
+                                disabled={page === totalPages}
+                                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
+                        </div>
+                        <span className="text-xs text-slate-500">
+                            Page {page} of {totalPages}
+                        </span>
+                    </div>
+                )}
             </div>
         </div>
     );

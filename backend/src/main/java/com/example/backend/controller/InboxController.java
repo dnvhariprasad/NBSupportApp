@@ -44,4 +44,14 @@ public class InboxController {
     public ResponseEntity<Map<String, Object>> getRaw(@RequestParam String username) {
         return ResponseEntity.ok(inboxService.getRawResponse(username));
     }
+
+    /**
+     * Debug: find exact name values stored in dmi_queue_item using LIKE on the first word.
+     * Use this to discover the actual format stored for multi-word usernames.
+     * GET /api/inbox/debug-name?username=Rajkumar Yaiphaba Meitei
+     */
+    @GetMapping("/debug-name")
+    public ResponseEntity<Map<String, Object>> debugName(@RequestParam String username) {
+        return ResponseEntity.ok(inboxService.debugQueueItemName(username));
+    }
 }

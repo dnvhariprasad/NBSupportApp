@@ -12,20 +12,18 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
- * Replicates the xCP inbox.tasklist query via DQL.
+ * Case Inbox query — three-step DQL approach:
  *
- * Key dmi_queue_item attribute corrections:
- *   - Assignee is stored in scalar attribute "name" (NOT "for_user", NOT repeating)
- *     → filter with:  name = '<username>'
- *   - Task type is stored in "task_name" (FYA, FYI, etc.)
- *   - "r_task_state" does NOT exist on dmi_queue_item (it's on dmi_workitem as r_state)
+ *   Step 1: SELECT router_id FROM dmi_queue_item WHERE name = '<username>'
  *
- * Three-step approach (avoids DM_QUERY_E_REPEATING_USED on dmi_package.r_component_id):
- *   Step 1: dmi_queue_item JOIN dmi_workitem → task rows + r_workflow_id
- *   Step 2: cms_case_folder via IN(SELECT r_component_id FROM dmi_package ...)
- *   Step 3: cms_workflow_param via IN(SELECT r_component_id FROM dmi_package ...) + task_name='FYA'
+ *   Step 2: SELECT distinct r_component_id FROM dmi_package
+ *           WHERE r_workflow_id IN (<router_ids>) AND r_package_type = 'cms_case_folder'
+ *
+ *   Step 3: SELECT object_name, description, status, r_creator_name, task_priority, r_object_id
+ *           FROM cms_case_folder WHERE r_object_id IN (<component_ids>)
  */
 @Service
 @Slf4j
@@ -53,40 +51,208 @@ public class InboxService {
         return dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
     }
 
-    // ─── Step 1: queue items + workflow IDs ──────────────────────────────────
-    //
-    // SELECT qi.r_object_id, qi.task_name, qi.sender_name, qi.date_sent, wi.r_workflow_id
-    // FROM   dmi_queue_item qi, dmi_workitem wi
-    // WHERE  qi.name = '<username>'           ← "name" is a scalar assignee attribute
-    // AND    qi.item_id = wi.r_object_id
-    // ORDER  BY qi.date_sent DESC
-    //
-    @SuppressWarnings("unchecked")
+    private java.net.URI buildUri(String dql, int itemsPerPage, int page) {
+        return org.springframework.web.util.UriComponentsBuilder
+                .fromUriString(repoUrl())
+                .queryParam("dql", dql)
+                .queryParam("items-per-page", itemsPerPage)
+                .queryParam("page", page)
+                .queryParam("inline", true)
+                .build()
+                .encode()   // encodes = as %3D and space as %20 inside each param value
+                .toUri();
+    }
+
+    // ─── Main entry point ─────────────────────────────────────────────────────
+
     public Map<String, Object> getInboxTasks(String username, int page, int itemsPerPage) {
         String safeUser = username.replace("'", "''");
 
+        // Step 1: get router_ids for user
+        List<String> routerIds = fetchRouterIds(safeUser);
+        log.info("Step-1: found {} router_ids for user '{}'", routerIds.size(), username);
+        if (routerIds.isEmpty()) {
+            return Map.of("tasks", List.of(), "total", 0, "success", true);
+        }
+
+        // Step 2: get component_ids from dmi_package
+        List<String> componentIds = fetchComponentIds(routerIds);
+        log.info("Step-2: found {} component_ids", componentIds.size());
+        if (componentIds.isEmpty()) {
+            return Map.of("tasks", List.of(), "total", 0, "success", true);
+        }
+
+        // Step 3: get case data from cms_case_folder
+        return fetchCaseFolders(componentIds, page, itemsPerPage);
+    }
+
+    // ─── Step 1: router_ids for the user (most-recent-assignee check) ────────
+    //
+    // SELECT qi.router_id
+    // FROM dmi_queue_item qi
+    // WHERE qi.router_id IN (
+    //     SELECT distinct router_id FROM dmi_queue_item WHERE name = '<user>'
+    // )
+    // AND qi.date_sent = (
+    //     SELECT MAX(qi2.date_sent) FROM dmi_queue_item qi2
+    //     WHERE qi2.router_id = qi.router_id
+    // )
+    // AND qi.name = '<user>'
+    //
+    // Logic: for each router_id the user ever had, check that they are still
+    // the MOST RECENT assignee (max date_sent). This naturally excludes cases
+    // that were delegated away to someone else.
+    //
+    @SuppressWarnings("unchecked")
+    private List<String> fetchRouterIds(String safeUser) {
         String dql =
-            "SELECT qi.r_object_id, qi.task_name, qi.sender_name, qi.date_sent, wi.r_workflow_id " +
-            "FROM dmi_queue_item qi, dmi_workitem wi " +
-            "WHERE qi.name = '" + safeUser + "' " +
-            "AND qi.item_id = wi.r_object_id " +
-            "ORDER BY qi.date_sent DESC";
-
-        log.info("Fetching FYA inbox tasks for user '{}'", username);
+            "SELECT qi.router_id " +
+            "FROM dmi_queue_item qi " +
+            "WHERE qi.router_id IN (" +
+            "  SELECT distinct router_id FROM dmi_queue_item WHERE name = '" + safeUser + "'" +
+            ") " +
+            "AND qi.date_sent = (" +
+            "  SELECT MAX(qi2.date_sent) FROM dmi_queue_item qi2 " +
+            "  WHERE qi2.router_id = qi.router_id" +
+            ") " +
+            "AND qi.name = '" + safeUser + "'";
         log.debug("Step-1 DQL: {}", dql);
-
         try {
             Map<String, Object> response = restClient.get()
-                    .uri(repoUrl() + "?dql={dql}&items-per-page={size}&page={page}&inline=true",
-                         dql, itemsPerPage, page)
+                    .uri(buildUri(dql, 500, 1))
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
                     .body(Map.class);
 
-            return parseDqlResponse(response);
+            List<String> ids = new ArrayList<>();
+            if (response == null) return ids;
+            Object entriesObj = response.get("entries");
+            if (!(entriesObj instanceof List<?> entries)) return ids;
+            for (Object entry : entries) {
+                Map<?, ?> props = extractProps(entry);
+                if (props == null) continue;
+                String routerId = (String) props.get("router_id");
+                if (routerId != null && !routerId.isBlank()
+                        && !routerId.equals("0000000000000000")
+                        && !ids.contains(routerId)) {
+                    ids.add(routerId);
+                }
+            }
+            log.info("Step-1: found {} router_ids for user '{}'", ids.size(), safeUser);
+            return ids;
         } catch (Exception e) {
-            log.error("Failed to fetch inbox tasks for user '{}': {}", username, e.getMessage());
+            log.error("Step-1 failed for user '{}': {}", safeUser, e.getMessage());
+            return List.of();
+        }
+    }
+
+    // ─── Step 2: r_component_ids from dmi_package ────────────────────────────
+    //
+    // SELECT distinct r_component_id FROM dmi_package
+    // WHERE r_workflow_id IN (<router_ids>) AND r_package_type = 'cms_case_folder'
+    //
+    @SuppressWarnings("unchecked")
+    private List<String> fetchComponentIds(List<String> routerIds) {
+        String inClause = routerIds.stream()
+                .map(id -> "'" + id.replace("'", "''") + "'")
+                .collect(Collectors.joining(","));
+
+        String dql =
+            "SELECT distinct r_component_id FROM dmi_package " +
+            "WHERE r_workflow_id IN (" + inClause + ") " +
+            "AND r_package_type = 'cms_case_folder'";
+        log.debug("Step-2 DQL: {}", dql);
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(buildUri(dql, 500, 1))
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<String> ids = new ArrayList<>();
+            if (response == null) return ids;
+            Object entriesObj = response.get("entries");
+            if (!(entriesObj instanceof List<?> entries)) return ids;
+            for (Object entry : entries) {
+                Map<?, ?> props = extractProps(entry);
+                if (props == null) continue;
+                Object compId = props.get("r_component_id");
+                // r_component_id is a repeating attribute — may return as String or List
+                if (compId instanceof String s && !s.isBlank()) {
+                    if (!ids.contains(s)) ids.add(s);
+                } else if (compId instanceof List<?> list) {
+                    for (Object v : list) {
+                        if (v instanceof String s && !s.isBlank() && !ids.contains(s)) {
+                            ids.add(s);
+                        }
+                    }
+                }
+            }
+            return ids;
+        } catch (Exception e) {
+            log.error("Step-2 failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    // ─── Step 3: case data from cms_case_folder ───────────────────────────────
+    //
+    // SELECT object_name, description, status, r_creator_name as initiator,
+    //        task_priority as priority, r_object_id as objectId
+    // FROM cms_case_folder WHERE r_object_id IN (<component_ids>)
+    //
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> fetchCaseFolders(List<String> componentIds, int page, int itemsPerPage) {
+        String inClause = componentIds.stream()
+                .map(id -> "'" + id.replace("'", "''") + "'")
+                .collect(Collectors.joining(","));
+
+        String dql =
+            "SELECT object_name, description, status, r_creator_name, task_priority, r_object_id " +
+            "FROM cms_case_folder " +
+            "WHERE r_object_id IN (" + inClause + ")";
+        log.debug("Step-3 DQL: {}", dql);
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(buildUri(dql, itemsPerPage, page))
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, Object>> tasks = new ArrayList<>();
+            int total = componentIds.size();
+
+            if (response != null) {
+                Object totalObj = response.get("total");
+                if (totalObj instanceof Number n) total = n.intValue();
+
+                Object entriesObj = response.get("entries");
+                if (entriesObj instanceof List<?> entries) {
+                    for (Object entry : entries) {
+                        Map<?, ?> props = extractProps(entry);
+                        if (props == null) continue;
+                        Map<String, Object> task = new HashMap<>();
+                        task.put("objectId",    props.get("r_object_id"));
+                        task.put("caseName",    props.get("object_name"));
+                        task.put("description", props.get("description"));
+                        task.put("status",      props.get("status"));
+                        task.put("initiator",   props.get("r_creator_name"));
+                        task.put("priority",    props.get("task_priority"));
+                        tasks.add(task);
+                    }
+                }
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("tasks", tasks);
+            result.put("total", total);
+            result.put("success", true);
+            return result;
+        } catch (Exception e) {
+            log.error("Step-3 failed: {}", e.getMessage());
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
             error.put("message", e.getMessage());
@@ -96,107 +262,21 @@ public class InboxService {
         }
     }
 
-    // ─── Step 2: cms_case_folder for a workflow ───────────────────────────────
-    //
-    // SELECT object_name, status, task_priority, case_nature, description,
-    //        r_creator_name, r_modifier, reason_for_cancellation
-    // FROM   cms_case_folder
-    // WHERE  r_object_id IN (
-    //     SELECT r_component_id FROM dmi_package
-    //     WHERE  r_workflow_id = '<workflowId>'
-    //     AND    r_package_name = 'CASE'
-    // )
-    //
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> fetchCaseFolder(String workflowId) {
-        if (workflowId == null || workflowId.isBlank()) return Map.of();
-        String dql =
-            "SELECT object_name, status, task_priority, case_nature, description, " +
-            "r_creator_name, r_modifier, reason_for_cancellation " +
-            "FROM cms_case_folder " +
-            "WHERE r_object_id IN (" +
-            "  SELECT r_component_id FROM dmi_package " +
-            "  WHERE r_workflow_id = '" + workflowId.replace("'", "''") + "' " +
-            "  AND r_package_name = 'CASE'" +
-            ")";
-        try {
-            Map<String, Object> response = restClient.get()
-                    .uri(repoUrl() + "?dql={dql}&items-per-page=1&page=1&inline=true", dql)
-                    .header("Authorization", getAuthHeader())
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .retrieve()
-                    .body(Map.class);
-            return extractFirstProps(response);
-        } catch (Exception e) {
-            log.warn("fetchCaseFolder failed for workflow {}: {}", workflowId, e.getMessage());
-            return Map.of();
-        }
-    }
+    // ─── Debug: raw dmi_queue_item response ──────────────────────────────────
 
-    // ─── Step 3: cms_workflow_param filtered by task_name='FYA' ──────────────
-    //
-    // SELECT task_name, task_received, department
-    // FROM   cms_workflow_param
-    // WHERE  r_object_id IN (
-    //     SELECT r_component_id FROM dmi_package
-    //     WHERE  r_workflow_id = '<workflowId>'
-    //     AND    r_package_name = 'WFParam'
-    // )
-    // AND    task_name = 'FYA'
-    //
-    // Returns null when no row found (task_name != 'FYA' → exclude from results).
-    //
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> fetchWorkflowParam(String workflowId) {
-        if (workflowId == null || workflowId.isBlank()) return null;
-        String dql =
-            "SELECT task_name, task_received, department " +
-            "FROM cms_workflow_param " +
-            "WHERE r_object_id IN (" +
-            "  SELECT r_component_id FROM dmi_package " +
-            "  WHERE r_workflow_id = '" + workflowId.replace("'", "''") + "' " +
-            "  AND r_package_name = 'WFParam'" +
-            ") " +
-            "AND task_name = 'FYA'";
-        try {
-            Map<String, Object> response = restClient.get()
-                    .uri(repoUrl() + "?dql={dql}&items-per-page=1&page=1&inline=true", dql)
-                    .header("Authorization", getAuthHeader())
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .retrieve()
-                    .body(Map.class);
-            if (response == null) return null;
-            List<?> entries = (List<?>) response.get("entries");
-            if (entries == null || entries.isEmpty()) return null;
-            Map<?, ?> props = extractProps(entries.get(0));
-            return props != null ? (Map<String, Object>) props : null;
-        } catch (Exception e) {
-            log.warn("fetchWorkflowParam failed for workflow {}: {}", workflowId, e.getMessage());
-            return Map.of();
-        }
-    }
-
-    // ─── Debug: simplest possible queue item query (no joins) ─────────────────
-    //
-    // SELECT r_object_id, task_name, sender_name, date_sent, item_state
-    // FROM   dmi_queue_item
-    // WHERE  name = '<username>'
-    // ORDER  BY date_sent DESC
-    //
     @SuppressWarnings("unchecked")
     public Map<String, Object> getRawResponse(String username) {
         String safeUser = username.replace("'", "''");
-        // Simplest possible query — just dmi_queue_item, no joins — to verify data exists
         String dql =
-            "SELECT r_object_id, task_name, sender_name, date_sent, item_state " +
+            "SELECT r_object_id, name, router_id, task_name, sender_name, date_sent, item_state " +
             "FROM dmi_queue_item " +
-            "WHERE name = '" + safeUser + "' " +
+            "WHERE UPPER(name) = UPPER('" + safeUser + "') " +
             "ORDER BY date_sent DESC";
 
         log.info("Raw dmi_queue_item DQL for '{}': {}", username, dql);
         try {
             Map<String, Object> response = restClient.get()
-                    .uri(repoUrl() + "?dql={dql}&items-per-page=10&page=1&inline=true", dql)
+                    .uri(buildUri(dql, 10, 1))
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
@@ -209,76 +289,31 @@ public class InboxService {
         }
     }
 
-    // ─── Response parsing ─────────────────────────────────────────────────────
+    // ─── Debug: discover actual name format in dmi_queue_item ────────────────
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> parseDqlResponse(Map<String, Object> response) {
-        List<Map<String, Object>> tasks = new ArrayList<>();
-        int total = 0;
-
-        if (response == null) {
-            return Map.of("tasks", tasks, "total", total, "success", true);
+    public Map<String, Object> debugQueueItemName(String username) {
+        // Search using the first word of the name so we can see what's actually stored
+        String firstWord = username.split("\\s+")[0].replace("'", "''");
+        String dql = "SELECT r_object_id, name, router_id FROM dmi_queue_item " +
+                     "WHERE name LIKE '" + firstWord + "%' ENABLE(RETURN_TOP 20)";
+        log.info("Debug name DQL: {}", dql);
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(buildUri(dql, 20, 1))
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+            if (response == null) return Map.of("error", "null response", "_dql", dql);
+            response.put("_dql", dql);
+            return response;
+        } catch (Exception e) {
+            return Map.of("error", e.getMessage(), "_dql", dql);
         }
-
-        Object totalObj = response.get("total");
-        if (totalObj instanceof Number n) {
-            total = n.intValue();
-        }
-
-        Object entriesObj = response.get("entries");
-        if (entriesObj instanceof List<?> entries) {
-            for (Object entry : entries) {
-                Map<?, ?> props = extractProps(entry);
-                if (props == null) continue;
-
-                String workflowId = (String) props.get("r_workflow_id");
-
-                // Step 3: filter on task_name='FYA' via cms_workflow_param
-                Map<String, Object> wp = fetchWorkflowParam(workflowId);
-                if (wp == null) continue; // not an FYA task — exclude
-
-                // Step 2: enrich with cms_case_folder data
-                Map<String, Object> cf = fetchCaseFolder(workflowId);
-
-                Map<String, Object> task = new HashMap<>();
-                // From dmi_queue_item / dmi_workitem
-                task.put("objectId",   props.get("r_object_id"));
-                task.put("taskName",   props.get("task_name"));
-                task.put("senderName", props.get("sender_name"));
-                task.put("dateSent",   props.get("date_sent"));
-                // From cms_case_folder (CASE package)
-                task.put("caseName",              cf.get("object_name"));
-                task.put("status",                cf.get("status"));
-                task.put("taskPriority",          cf.get("task_priority"));
-                task.put("caseNature",            cf.get("case_nature"));
-                task.put("description",           cf.get("description"));
-                task.put("createdBy",             cf.get("r_creator_name"));
-                task.put("changedBy",             cf.get("r_modifier"));
-                task.put("reasonForCancellation", cf.get("reason_for_cancellation"));
-                // From cms_workflow_param (WFParam package)
-                task.put("wfTaskName",   wp.get("task_name"));
-                task.put("taskReceived", wp.get("task_received"));
-                task.put("department",   wp.get("department"));
-
-                tasks.add(task);
-            }
-        }
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("tasks", tasks);
-        result.put("total", total);
-        result.put("success", true);
-        return result;
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> extractFirstProps(Map<String, Object> response) {
-        if (response == null) return Map.of();
-        List<?> entries = (List<?>) response.get("entries");
-        if (entries == null || entries.isEmpty()) return Map.of();
-        Map<?, ?> props = extractProps(entries.get(0));
-        return props != null ? (Map<String, Object>) props : Map.of();
-    }
+    // ─── Helpers ──────────────────────────────────────────────────────────────
 
     @SuppressWarnings("unchecked")
     private Map<?, ?> extractProps(Object entry) {
