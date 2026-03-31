@@ -1289,8 +1289,8 @@ const UserCreateTab = ({ onToast }) => {
                                         </FormField>
                                     </div>
 
-                                    {/* ── Office & Department (disabled, accordion) ── */}
-                                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                    {/* ── Office & Department (hidden for now, may enable later) ── */}
+                                    {false && <div className="border border-slate-200 rounded-xl overflow-hidden">
                                         <button type="button"
                                             onClick={() => setProfileOpen(o => !o)}
                                             className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left">
@@ -1350,7 +1350,7 @@ const UserCreateTab = ({ onToast }) => {
                                                 </div>
                                             </div>
                                         )}
-                                    </div>
+                                    </div>}
                                     {/* Active user — always true, hidden */}
                                 </div>
                             </>

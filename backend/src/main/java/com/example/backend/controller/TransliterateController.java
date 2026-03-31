@@ -3,6 +3,7 @@ package com.example.backend.controller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -20,9 +21,11 @@ import static java.util.Map.entry;
  * Each word is transliterated individually so single letters (e.g. "S", "A")
  * resolve correctly (एस, ए) instead of becoming bare vowel modifiers.
  * No API key required.
+ * Falls back to local phonetic mapping when the Google API is unreachable (UAT/offline).
  */
 @RestController
 @RequestMapping("/api/transliterate")
+@CrossOrigin(origins = "*")
 public class TransliterateController {
 
     private static final Logger log = LoggerFactory.getLogger(TransliterateController.class);
@@ -88,10 +91,55 @@ public class TransliterateController {
                     .retrieve()
                     .body(Object.class);
             String suggestion = extractSuggestion(raw);
-            return suggestion.isEmpty() ? word : suggestion;
+            if (!suggestion.isEmpty()) return suggestion;
         } catch (Exception e) {
-            return word; // fallback: return original word
+            log.debug("Google transliterate unavailable for '{}', using local fallback: {}", word, e.getMessage());
         }
+        // Local phonetic fallback — used when Google API is unreachable (e.g. UAT/offline)
+        return localTransliterate(word);
+    }
+
+    /**
+     * Basic phonetic English → Hindi (Devanagari) transliteration.
+     * Processes digraphs before single characters so "sh", "th", "kh", etc.
+     * are handled correctly. Suitable as an offline fallback for proper nouns.
+     */
+    private static final String[][] PHONEME_TABLE = {
+        // 2-char digraphs (must come before single-char entries)
+        {"sh","श"}, {"ch","च"}, {"th","थ"}, {"ph","फ"}, {"kh","ख"},
+        {"gh","ग"}, {"jh","झ"}, {"dh","ध"}, {"bh","भ"}, {"nh","ञ"},
+        {"aa","आ"}, {"ee","ई"}, {"ii","इ"}, {"oo","ऊ"}, {"ai","ऐ"},
+        {"au","औ"}, {"ou","ओ"},
+        // Single vowels
+        {"a","अ"}, {"e","ए"}, {"i","इ"}, {"o","ओ"}, {"u","उ"},
+        // Single consonants
+        {"k","क"}, {"g","ग"}, {"j","ज"}, {"t","त"}, {"d","द"},
+        {"n","न"}, {"p","प"}, {"b","ब"}, {"m","म"}, {"y","य"},
+        {"r","र"}, {"l","ल"}, {"v","व"}, {"w","व"}, {"s","स"},
+        {"h","ह"}, {"f","फ"}, {"z","ज"}, {"c","क"}, {"q","क"},
+    };
+
+    private static String localTransliterate(String word) {
+        String lower = word.toLowerCase();
+        StringBuilder result = new StringBuilder();
+        int i = 0;
+        while (i < lower.length()) {
+            boolean matched = false;
+            for (String[] entry : PHONEME_TABLE) {
+                String eng = entry[0];
+                if (lower.startsWith(eng, i)) {
+                    result.append(entry[1]);
+                    i += eng.length();
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                result.append(lower.charAt(i));
+                i++;
+            }
+        }
+        return result.toString();
     }
 
     @SuppressWarnings("unchecked")
