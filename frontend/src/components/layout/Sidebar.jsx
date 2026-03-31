@@ -9,10 +9,10 @@ const Sidebar = () => {
         { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
         { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null },
         { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
-        { name: 'Case Inbox',   path: '/dashboard/inbox',     icon: ClipboardList,roles: null },
         { name: 'Users',        path: '/dashboard/users',     icon: Users,        roles: null },
         { name: 'Verticals',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin'] },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
+        { name: 'Case Inbox',   path: '/dashboard/inbox',     icon: ClipboardList,roles: null },
         { name: 'Delegate Case',path: '/dashboard/delegate',  icon: ArrowRightLeft,roles: ['Super Admin'] },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null },
     ];
