@@ -242,30 +242,12 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                                         Cancel
                                                     </button>
                                                 </div>
-                                            ) : isDeleting ? (
-                                                <Loader2 size={15} className="animate-spin text-red-400 mx-auto" />
-                                            ) : isConfirming ? (
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button onClick={() => handleDelete(item)}
-                                                        className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-all">
-                                                        Delete
-                                                    </button>
-                                                    <button onClick={() => setConfirmId(null)}
-                                                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium rounded-lg transition-all">
-                                                        Cancel
-                                                    </button>
-                                                </div>
                                             ) : (
                                                 <div className="flex items-center justify-center gap-1">
                                                     <button onClick={() => startEdit(item)}
                                                         className="p-1.5 rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
                                                         title="Edit file number">
                                                         <Pencil size={14} />
-                                                    </button>
-                                                    <button onClick={() => { setConfirmId(item.r_object_id); setEditingId(null); }}
-                                                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                                                        title="Remove file number">
-                                                        <Trash2 size={15} />
                                                     </button>
                                                 </div>
                                             )}
@@ -290,9 +272,45 @@ const FileNumberTab = ({ onToast }) => {
     const [submitting, setSubmitting] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
+    // Role & profile context for Local Admin
+    const storedUser  = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole   = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const [profileCtx, setProfileCtx] = useState(null); // { office_type, location, department_short_code_multi }
+
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                const officeType = ctx.office_type || '';
+                const location   = ctx.location   || '';
+                if (officeType) {
+                    // Pre-compute locationShortCode from the metadata list
+                    const locs = getLocations(officeType);
+                    const locObj = locs.find(l => l.location === location);
+                    setForm({ ...EMPTY_FN, officeType, location, locationShortCode: locObj?.shortCode || '' });
+                }
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
     const isHO            = form.officeType === 'HO';
     const locationOptions = getLocations(form.officeType);
-    const deptOptions     = getDepartments(form.officeType, form.location);
+
+    // For Local Admin: filter departments to only those in their profile
+    const allDeptOptions  = getDepartments(form.officeType, form.location);
+    const deptOptions     = isLocalAdmin && profileCtx
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return allDeptOptions.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : allDeptOptions;
 
     const handleOfficeType = (val) => {
         setForm({ ...EMPTY_FN, officeType: val });
@@ -375,7 +393,8 @@ const FileNumberTab = ({ onToast }) => {
                         <FieldLabel icon={Building2} label="Office Type" required />
                         <div className="relative">
                             <select value={form.officeType} onChange={e => handleOfficeType(e.target.value)}
-                                className={selectCls(errors.officeType, false)}>
+                                disabled={isLocalAdmin}
+                                className={selectCls(errors.officeType, isLocalAdmin)}>
                                 <option value="">— Select office type —</option>
                                 <option value="HO">HO — Head Office</option>
                                 <option value="RO">RO — Regional Office</option>
@@ -401,8 +420,8 @@ const FileNumberTab = ({ onToast }) => {
                                 <>
                                     <select value={form.location}
                                         onChange={e => handleLocation(e.target.value)}
-                                        disabled={!form.officeType}
-                                        className={selectCls(errors.location, !form.officeType)}>
+                                        disabled={!form.officeType || isLocalAdmin}
+                                        className={selectCls(errors.location, !form.officeType || isLocalAdmin)}>
                                         <option value="">— Select location —</option>
                                         {locationOptions.map(l => (
                                             <option key={l.location} value={l.location}>{l.location}</option>

@@ -84,7 +84,8 @@ public class DelegateService {
 
             String dql = String.format(
                     "SELECT r_object_id, object_name, subject, ho_ro, description, " +
-                    "department_name, r_creation_date " +
+                    "department_name, r_creation_date, functions, task_priority, status, " +
+                    "case_nature, disposal_level, file_number, types, r_creator_name, language_type " +
                     "FROM cms_case_folder " +
                     "WHERE %s " +
                     "ORDER BY r_creation_date DESC " +
@@ -145,6 +146,46 @@ public class DelegateService {
                 links.stream().anyMatch(l -> "next".equals(l.get("rel")));
         result.put("hasNext", hasNext);
         return result;
+    }
+
+    // ─── Movement Register ────────────────────────────────────────────────────────
+
+    /**
+     * Fetch all cms_movement_register records linked to a case folder.
+     * SELECT * FROM cms_movement_register WHERE ANY i_folder_id = '<caseId>'
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getMovementRegister(String caseId) {
+        String safe = caseId.replace("'", "''");
+        String dql  = "SELECT * FROM cms_movement_register WHERE ANY i_folder_id = '" + safe + "' ORDER BY r_creation_date DESC";
+        log.info("Movement register DQL for case {}", caseId);
+
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(getRepoUrl() + "?dql={dql}&items-per-page=200&page=1&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, Object>> records = new ArrayList<>();
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                            if (props != null) records.add(props);
+                        }
+                    }
+                }
+            }
+            return records;
+        } catch (Exception e) {
+            log.error("Error fetching movement register for case {}: {}", caseId, e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     // ─── Delegate Case ────────────────────────────────────────────────────────────

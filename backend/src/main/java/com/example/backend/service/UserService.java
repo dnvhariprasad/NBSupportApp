@@ -31,13 +31,20 @@ public class UserService {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> searchUserProfiles(String query, int page, int itemsPerPage) {
+    public Map<String, Object> searchUserProfiles(String query, int page, int itemsPerPage, String officeTypeFilter) {
         StringBuilder dqlBuilder = new StringBuilder();
         dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, department_short_code, user_grade, designation, ");
         dqlBuilder.append("user_email_address, user_login_name, primary_mobile_number, location, office_type, ");
         dqlBuilder.append("is_active, hindi_user_name, hindi_designation, user_role ");
         dqlBuilder.append("FROM cms_user_profile WHERE object_name IS NOT NULL AND object_name != ' ' ");
-        
+
+        // Local Admin office type restriction
+        if ("HO".equalsIgnoreCase(officeTypeFilter)) {
+            dqlBuilder.append("AND office_type = 'HO' ");
+        } else if ("RO".equalsIgnoreCase(officeTypeFilter)) {
+            dqlBuilder.append("AND office_type != 'HO' ");
+        }
+
         if (query != null && !query.trim().isEmpty()) {
             String q = query.trim();
             dqlBuilder.append("AND (object_name LIKE '%").append(q).append("%' ");
@@ -46,7 +53,7 @@ public class UserService {
             dqlBuilder.append("OR department_name LIKE '%").append(q).append("%' ");
             dqlBuilder.append("OR designation LIKE '%").append(q).append("%') ");
         }
-        
+
         dqlBuilder.append("ORDER BY object_name");
 
         return executeDql(dqlBuilder.toString(), page, itemsPerPage);
@@ -238,11 +245,18 @@ public class UserService {
         return result;
     }
 
-    public Map<String, Object> searchDmUsers(String query, int page, int itemsPerPage) {
+    public Map<String, Object> searchDmUsers(String query, int page, int itemsPerPage, String officeTypeFilter) {
         StringBuilder dql = new StringBuilder();
         dql.append("SELECT user_name, user_login_name, user_address, user_source, ");
         dql.append("user_privileges, user_state, description ");
         dql.append("FROM dm_user WHERE user_login_name IS NOT NULL AND user_login_name != ' ' ");
+
+        // Local Admin office type restriction via cms_user_profile subquery
+        if ("HO".equalsIgnoreCase(officeTypeFilter)) {
+            dql.append("AND user_name IN (SELECT object_name FROM cms_user_profile WHERE office_type = 'HO') ");
+        } else if ("RO".equalsIgnoreCase(officeTypeFilter)) {
+            dql.append("AND user_name IN (SELECT object_name FROM cms_user_profile WHERE office_type != 'HO') ");
+        }
 
         if (query != null && !query.trim().isEmpty()) {
             String q = query.trim();
@@ -477,6 +491,48 @@ public class UserService {
                 executeDqlUpdate(updateDql);
             }
         }
+    }
+
+    /**
+     * Fetch office_type and department_short_code_multi for a user from cms_user_profile by object_name.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getProfileByUsername(String username) {
+        String safe = username.replace("'", "''");
+        // DQL returns one row per repeating attribute value, so fetch up to 200 rows
+        String dql  = "SELECT department_short_code_multi, office_type, location FROM cms_user_profile WHERE object_name = '" + safe + "'";
+        Map<String, Object> result = executeDql(dql, 1, 200);
+        List<?> rows = (List<?>) result.get("users");
+        if (rows == null || rows.isEmpty()) return Map.of();
+
+        // office_type and location are the same on every row — take from first row
+        Map<String, Object> first = (Map<String, Object>) rows.get(0);
+        String officeType = (String) first.get("office_type");
+        String location   = (String) first.get("location");
+
+        // Aggregate department_short_code_multi values.
+        // Documentum REST may return them as:
+        //   (a) a List<String> in a single row, OR
+        //   (b) one String per row (one row per repeating value)
+        List<String> deptCodes = new ArrayList<>();
+        for (Object row : rows) {
+            Object val = ((Map<String, Object>) row).get("department_short_code_multi");
+            if (val instanceof List<?> list) {
+                // Each row has a single-element list — collect from all rows
+                for (Object item : list) {
+                    if (item instanceof String s && !s.isBlank()) deptCodes.add(s);
+                }
+            } else if (val instanceof String s && !s.isBlank()) {
+                deptCodes.add(s);
+            }
+        }
+
+        log.info("Profile context for '{}': officeType={}, location={}, depts={}", username, officeType, location, deptCodes);
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put("office_type", officeType);
+        ctx.put("location", location);
+        ctx.put("department_short_code_multi", deptCodes);
+        return ctx;
     }
 
     /**

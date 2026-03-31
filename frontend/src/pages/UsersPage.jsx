@@ -11,12 +11,14 @@ import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
 import { USER_GRADES, getDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
-async function fetchAllUsers() {
+async function fetchAllUsers(officeTypeFilter) {
     const PAGE_SIZE = 2000;
     let page = 1;
     let all = [];
     while (true) {
-        const res = await api.get('/users/profiles', { params: { page, size: PAGE_SIZE } });
+        const params = { page, size: PAGE_SIZE };
+        if (officeTypeFilter) params.officeTypeFilter = officeTypeFilter;
+        const res = await api.get('/users/profiles', { params });
         const users = res.data.users || [];
         all = all.concat(users);
         if (!res.data.hasNext) break;
@@ -238,13 +240,20 @@ const DmUserTab = ({ onToast }) => {
     const [selectedUser, setSelectedUser] = useState(null);
     const [isEditOpen, setIsEditOpen]     = useState(false);
 
-    const fetchDmUsers = async () => {
+    const storedUser    = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole     = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin  = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const fetchDmUsers = async (officeTypeFilter) => {
         setLoading(true);
         try {
             const PAGE_SIZE = 2000;
             let page = 1, all = [];
             while (true) {
-                const res = await api.get('/users/dm', { params: { page, size: PAGE_SIZE } });
+                const params = { page, size: PAGE_SIZE };
+                if (officeTypeFilter) params.officeTypeFilter = officeTypeFilter;
+                const res = await api.get('/users/dm', { params });
                 const users = res.data.users || [];
                 all = all.concat(users);
                 if (!res.data.hasNext) break;
@@ -259,7 +268,18 @@ const DmUserTab = ({ onToast }) => {
         }
     };
 
-    useEffect(() => { fetchDmUsers(); }, []);
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) {
+            fetchDmUsers(null);
+            return;
+        }
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const officeType = res.data?.office_type || '';
+                fetchDmUsers(officeType === 'HO' ? 'HO' : 'RO');
+            })
+            .catch(() => fetchDmUsers(null));
+    }, [isLocalAdmin, loginUsername]);
 
     const processed = useMemo(() => {
         let result = [...allUsers];
@@ -462,10 +482,31 @@ const CmsProfileTab = ({ onToast }) => {
     const [selectedUser, setSelectedUser] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-    const fetchUsers = async () => {
+    const storedUser   = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole    = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) {
+            // Super Admin — fetch without filter
+            fetchUsers(null);
+            return;
+        }
+        // Local Admin — fetch profile context first to get office_type
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const officeType = res.data?.office_type || '';
+                const filter = officeType === 'HO' ? 'HO' : 'RO';
+                fetchUsers(filter);
+            })
+            .catch(() => fetchUsers(null));
+    }, [isLocalAdmin, loginUsername]);
+
+    const fetchUsers = async (officeTypeFilter) => {
         setLoading(true);
         try {
-            const users = await fetchAllUsers();
+            const users = await fetchAllUsers(officeTypeFilter);
             setAllUsers(users);
         } catch (error) {
             console.error('Error fetching users', error);
@@ -474,8 +515,6 @@ const CmsProfileTab = ({ onToast }) => {
             setLoading(false);
         }
     };
-
-    useEffect(() => { fetchUsers(); }, []);
 
     const processedUsers = useMemo(() => {
         let result = [...allUsers];
@@ -2100,14 +2139,20 @@ const PasswordTab = ({ onToast }) => {
 
 // ─── Main UsersPage ───────────────────────────────────────────────────────────
 const UsersPage = () => {
-    const [activeTab, setActiveTab] = useState('creation');
     const [toast, setToast] = useState(null);
 
-    const tabs = [
-        { id: 'creation',  label: 'User Creation',        icon: UserPlus },
-        { id: 'directory', label: 'User Directory',       icon: Users    },
-        { id: 'password',  label: 'User Password Update', icon: KeyRound },
+    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole = storedUser.properties?.admin_role || storedUser.admin_role || null;
+
+    const allTabs = [
+        { id: 'creation',  label: 'User Creation',        icon: UserPlus, roles: ['Super Admin'] },
+        { id: 'directory', label: 'User Directory',       icon: Users,    roles: ['Super Admin', 'Local Admin'] },
+        { id: 'password',  label: 'User Password Update', icon: KeyRound, roles: ['Super Admin', 'Local Admin'] },
     ];
+
+    const tabs = allTabs.filter(tab => tab.roles.includes(adminRole));
+
+    const [activeTab, setActiveTab] = useState(() => tabs[0]?.id || '');
 
     return (
         <div className="p-6 max-w-7xl mx-auto h-full flex flex-col">
