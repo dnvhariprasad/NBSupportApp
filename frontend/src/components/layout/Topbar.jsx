@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { User, LogOut, ChevronDown, Check, Key, Copy, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { LogOut, ChevronDown, Check, Key, Copy, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../../api/axios';
 
@@ -107,6 +107,9 @@ const Topbar = () => {
     };
 
     if (!user) return null;
+
+    // admin_role may be nested under properties or at the top level depending on Documentum response structure
+    const adminRole = user.properties?.admin_role || user.admin_role || null;
 
     // Helper to get initials
     const getInitials = (name) => {
@@ -257,23 +260,16 @@ const Topbar = () => {
                                 <p className="text-slate-500 text-xs break-all">{user.properties?.user_address || 'No email'}</p>
                             </div>
 
-                            {/* Details */}
-                            <div className="p-4 space-y-3">
-                                <div>
+                            {/* Details — only shown for Super Admin / Local Admin */}
+                            {(adminRole === 'Super Admin' || adminRole === 'Local Admin') && (
+                                <div className="p-4">
                                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Privileges</label>
                                     <div className="flex items-center gap-2 mt-1 text-slate-700">
                                         <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                                        <span>{user.properties?.user_privileges === 16 ? 'Superuser' : 'Standard User'}</span>
+                                        <span>{adminRole}</span>
                                     </div>
                                 </div>
-                                 <div>
-                                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</label>
-                                    <div className="flex items-center gap-2 mt-1 text-slate-700">
-                                        <Check size={14} className="text-green-600" />
-                                        <span>Active</span>
-                                    </div>
-                                </div>
-                            </div>
+                            )}
 
                             {/* Footer */}
                             <div className="p-2 border-t border-slate-100 bg-slate-50">

@@ -13,6 +13,7 @@ import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -22,6 +23,7 @@ public class AuthService {
 
     private final DctmConfig dctmConfig;
     private final RestClient.Builder restClientBuilder;
+    private final GroupService groupService;
 
     public AuthResponse authenticate(LoginRequest request) {
         String repoName = (request.getRepository() != null && !request.getRepository().isEmpty())
@@ -48,12 +50,27 @@ public class AuthService {
 
         try {
             RestClient restClient = restClientBuilder.build();
+            @SuppressWarnings("unchecked")
             Map<String, Object> result = restClient.get()
                     .uri(url)
                     .header(HttpHeaders.AUTHORIZATION, authHeader)
-                    .accept(MediaType.APPLICATION_JSON) // Request JSON
+                    .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .body(Map.class);
+
+            // Resolve admin role from group membership
+            String adminRole = resolveAdminRole(username);
+            if (result != null) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> properties = (Map<String, Object>) result.get("properties");
+                if (properties != null) {
+                    properties.put("admin_role", adminRole);
+                } else {
+                    // Documentum returned a flat structure — inject at top level
+                    result.put("admin_role", adminRole);
+                }
+                log.info("Resolved admin role for user '{}': {}", username, adminRole);
+            }
 
             return AuthResponse.success(username, repoName, result);
 
@@ -67,5 +84,21 @@ public class AuthService {
             log.error("Error during authentication for user '{}'", username, e);
             return AuthResponse.failure("System error during authentication: " + e.getMessage());
         }
+    }
+
+    private String resolveAdminRole(String username) {
+        try {
+            List<Map<String, String>> groups = groupService.getGroupsByUser(username);
+            boolean isSuperAdmin = groups.stream()
+                    .anyMatch(g -> "ecm_super_admin".equals(g.get("group_name")));
+            if (isSuperAdmin) return "Super Admin";
+
+            boolean isLocalAdmin = groups.stream()
+                    .anyMatch(g -> "ecm_local_admin".equals(g.get("group_name")));
+            if (isLocalAdmin) return "Local Admin";
+        } catch (Exception e) {
+            log.warn("Could not resolve admin role for user '{}': {}", username, e.getMessage());
+        }
+        return "Standard User";
     }
 }
