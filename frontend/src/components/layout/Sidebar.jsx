@@ -1,5 +1,5 @@
-import React from 'react';
 import { NavLink } from 'react-router-dom';
+<<<<<<< HEAD
 import { Users, Compass, Settings, Database, Network, FolderCog, ArrowRightLeft } from 'lucide-react';
 
 const Sidebar = () => {
@@ -9,7 +9,27 @@ const Sidebar = () => {
         { name: 'Metadata', path: '/dashboard/metadata', icon: FolderCog },
         { name: 'Delegate Case', path: '/dashboard/delegate', icon: ArrowRightLeft },
         { name: 'Query', path: '/dashboard/query', icon: Database },
+=======
+import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft } from 'lucide-react';
+
+const Sidebar = () => {
+    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole = storedUser.properties?.admin_role || storedUser.admin_role || null;
+
+    const allNavItems = [
+        { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
+        { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null },
+        { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
+        { name: 'Users',        path: '/dashboard/users',     icon: Users,        roles: null },
+        { name: 'Verticals',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin'] },
+        { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
+        { name: 'Case Inbox',   path: '/dashboard/inbox',     icon: ClipboardList,roles: null },
+        { name: 'Delegate Case',path: '/dashboard/delegate',  icon: ArrowRightLeft,roles: ['Super Admin'] },
+        { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null },
+>>>>>>> d35b9a4c6d05f0ec0cdb9679db6b9447bf1a31c4
     ];
+
+    const navItems = allNavItems.filter(item => !item.roles || item.roles.includes(adminRole));
 
     return (
         <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen fixed left-0 top-0 z-20 font-sans">

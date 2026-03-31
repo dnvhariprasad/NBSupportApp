@@ -56,8 +56,9 @@ public class UserController {
     public Map<String, Object> searchDmUsers(
             @RequestParam(required = false) String query,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return userService.searchDmUsers(query, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String officeTypeFilter) {
+        return userService.searchDmUsers(query, page, size, officeTypeFilter);
     }
 
     /**
@@ -153,14 +154,30 @@ public class UserController {
     }
 
     /**
-     * Search user profiles
+     * Fetch office_type and department_short_code_multi for the given username from cms_user_profile.
+     * Used by Local Admin to restrict File Number UI to their own office type and departments.
+     * GET /api/users/profile-context?username=Kalai
+     */
+    @GetMapping("/profile-context")
+    public ResponseEntity<Map<String, Object>> getProfileContext(@RequestParam String username) {
+        try {
+            return ResponseEntity.ok(userService.getProfileByUsername(username));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Search user profiles.
+     * Optional officeTypeFilter: 'HO' → only HO users; 'RO' → non-HO users (RO/TE).
      */
     @GetMapping("/profiles")
     public Map<String, Object> searchUserProfiles(
             @RequestParam(required = false) String query,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return userService.searchUserProfiles(query, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String officeTypeFilter) {
+        return userService.searchUserProfiles(query, page, size, officeTypeFilter);
     }
 
     /**

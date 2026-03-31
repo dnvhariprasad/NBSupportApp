@@ -4,6 +4,8 @@ import com.example.backend.service.DelegateService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 import java.util.Map;
 
 @RestController
@@ -33,6 +35,20 @@ public class DelegateController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get movement register records for a case.
+     * GET /api/delegate/cases/{caseId}/movement
+     */
+    @GetMapping("/cases/{caseId}/movement")
+    public ResponseEntity<List<Map<String, Object>>> getMovementRegister(
+            @PathVariable String caseId) {
+        try {
+            return ResponseEntity.ok(delegateService.getMovementRegister(caseId));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
         }
     }
 

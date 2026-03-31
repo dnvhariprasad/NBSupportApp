@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 import React, { useState, useRef, useEffect } from 'react';
 import { LogOut, ChevronDown, Check } from 'lucide-react';
+=======
+import { useState, useRef, useEffect } from 'react';
+import { LogOut, ChevronDown, Check, Key, Copy, Loader2 } from 'lucide-react';
+>>>>>>> d35b9a4c6d05f0ec0cdb9679db6b9447bf1a31c4
 import { useNavigate } from 'react-router-dom';
 
 const Topbar = () => {
@@ -30,6 +35,13 @@ const Topbar = () => {
 
     if (!user) return null;
 
+<<<<<<< HEAD
+=======
+    // admin_role may be nested under properties or at the top level depending on Documentum response structure
+    const adminRole = user.properties?.admin_role || user.admin_role || null;
+
+    // Helper to get initials
+>>>>>>> d35b9a4c6d05f0ec0cdb9679db6b9447bf1a31c4
     const getInitials = (name) => {
         return name ? name.charAt(0).toUpperCase() : 'U';
     };
@@ -58,15 +70,16 @@ const Topbar = () => {
                                 <p className="text-slate-500 text-xs break-all">{user.properties?.user_address || 'No email'}</p>
                             </div>
 
-                            {/* Details */}
-                            <div className="p-4 space-y-3">
-                                <div>
+                            {/* Details — only shown for Super Admin / Local Admin */}
+                            {(adminRole === 'Super Admin' || adminRole === 'Local Admin') && (
+                                <div className="p-4">
                                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Privileges</label>
                                     <div className="flex items-center gap-2 mt-1 text-slate-700">
                                         <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                                        <span>{user.properties?.user_privileges === 16 ? 'Superuser' : 'Standard User'}</span>
+                                        <span>{adminRole}</span>
                                     </div>
                                 </div>
+<<<<<<< HEAD
                                 <div>
                                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</label>
                                     <div className="flex items-center gap-2 mt-1 text-slate-700">
@@ -75,6 +88,9 @@ const Topbar = () => {
                                     </div>
                                 </div>
                             </div>
+=======
+                            )}
+>>>>>>> d35b9a4c6d05f0ec0cdb9679db6b9447bf1a31c4
 
                             {/* Footer */}
                             <div className="p-2 border-t border-slate-100 bg-slate-50">

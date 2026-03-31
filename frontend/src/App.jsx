@@ -8,6 +8,7 @@ import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
 import QueryPage from './pages/QueryPage';
 import VerticalsPage from './pages/VerticalsPage';
+import InboxPage from './pages/InboxPage';
 import MetadataPage from './pages/MetadataPage';
 import DelegatePage from './pages/DelegatePage';
 
@@ -23,6 +24,7 @@ function App() {
             <Route path="cases" element={<CasesPage />} />
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="groups" element={<GroupsPage />} />
+            <Route path="inbox" element={<InboxPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="verticals" element={<VerticalsPage />} />
             <Route path="metadata" element={<MetadataPage />} />
