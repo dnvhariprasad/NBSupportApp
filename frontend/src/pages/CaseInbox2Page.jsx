@@ -302,7 +302,7 @@ setCases(items);
             {/* Page header */}
             <div className="flex items-center gap-2 mb-5">
                 <Inbox size={20} className="text-[#0A66C2]" />
-                <h1 className="text-xl font-bold text-slate-900">Case Inbox 2</h1>
+                <h1 className="text-xl font-bold text-slate-900">Case Inbox</h1>
             </div>
 
             {/* User selector */}

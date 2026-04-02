@@ -3,7 +3,7 @@ import api from '../api/axios';
 import {
     Layers, Tag, Users, UserPlus, X, Loader2,
     CheckCircle2, AlertCircle, ChevronDown, Building2, MapPin,
-    UserCheck, UsersRound, Star, ClipboardList,
+    UserCheck, UsersRound, Star, ClipboardList, ArrowRightLeft,
 } from 'lucide-react';
 import { HO_DEPARTMENTS, getDepartments, getLocations } from '../data/nabardMetadata.js';
 
@@ -664,6 +664,54 @@ const RemoveMembersTab = ({ setToast }) => {
     const [loadingInbox,   setLoadingInbox]   = useState(false);
     const [removing,       setRemoving]       = useState(false);
 
+    // Delegate case modal state
+    const [delegateTask,          setDelegateTask]          = useState(null);
+    const [delegateUsers,         setDelegateUsers]         = useState([]);
+    const [loadingDelegateUsers,  setLoadingDelegateUsers]  = useState(false);
+    const [delegateSelectedUser,  setDelegateSelectedUser]  = useState('');
+    const [delegatingCaseId,      setDelegatingCaseId]      = useState(null);
+
+    const pfield = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
+
+    const handleDelegateClick = async (task) => {
+        const caseName = pfield(task, 'object_name') || task.caseName || '';
+        const deptShortCode = (caseName.split('-')[1] || '').toLowerCase();
+        setDelegateTask(task);
+        setDelegateSelectedUser('');
+        setDelegateUsers([]);
+        if (deptShortCode) {
+            setLoadingDelegateUsers(true);
+            try {
+                const res = await api.get('/users/by-dept', { params: { shortCode: deptShortCode } });
+                setDelegateUsers(res.data?.users || res.data || []);
+            } catch {
+                setToast({ type: 'error', message: 'Failed to load users for this department.' });
+            } finally {
+                setLoadingDelegateUsers(false);
+            }
+        }
+    };
+
+    const handleDelegateConfirm = async () => {
+        if (!delegateSelectedUser || !delegateTask) return;
+        const caseId = pfield(delegateTask, 'id') || delegateTask.id || delegateTask.r_object_id;
+        setDelegatingCaseId(caseId);
+        try {
+            const res = await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser });
+            setToast({ type: 'success', message: res.data?.message || 'Case delegated successfully.' });
+            setInboxTasks(prev => prev.filter(t => {
+                const tid = pfield(t, 'id') || t.id || t.r_object_id;
+                return tid !== caseId;
+            }));
+            setInboxTotal(prev => Math.max(0, prev - 1));
+            setDelegateTask(null);
+        } catch (err) {
+            setToast({ type: 'error', message: err.response?.data?.message || 'Delegation failed.' });
+        } finally {
+            setDelegatingCaseId(null);
+        }
+    };
+
     const isROTE = ['RO', 'TE'].includes(officeType);
 
     const resetBelow = (level) => {
@@ -810,8 +858,91 @@ const RemoveMembersTab = ({ setToast }) => {
     const hasPendingCases = inboxTotal > 0;
     const allMembers = [...members.users, ...members.groups];
 
+    // ── Delegate Case Modal ──────────────────────────────────────────────────
+    const DelegateCaseModal = () => {
+        if (!delegateTask) return null;
+        const caseName     = pfield(delegateTask, 'object_name') || delegateTask.caseName || '—';
+        const deptName     = pfield(delegateTask, 'department_name') || '';
+        const deptShortCode = caseName.split('-')[1] || '';
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-[#0A66C2] flex items-center justify-center shadow-sm">
+                                <ArrowRightLeft size={17} className="text-white" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-slate-900">Delegate Case</p>
+                                <p className="text-xs text-slate-500 font-mono">{caseName}</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setDelegateTask(null)}
+                            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    {/* Body */}
+                    <div className="p-6 space-y-4">
+                        {deptName && (
+                            <div className="text-xs text-slate-500">
+                                Department: <span className="font-semibold text-slate-700">{deptName}</span>
+                                {deptShortCode && <span className="ml-1 text-slate-400">({deptShortCode})</span>}
+                            </div>
+                        )}
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                                <Users size={12} /> Select User to Delegate
+                            </label>
+                            {loadingDelegateUsers ? (
+                                <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+                                    <Loader2 size={14} className="animate-spin" /> Loading users…
+                                </div>
+                            ) : delegateUsers.length === 0 ? (
+                                <div className="text-xs text-slate-400 py-2">No users found for department <span className="font-semibold">{deptShortCode}</span>.</div>
+                            ) : (
+                                <div className="relative">
+                                    <select
+                                        value={delegateSelectedUser}
+                                        onChange={e => setDelegateSelectedUser(e.target.value)}
+                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none pr-8 cursor-pointer"
+                                    >
+                                        <option value="">— Select user —</option>
+                                        {delegateUsers.map(u => (
+                                            <option key={u.r_object_id || u.user_login_name} value={u.object_name}>
+                                                {u.object_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-end gap-2 px-6 pb-5">
+                        <button onClick={() => setDelegateTask(null)}
+                            className="px-4 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleDelegateConfirm}
+                            disabled={!delegateSelectedUser || !!delegatingCaseId}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-[#0A66C2] hover:bg-[#094d92] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-all">
+                            {delegatingCaseId ? <><Loader2 size={12} className="animate-spin" /> Delegating…</> : <><ArrowRightLeft size={12} /> Delegate</>}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-5">
+            <DelegateCaseModal />
             <Card className="space-y-4">
                 <SectionTitle>Select Group</SectionTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -941,6 +1072,11 @@ const RemoveMembersTab = ({ setToast }) => {
                                                                                             'bg-slate-100 text-slate-600'
                                                                                         }`}>{priority}</span>
                                                                                     )}
+                                                                                    <button
+                                                                                        onClick={() => handleDelegateClick(task)}
+                                                                                        className="flex items-center gap-1 px-2 py-1 bg-[#0A66C2] hover:bg-[#094d92] text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap">
+                                                                                        <ArrowRightLeft size={11} /> Delegate
+                                                                                    </button>
                                                                                 </div>
                                                                             </div>
                                                                             );

@@ -12,8 +12,7 @@ const Sidebar = () => {
         { name: 'Users',        path: '/dashboard/users',     icon: Users,        roles: null },
         { name: 'Verticals',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin'] },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
-        { name: 'Case Inbox',   path: '/dashboard/inbox',     icon: ClipboardList,roles: null },
-        { name: 'Case Inbox 2', path: '/dashboard/inbox2',    icon: Inbox,         roles: null },
+        { name: 'Case Inbox',   path: '/dashboard/inbox2',    icon: Inbox,         roles: null },
         { name: 'Delegate Case',path: '/dashboard/delegate',  icon: ArrowRightLeft,roles: ['Super Admin'] },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null },
     ];
