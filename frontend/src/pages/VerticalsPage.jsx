@@ -3,7 +3,7 @@ import api from '../api/axios';
 import {
     Layers, Tag, Users, UserPlus, X, Loader2,
     CheckCircle2, AlertCircle, ChevronDown, Building2, MapPin,
-    UserCheck, UsersRound, Star,
+    UserCheck, UsersRound, Star, ClipboardList,
 } from 'lucide-react';
 import { HO_DEPARTMENTS, getDepartments, getLocations } from '../data/nabardMetadata.js';
 
@@ -658,12 +658,18 @@ const RemoveMembersTab = ({ setToast }) => {
     const [members,        setMembers]        = useState({ users: [], groups: [] });
     const [loadingVerts,   setLoadingVerts]   = useState(false);
     const [loadingMembers, setLoadingMembers] = useState(false);
+    const [pendingRemove,  setPendingRemove]  = useState(null);
+    const [inboxTasks,     setInboxTasks]     = useState([]);
+    const [inboxTotal,     setInboxTotal]     = useState(0);
+    const [loadingInbox,   setLoadingInbox]   = useState(false);
+    const [removing,       setRemoving]       = useState(false);
 
     const isROTE = ['RO', 'TE'].includes(officeType);
 
     const resetBelow = (level) => {
         if (level === 'officeType') { setLocation(''); setRoShortCode(''); }
         setDept(''); setSelectedGroup(''); setVerticals([]); setMembers({ users: [], groups: [] });
+        setPendingRemove(null); setInboxTasks([]); setInboxTotal(0);
     };
 
     const handleOfficeTypeChange = (v) => {
@@ -718,27 +724,76 @@ const RemoveMembersTab = ({ setToast }) => {
         finally { setLoadingMembers(false); }
     };
 
-    const handleRemove = async (member) => {
-        try {
-            await api.delete(`/groups/${selectedGroup}/members/${member.name}`, {
-                params: { memberType: member.type },
-            });
-            setToast({ type: 'success', message: `'${member.name}' removed from '${selectedGroup}'.` });
-            setMembers(prev => ({
-                users:  prev.users.filter(u => u.name !== member.name),
-                groups: prev.groups.filter(g => g.name !== member.name),
-            }));
-            // Remove the vertical_id from cms_user_profile (fire-and-forget)
-            if (member.type === 'user') {
-                api.delete('/users/profile-vertical-ids', {
-                    params: { userLoginName: member.name, verticalGroupName: selectedGroup },
-                }).catch(e => console.warn('vertical_ids remove failed:', e?.response?.data?.message || e.message));
-            }
-        } catch (err) {
-            setToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove member.' });
+    /**
+     * Compute the case object_name prefix filter for the currently selected group.
+     * HO  → NB-<DEPTSC>-<VERTICALSUFFIX>-   e.g. NB-DDSI-DTV-
+     * RO/TE → NB-<OFFICETYPE>-<ROSHORTCODE>-<DEPTSC>-  e.g. NB-RO-TN-DIT-
+     */
+    const computeCasePrefix = () => {
+        const depts   = getDepartments(officeType, location);
+        const deptObj = depts.find(d => d.name === dept);
+        const deptSC  = (deptObj?.shortCode || '').toUpperCase();
+
+        if (officeType === 'HO') {
+            // group: ecm_ho_<deptSC_lower>_<verticalSuffix>
+            const base   = `ecm_ho_${deptSC.toLowerCase()}_`;
+            const suffix = selectedGroup.startsWith(base)
+                ? selectedGroup.slice(base.length).toUpperCase()
+                : '';
+            return deptSC && suffix ? `NB-${deptSC}-${suffix}-` : '';
+        } else {
+            // RO / TE
+            const roSC = roShortCode.toUpperCase();
+            return deptSC && roSC ? `NB-${officeType}-${roSC}-${deptSC}-` : '';
         }
     };
 
+    // Step 1: clicking X opens inbox check panel instead of removing immediately
+    const handleRemoveClick = async (member) => {
+        if (pendingRemove?.name === member.name) { setPendingRemove(null); setInboxTasks([]); setInboxTotal(0); return; }
+        setPendingRemove(member);
+        setInboxTasks([]);
+        setInboxTotal(0);
+        if (member.type !== 'user') return; // groups have no inbox — allow directly
+        setLoadingInbox(true);
+        try {
+            const res = await api.get('/inbox', { params: { username: member.name, page: 1, size: 200 } });
+            const allTasks = res.data.tasks || [];
+            const prefix   = computeCasePrefix();
+            const filtered = prefix
+                ? allTasks.filter(t => (t.caseName || '').toUpperCase().startsWith(prefix))
+                : allTasks;
+            setInboxTasks(filtered);
+            setInboxTotal(filtered.length);
+        } catch { setInboxTasks([]); setInboxTotal(0); }
+        finally { setLoadingInbox(false); }
+    };
+
+    // Step 2: confirmed removal (only reachable when inbox is empty or member is a group)
+    const handleConfirmRemove = async () => {
+        if (!pendingRemove) return;
+        setRemoving(true);
+        try {
+            await api.delete(`/groups/${selectedGroup}/members/${pendingRemove.name}`, {
+                params: { memberType: pendingRemove.type },
+            });
+            setToast({ type: 'success', message: `'${pendingRemove.name}' removed from '${selectedGroup}'.` });
+            setMembers(prev => ({
+                users:  prev.users.filter(u => u.name !== pendingRemove.name),
+                groups: prev.groups.filter(g => g.name !== pendingRemove.name),
+            }));
+            if (pendingRemove.type === 'user') {
+                api.delete('/users/profile-vertical-ids', {
+                    params: { userLoginName: pendingRemove.name, verticalGroupName: selectedGroup },
+                }).catch(e => console.warn('vertical_ids remove failed:', e?.response?.data?.message || e.message));
+            }
+            setPendingRemove(null); setInboxTasks([]); setInboxTotal(0);
+        } catch (err) {
+            setToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove member.' });
+        } finally { setRemoving(false); }
+    };
+
+    const hasPendingCases = inboxTotal > 0;
     const allMembers = [...members.users, ...members.groups];
 
     return (
@@ -746,7 +801,6 @@ const RemoveMembersTab = ({ setToast }) => {
             <Card className="space-y-4">
                 <SectionTitle>Select Group</SectionTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Office Type */}
                     <div>
                         <Label icon={Building2}>Office Type</Label>
                         <Select value={officeType} onChange={handleOfficeTypeChange}
@@ -757,7 +811,6 @@ const RemoveMembersTab = ({ setToast }) => {
                                 { value: 'TE', label: 'TE — Training Establishment' },
                             ]} />
                     </div>
-                    {/* Location (RO/TE only) */}
                     {isROTE && (
                         <div>
                             <Label icon={MapPin}>Location</Label>
@@ -767,7 +820,6 @@ const RemoveMembersTab = ({ setToast }) => {
                                 options={getLocations(officeType).map(l => ({ value: l.location, label: l.location }))} />
                         </div>
                     )}
-                    {/* Department */}
                     <div>
                         <Label icon={Layers}>Department</Label>
                         <Select value={dept} onChange={handleDeptChange}
@@ -806,15 +858,100 @@ const RemoveMembersTab = ({ setToast }) => {
                             ? <p className="text-sm text-slate-400 text-center py-4">No members in this group</p>
                             : <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                                 {allMembers.map(m => (
-                                    <div key={`${m.type}-${m.name}`} className="flex items-center justify-between px-4 py-2.5">
-                                        <div className="flex items-center gap-2.5">
-                                            <MemberTag type={m.type} />
-                                            <span className="text-sm text-slate-700 font-mono">{m.name}</span>
+                                    <div key={`${m.type}-${m.name}`}>
+                                        {/* Member row */}
+                                        <div className={`flex items-center justify-between px-4 py-2.5 transition-colors ${pendingRemove?.name === m.name ? 'bg-red-50/60' : ''}`}>
+                                            <div className="flex items-center gap-2.5">
+                                                <MemberTag type={m.type} />
+                                                <span className="text-sm text-slate-700 font-mono">{m.name}</span>
+                                            </div>
+                                            <button onClick={() => handleRemoveClick(m)}
+                                                className={`p-1.5 rounded-lg transition-colors ${pendingRemove?.name === m.name ? 'text-red-400 bg-red-100' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                                                title={pendingRemove?.name === m.name ? 'Cancel' : 'Remove'}>
+                                                <X size={14} />
+                                            </button>
                                         </div>
-                                        <button onClick={() => handleRemove(m)}
-                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Remove">
-                                            <X size={14} />
-                                        </button>
+
+                                        {/* Inline inbox panel — shown only for the pending member */}
+                                        {pendingRemove?.name === m.name && (
+                                            <div className="border-t border-red-100 bg-slate-50 px-4 py-4 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                                                        <ClipboardList size={11} /> Case Inbox — {m.name}
+                                                    </p>
+                                                    {computeCasePrefix() && (
+                                                        <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                                            filter: {computeCasePrefix()}*
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {loadingInbox && (
+                                                    <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+                                                        <Loader2 size={14} className="animate-spin" /> Checking inbox…
+                                                    </div>
+                                                )}
+
+                                                {!loadingInbox && m.type === 'user' && (
+                                                    <>
+                                                        {hasPendingCases ? (
+                                                            <>
+                                                                <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                                                                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                                                                    <span>Kindly delegate the pending cases to remove this user from the vertical.</span>
+                                                                </div>
+                                                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                                                    <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                                                                        <span className="text-xs font-semibold text-slate-600">Pending Cases</span>
+                                                                        <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full font-medium">{inboxTotal}</span>
+                                                                    </div>
+                                                                    <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                                                                        {inboxTasks.map((task, idx) => (
+                                                                            <div key={task.objectId || idx} className="px-3 py-2.5 flex items-start justify-between gap-3">
+                                                                                <div className="min-w-0">
+                                                                                    <p className="text-xs font-medium text-slate-800 truncate">{task.caseName || '—'}</p>
+                                                                                    <p className="text-xs text-slate-500 truncate">{task.description || ''}</p>
+                                                                                </div>
+                                                                                <div className="shrink-0 flex items-center gap-1.5">
+                                                                                    {task.status && <span className="px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium whitespace-nowrap">{task.status}</span>}
+                                                                                    {task.priority && (
+                                                                                        <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium whitespace-nowrap ${
+                                                                                            task.priority === 'High' ? 'bg-red-100 text-red-700' :
+                                                                                            task.priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                                                            'bg-slate-100 text-slate-600'
+                                                                                        }`}>{task.priority}</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5">
+                                                                <CheckCircle2 size={14} className="shrink-0" />
+                                                                No pending cases. Safe to remove.
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+
+                                                <div className="flex items-center gap-2 pt-1">
+                                                    <button
+                                                        onClick={handleConfirmRemove}
+                                                        disabled={hasPendingCases || removing || loadingInbox}
+                                                        title={hasPendingCases ? 'Delegate pending cases first' : ''}
+                                                        className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                                        {removing ? <><Loader2 size={12} className="animate-spin" /> Removing…</> : 'Remove'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setPendingRemove(null); setInboxTasks([]); setInboxTotal(0); }}
+                                                        className="px-4 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors">
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

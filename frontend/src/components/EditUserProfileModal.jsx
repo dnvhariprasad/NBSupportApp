@@ -13,9 +13,13 @@ const readonlyCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm
 const selectCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer';
 const disabledSelectCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none';
 
-const Label = ({ children }) => (
-    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{children}</label>
+const Label = ({ children, required }) => (
+    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        {children}{required && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
 );
+
+const errorCls = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400/20 focus:border-red-500 bg-white';
 
 const SelectWrapper = ({ children }) => (
     <div className="relative">
@@ -32,6 +36,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [form, setForm] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [errors, setErrors] = useState({});
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [] });
 
     useEffect(() => {
@@ -94,6 +99,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             is_active:                   profile.is_active              ?? false,
         });
         setError(null);
+        setErrors({});
     };
 
     const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
@@ -134,6 +140,14 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        const v = {};
+        if (!form.designation?.trim())        v.designation        = 'Designation is required';
+        if (!form.uin?.trim())                v.uin                = 'UIN is required';
+        if (!form.user_email_address?.trim()) v.user_email_address = 'Email is required';
+        if (!form.hindi_user_name?.trim())    v.hindi_user_name    = 'Hindi Name is required';
+        if (!form.hindi_designation?.trim())  v.hindi_designation  = 'Hindi Designation is required';
+        if (Object.keys(v).length > 0) { setErrors(v); return; }
+        setErrors({});
         setLoading(true);
         setError(null);
         try {
@@ -226,16 +240,18 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         className={readonlyCls} />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>UIN</Label>
+                                    <Label required>UIN</Label>
                                     <input type="text" value={form.uin}
-                                        onChange={e => set('uin', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('uin', e.target.value); setErrors(p => ({ ...p, uin: undefined })); }}
+                                        className={errors.uin ? errorCls : inputCls} />
+                                    {errors.uin && <p className="text-xs text-red-500">{errors.uin}</p>}
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>Designation</Label>
+                                    <Label required>Designation</Label>
                                     <input type="text" value={form.designation}
-                                        onChange={e => set('designation', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('designation', e.target.value); setErrors(p => ({ ...p, designation: undefined })); }}
+                                        className={errors.designation ? errorCls : inputCls} />
+                                    {errors.designation && <p className="text-xs text-red-500">{errors.designation}</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>User Role</Label>
@@ -244,10 +260,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         className={inputCls} />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>Email</Label>
+                                    <Label required>Email</Label>
                                     <input type="email" value={form.user_email_address}
-                                        onChange={e => set('user_email_address', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('user_email_address', e.target.value); setErrors(p => ({ ...p, user_email_address: undefined })); }}
+                                        className={errors.user_email_address ? errorCls : inputCls} />
+                                    {errors.user_email_address && <p className="text-xs text-red-500">{errors.user_email_address}</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>Mobile</Label>
@@ -263,16 +280,18 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Hindi Details</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <Label>Hindi Name</Label>
+                                    <Label required>Hindi Name</Label>
                                     <input type="text" value={form.hindi_user_name}
-                                        onChange={e => set('hindi_user_name', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('hindi_user_name', e.target.value); setErrors(p => ({ ...p, hindi_user_name: undefined })); }}
+                                        className={errors.hindi_user_name ? errorCls : inputCls} />
+                                    {errors.hindi_user_name && <p className="text-xs text-red-500">{errors.hindi_user_name}</p>}
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>Hindi Designation</Label>
+                                    <Label required>Hindi Designation</Label>
                                     <input type="text" value={form.hindi_designation}
-                                        onChange={e => set('hindi_designation', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('hindi_designation', e.target.value); setErrors(p => ({ ...p, hindi_designation: undefined })); }}
+                                        className={errors.hindi_designation ? errorCls : inputCls} />
+                                    {errors.hindi_designation && <p className="text-xs text-red-500">{errors.hindi_designation}</p>}
                                 </div>
                             </div>
                         </div>
