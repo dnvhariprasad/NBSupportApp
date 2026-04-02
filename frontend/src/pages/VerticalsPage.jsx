@@ -714,7 +714,11 @@ const RemoveMembersTab = ({ setToast }) => {
     };
 
     const handleGroupChange = async (v) => {
-        setSelectedGroup(v); setMembers({ users: [], groups: [] });
+        setSelectedGroup(v);
+        setMembers({ users: [], groups: [] });
+        setPendingRemove(null);
+        setInboxTasks([]);
+        setInboxTotal(0);
         if (!v) return;
         setLoadingMembers(true);
         try {
@@ -757,11 +761,21 @@ const RemoveMembersTab = ({ setToast }) => {
         if (member.type !== 'user') return; // groups have no inbox — allow directly
         setLoadingInbox(true);
         try {
-            const res = await api.get('/inbox', { params: { username: member.name, page: 1, size: 200 } });
-            const allTasks = res.data.tasks || [];
-            const prefix   = computeCasePrefix();
+            const res = await api.get('/inbox/tasklist', { params: { username: member.name, page: 1, start: 0 } });
+            const data = res.data || {};
+            let allTasks = [];
+            if (Array.isArray(data.entries)) {
+                allTasks = data.entries.map(entry => {
+                    const props = entry?.content?.properties || entry?.properties || entry;
+                    return props;
+                });
+            } else if (Array.isArray(data.tasks)) {
+                allTasks = data.tasks;
+            }
+            const prefix = computeCasePrefix();
+            const getCaseName = (t) => t.packagescase_folderobject_name || t.object_name || t.caseName || '';
             const filtered = prefix
-                ? allTasks.filter(t => (t.caseName || '').toUpperCase().startsWith(prefix))
+                ? allTasks.filter(t => getCaseName(t).toUpperCase().startsWith(prefix))
                 : allTasks;
             setInboxTasks(filtered);
             setInboxTotal(filtered.length);
@@ -906,24 +920,31 @@ const RemoveMembersTab = ({ setToast }) => {
                                                                         <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full font-medium">{inboxTotal}</span>
                                                                     </div>
                                                                     <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
-                                                                        {inboxTasks.map((task, idx) => (
-                                                                            <div key={task.objectId || idx} className="px-3 py-2.5 flex items-start justify-between gap-3">
+                                                                        {inboxTasks.map((task, idx) => {
+                                                                            const pf = (f) => task[`packagescase_folder${f}`] || task[f] || '';
+                                                                            const caseName = pf('object_name') || task.caseName || '—';
+                                                                            const desc     = pf('description') || '';
+                                                                            const status   = pf('status') || task.status || '';
+                                                                            const priority = pf('task_priority') || task.priority || '';
+                                                                            return (
+                                                                            <div key={pf('id') || task.id || idx} className="px-3 py-2.5 flex items-start justify-between gap-3">
                                                                                 <div className="min-w-0">
-                                                                                    <p className="text-xs font-medium text-slate-800 truncate">{task.caseName || '—'}</p>
-                                                                                    <p className="text-xs text-slate-500 truncate">{task.description || ''}</p>
+                                                                                    <p className="text-xs font-medium text-slate-800 truncate">{caseName}</p>
+                                                                                    <p className="text-xs text-slate-500 truncate">{desc}</p>
                                                                                 </div>
                                                                                 <div className="shrink-0 flex items-center gap-1.5">
-                                                                                    {task.status && <span className="px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium whitespace-nowrap">{task.status}</span>}
-                                                                                    {task.priority && (
+                                                                                    {status && <span className="px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium whitespace-nowrap">{status}</span>}
+                                                                                    {priority && (
                                                                                         <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium whitespace-nowrap ${
-                                                                                            task.priority === 'High' ? 'bg-red-100 text-red-700' :
-                                                                                            task.priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                                                            priority === 'High' ? 'bg-red-100 text-red-700' :
+                                                                                            priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
                                                                                             'bg-slate-100 text-slate-600'
-                                                                                        }`}>{task.priority}</span>
+                                                                                        }`}>{priority}</span>
                                                                                     )}
                                                                                 </div>
                                                                             </div>
-                                                                        ))}
+                                                                            );
+                                                                        })}
                                                                     </div>
                                                                 </div>
                                                             </>

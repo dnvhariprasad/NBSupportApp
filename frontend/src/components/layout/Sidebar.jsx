@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft } from 'lucide-react';
+import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft, Inbox } from 'lucide-react';
 
 const Sidebar = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -13,6 +13,7 @@ const Sidebar = () => {
         { name: 'Verticals',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin'] },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
         { name: 'Case Inbox',   path: '/dashboard/inbox',     icon: ClipboardList,roles: null },
+        { name: 'Case Inbox 2', path: '/dashboard/inbox2',    icon: Inbox,         roles: null },
         { name: 'Delegate Case',path: '/dashboard/delegate',  icon: ArrowRightLeft,roles: ['Super Admin'] },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null },
     ];

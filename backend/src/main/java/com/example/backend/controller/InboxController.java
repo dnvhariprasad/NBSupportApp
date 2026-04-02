@@ -36,6 +36,33 @@ public class InboxController {
     }
 
     /**
+     * Case Inbox 2 — proxies cms_all_user_inbox tasklist query.
+     * GET /api/inbox/tasklist?username=Dhinesh+S+R&page=1&start=0
+     */
+    @GetMapping("/tasklist")
+    public ResponseEntity<Map<String, Object>> getTasklistInbox(
+            @RequestParam String username,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "0") int start) {
+        try {
+            return ResponseEntity.ok(inboxService.getTasklistInbox(username, page, start));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage(),
+                                 "entries", java.util.List.of(), "total", 0));
+        }
+    }
+
+    /**
+     * Debug: returns the raw JSON from the CMS tasklist cms_all_user_inbox query.
+     * GET /api/inbox/tasklist/raw?username=Dhinesh+S+R
+     */
+    @GetMapping("/tasklist/raw")
+    public ResponseEntity<Map<String, Object>> getTasklistRaw(@RequestParam String username) {
+        return ResponseEntity.ok(inboxService.getTasklistInbox(username, 1, 0));
+    }
+
+    /**
      * Debug: returns the raw JSON from the DCTM tasklist API so you can inspect
      * the actual response structure and field names.
      * GET /api/inbox/raw?username=nirmal.joshi

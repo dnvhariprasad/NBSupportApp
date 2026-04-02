@@ -11,6 +11,7 @@ import VerticalsPage from './pages/VerticalsPage';
 import InboxPage from './pages/InboxPage';
 import MetadataPage from './pages/MetadataPage';
 import DelegatePage from './pages/DelegatePage';
+import CaseInbox2Page from './pages/CaseInbox2Page';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="metadata" element={<MetadataPage />} />
             <Route path="query" element={<QueryPage />} />
             <Route path="delegate" element={<DelegatePage />} />
+            <Route path="inbox2" element={<CaseInbox2Page />} />
         </Route>
         
         <Route path="/" element={<Navigate to="/login" replace />} />
