@@ -4,6 +4,7 @@ import com.example.backend.service.DepartmentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -15,6 +16,25 @@ public class DepartmentController {
 
     public DepartmentController(DepartmentService departmentService) {
         this.departmentService = departmentService;
+    }
+
+    /**
+     * List departments (dm_folder children) under a given office type path.
+     * GET /api/departments?officeType=HO
+     * GET /api/departments?officeType=RO&location=Tamilnadu
+     * GET /api/departments?officeType=TE&location=Bird Kolkata
+     */
+    @GetMapping
+    public ResponseEntity<?> listDepartments(
+            @RequestParam String officeType,
+            @RequestParam(required = false) String location) {
+        try {
+            List<Map<String, String>> departments = departmentService.listDepartments(officeType, location);
+            return ResponseEntity.ok(departments);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
     }
 
     /**

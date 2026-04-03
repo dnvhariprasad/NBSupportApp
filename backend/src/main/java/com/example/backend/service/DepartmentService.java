@@ -28,6 +28,84 @@ public class DepartmentService {
     }
 
     /**
+     * Lists departments (child dm_folder objects) under a given office type path.
+     * HO:    /ECM CONFIG/Office Type/HO
+     * RO/TE: /ECM CONFIG/Office Type/{officeType}/{location}
+     *
+     * Each folder's object_name = department name, title = short code.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, String>> listDepartments(String officeType, String location) {
+        String path;
+        if ("HO".equalsIgnoreCase(officeType)) {
+            path = "/ECM CONFIG/Office Type/HO";
+        } else {
+            if (location == null || location.isBlank()) {
+                throw new IllegalArgumentException("Location is required for " + officeType);
+            }
+            path = "/ECM CONFIG/Office Type/" + officeType.toUpperCase() + "/" + location;
+        }
+
+        String safePath = path.replace("'", "''");
+        String dql = "SELECT object_name, title FROM dm_folder"
+                + " WHERE FOLDER('" + safePath + "')"
+                + " ORDER BY object_name";
+
+        String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+        List<Map<String, String>> departments = new ArrayList<>();
+        int page = 1;
+        final int PAGE_SIZE = 100;
+
+        log.info("[Dept] Listing departments under '{}'", path);
+        try {
+            while (true) {
+                Map<String, Object> resp = restClient.get()
+                        .uri(repoUrl + "?dql={dql}&items-per-page={size}&page={page}&inline=true",
+                                dql, PAGE_SIZE, page)
+                        .header("Authorization", getAuthHeader())
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .retrieve()
+                        .body(Map.class);
+
+                if (resp == null) break;
+
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) resp.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> p = (Map<String, Object>) content.get("properties");
+                            if (p != null) {
+                                String name = (String) p.get("object_name");
+                                String shortCode = (String) p.get("title");
+                                if (name != null) {
+                                    Map<String, String> dept = new LinkedHashMap<>();
+                                    dept.put("name", name);
+                                    dept.put("shortCode", shortCode != null ? shortCode : name.toLowerCase());
+                                    departments.add(dept);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                List<Map<String, Object>> links = (List<Map<String, Object>>) resp.get("links");
+                boolean hasNext = links != null && links.stream()
+                        .anyMatch(l -> "next".equals(l.get("rel")));
+                if (!hasNext) break;
+                page++;
+            }
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[Dept] List failed [{}]: {}", e.getStatusCode(), rb);
+            throw new RuntimeException("Department list failed [" + e.getStatusCode() + "]: " + rb);
+        }
+
+        log.info("[Dept] Found {} departments under '{}'", departments.size(), path);
+        return departments;
+    }
+
+    /**
      * Orchestrates department creation in Documentum.
      * Creates dm_folder, dm_group(s), and cms_digidak_metadata objects
      * based on the selected office type.
