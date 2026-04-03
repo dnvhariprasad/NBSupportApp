@@ -339,20 +339,13 @@ const DelegatePage = () => {
     const rangeEnd   = (page - 1) * pageSize + cases.length;
 
     return (
-        <div className="p-6 max-w-7xl mx-auto">
+        <div className="max-w-7xl mx-auto">
             <Toast toast={toast} onClose={() => setToast(null)} />
 
             {detailCase   && <CaseDetailsModal      caseItem={detailCase}   onClose={() => setDetailCase(null)} />}
             {movementCase && <MovementRegisterModal  caseItem={movementCase} onClose={() => setMovementCase(null)} />}
 
-            {/* Page Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                    <ArrowRightLeft className="text-[#0A66C2]" />
-                    Delegate Case
-                </h1>
-                <p className="text-sm text-slate-500 mt-1">Filter by office and department, select a user, then delegate cases.</p>
-            </div>
+            <p className="text-sm text-slate-500 mb-5">Filter by office and department, select a user, then delegate cases.</p>
 
             {/* ── Filter Panel ── */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-5">
@@ -543,4 +536,5 @@ const DelegatePage = () => {
     );
 };
 
+export { DelegatePage as DelegateContent };
 export default DelegatePage;

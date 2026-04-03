@@ -32,8 +32,8 @@ function App() {
             <Route path="departments" element={<DepartmentPage />} />
             <Route path="metadata" element={<MetadataPage />} />
             <Route path="query" element={<QueryPage />} />
-            <Route path="delegate" element={<DelegatePage />} />
-            <Route path="inbox2" element={<CaseInbox2Page />} />
+            <Route path="delegate" element={<Navigate to="/dashboard/cases" replace />} />
+            <Route path="inbox2" element={<Navigate to="/dashboard/cases" replace />} />
         </Route>
         
         <Route path="/" element={<Navigate to="/login" replace />} />

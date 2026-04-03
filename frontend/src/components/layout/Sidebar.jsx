@@ -1,20 +1,18 @@
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft, Inbox, Building2 } from 'lucide-react';
+import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, Building2 } from 'lucide-react';
 
 const Sidebar = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
     const adminRole = storedUser.properties?.admin_role || storedUser.admin_role || null;
 
     const allNavItems = [
-        { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
-        { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null },
-        { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
         { name: 'Users',        path: '/dashboard/users',     icon: Users,        roles: null },
         { name: 'Verticals',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin'] },
         { name: 'Departments',  path: '/dashboard/departments', icon: Building2,  roles: ['Super Admin'] },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
-        { name: 'Case Inbox',   path: '/dashboard/inbox2',    icon: Inbox,         roles: null },
-        { name: 'Delegate Case',path: '/dashboard/delegate',  icon: ArrowRightLeft,roles: ['Super Admin'] },
+        { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
+        { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null },
+        { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null },
     ];
 
