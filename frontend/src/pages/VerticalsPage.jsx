@@ -5,7 +5,7 @@ import {
     CheckCircle2, AlertCircle, ChevronDown, Building2, MapPin,
     UserCheck, UsersRound, Star, ClipboardList, ArrowRightLeft,
 } from 'lucide-react';
-import { HO_DEPARTMENTS, getDepartments, getLocations } from '../data/nabardMetadata.js';
+import { HO_DEPARTMENTS, RO_LOCATIONS, TE_LOCATIONS, getDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -675,20 +675,35 @@ const RemoveMembersTab = ({ setToast }) => {
 
     const handleDelegateClick = async (task) => {
         const caseName = pfield(task, 'object_name') || task.caseName || '';
-        const deptShortCode = (caseName.split('-')[1] || '').toLowerCase();
+        // Case number format:
+        //   HO: NB-{DEPT}-DTV-...          → parts[1] = dept shortCode
+        //   RO: NB-RO-{RO_CODE}-{DEPT}-... → parts[1] = 'RO', parts[2] = location shortCode
+        //   TE: NB-TE-{TE_CODE}-{DEPT}-... → parts[1] = 'TE', parts[2] = location shortCode
+        const parts     = caseName.split('-');
+        const offType   = (parts[1] || '').toUpperCase();
+        const isRoTe    = offType === 'RO' || offType === 'TE';
+        const roCode    = (parts[2] || '').toLowerCase();
+        const deptCode  = (isRoTe ? parts[3] : parts[1] || '').toLowerCase();
+
         setDelegateTask(task);
         setDelegateSelectedUser('');
         setDelegateUsers([]);
-        if (deptShortCode) {
-            setLoadingDelegateUsers(true);
-            try {
-                const res = await api.get('/users/by-dept', { params: { shortCode: deptShortCode } });
+        setLoadingDelegateUsers(true);
+        try {
+            if (isRoTe) {
+                const allLocations = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
+                const locObj = allLocations.find(l => l.shortCode === roCode);
+                const location = locObj?.location || roCode;
+                const res = await api.get('/users/by-location', { params: { location } });
                 setDelegateUsers(res.data?.users || res.data || []);
-            } catch {
-                setToast({ type: 'error', message: 'Failed to load users for this department.' });
-            } finally {
-                setLoadingDelegateUsers(false);
+            } else {
+                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode } });
+                setDelegateUsers(res.data?.users || res.data || []);
             }
+        } catch {
+            setToast({ type: 'error', message: 'Failed to load users.' });
+        } finally {
+            setLoadingDelegateUsers(false);
         }
     };
 
@@ -861,9 +876,15 @@ const RemoveMembersTab = ({ setToast }) => {
     // ── Delegate Case Modal ──────────────────────────────────────────────────
     const DelegateCaseModal = () => {
         if (!delegateTask) return null;
-        const caseName     = pfield(delegateTask, 'object_name') || delegateTask.caseName || '—';
-        const deptName     = pfield(delegateTask, 'department_name') || '';
-        const deptShortCode = caseName.split('-')[1] || '';
+        const caseName   = pfield(delegateTask, 'object_name') || delegateTask.caseName || '—';
+        const deptName   = pfield(delegateTask, 'department_name') || '';
+        const parts      = caseName.split('-');
+        const offType    = (parts[1] || '').toUpperCase();
+        const isRoTe     = offType === 'RO' || offType === 'TE';
+        const roCode     = (parts[2] || '').toLowerCase();
+        const allLocs    = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
+        const locLabel   = isRoTe ? (allLocs.find(l => l.shortCode === roCode)?.location || roCode.toUpperCase()) : null;
+        const deptShortCode = isRoTe ? parts[3] : parts[1] || '';
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
@@ -886,12 +907,16 @@ const RemoveMembersTab = ({ setToast }) => {
 
                     {/* Body */}
                     <div className="p-6 space-y-4">
-                        {deptName && (
-                            <div className="text-xs text-slate-500">
-                                Department: <span className="font-semibold text-slate-700">{deptName}</span>
-                                {deptShortCode && <span className="ml-1 text-slate-400">({deptShortCode})</span>}
-                            </div>
-                        )}
+                        <div className="text-xs text-slate-500 space-y-1">
+                            {isRoTe && locLabel && (
+                                <div>Location: <span className="font-semibold text-slate-700">{locLabel}</span> <span className="text-slate-400">({offType})</span></div>
+                            )}
+                            {deptName && (
+                                <div>Department: <span className="font-semibold text-slate-700">{deptName}</span>
+                                    {deptShortCode && <span className="ml-1 text-slate-400">({deptShortCode})</span>}
+                                </div>
+                            )}
+                        </div>
                         <div>
                             <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
                                 <Users size={12} /> Select User to Delegate
@@ -901,7 +926,7 @@ const RemoveMembersTab = ({ setToast }) => {
                                     <Loader2 size={14} className="animate-spin" /> Loading users…
                                 </div>
                             ) : delegateUsers.length === 0 ? (
-                                <div className="text-xs text-slate-400 py-2">No users found for department <span className="font-semibold">{deptShortCode}</span>.</div>
+                                <div className="text-xs text-slate-400 py-2">No users found for {isRoTe ? <><span className="font-semibold">{locLabel || roCode.toUpperCase()}</span> ({offType})</> : <>department <span className="font-semibold">{deptShortCode}</span></>}.</div>
                             ) : (
                                 <div className="relative">
                                     <select

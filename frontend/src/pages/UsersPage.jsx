@@ -449,24 +449,7 @@ const UserDirectoryTab = ({ onToast }) => {
     const [subTab, setSubTab] = useState('profiles');
     return (
         <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Sub-nav */}
-            <div className="flex items-center gap-1 mb-5 border-b border-slate-200">
-                {[
-                    { id: 'profiles', label: 'User Profiles',       icon: User    },
-                    { id: 'dmusers',  label: 'Documentum Users',    icon: UserCog },
-                ].map(({ id, label, icon: Icon }) => (
-                    <button key={id} type="button" onClick={() => setSubTab(id)}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px ${
-                            subTab === id
-                                ? 'border-[#0A66C2] text-[#0A66C2]'
-                                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                        }`}>
-                        <Icon size={15} />{label}
-                    </button>
-                ))}
-            </div>
-            {subTab === 'profiles' && <CmsProfileTab onToast={onToast} />}
-            {subTab === 'dmusers'  && <DmUserTab     onToast={onToast} />}
+            <CmsProfileTab onToast={onToast} />
         </div>
     );
 };
