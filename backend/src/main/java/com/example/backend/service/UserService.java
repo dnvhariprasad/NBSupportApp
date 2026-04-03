@@ -312,16 +312,36 @@ public class UserService {
     public Map<String, Object> updateUserProfile(String objectId, Map<String, Object> properties) {
         String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/objects/" + objectId;
 
-        // 1. If updating is_active, sync with dm_user
-        if (properties.containsKey("is_active")) {
+        // 1. Sync fields that mirror dm_user — fetch both names once if needed
+        boolean needsSync = properties.containsKey("is_active") || properties.containsKey("user_email_address");
+        String dmUserName   = null; // cms_user_profile.object_name  = dm_user.user_name  (for REST PATCH URL)
+        String dmLoginName  = null; // cms_user_profile.user_login_name = dm_user.user_login_name (for OTDS)
+        if (needsSync) {
+            Map<String, String> names = getNamesByProfileId(objectId);
+            dmUserName  = names.get("object_name");
+            dmLoginName = names.get("user_login_name");
+        }
+
+        // 1a. is_active → OTDS account enable/disable only
+        if (properties.containsKey("is_active") && dmLoginName != null && !dmLoginName.isBlank()) {
             Object activeVal = properties.get("is_active");
-            boolean isActive = false;
-            if (activeVal instanceof Boolean) {
-                isActive = (Boolean) activeVal;
-            } else if (activeVal != null) {
-                isActive = Boolean.parseBoolean(activeVal.toString());
+            boolean isActive = (activeVal instanceof Boolean)
+                    ? (Boolean) activeVal
+                    : Boolean.parseBoolean(String.valueOf(activeVal));
+            String otdsUserId = dmLoginName + "@DCTMPartitions";
+            try {
+                otdsService.setAccountDisabled(otdsUserId, !isActive);
+                log.info("OTDS account {} for '{}'", isActive ? "enabled" : "disabled", otdsUserId);
+            } catch (Exception otdsEx) {
+                log.warn("OTDS sync failed for '{}': {}", otdsUserId, otdsEx.getMessage());
             }
-            syncDmUserStatus(objectId, isActive);
+        }
+
+        // 1b. user_email_address → dm_user.user_address
+        if (properties.containsKey("user_email_address") && dmUserName != null) {
+            String email = (String) properties.get("user_email_address");
+            log.info("Syncing dm_user.user_address for '{}': {}", dmUserName, email);
+            patchDmUser(dmUserName, Map.of("user_address", email != null ? email : ""));
         }
 
         // 2. Prepare properties for cms_user_profile update
@@ -474,23 +494,39 @@ public class UserService {
         else if (val != null) target.put(key, val);
     }
 
+    private void patchDmUser(String userName, Map<String, Object> props) {
+        String encoded = java.net.URLEncoder.encode(userName, StandardCharsets.UTF_8).replace("+", "%20");
+        String userUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/users/" + encoded;
+        try {
+            restClient.post()
+                    .uri(userUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",        "application/vnd.emc.documentum+json")
+                    .header("X-Method-Override", "PATCH")
+                    .body(Map.of("properties", props))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            log.warn("Failed to patch dm_user '{}' with {}: {}", userName, props.keySet(), e.getMessage());
+        }
+    }
+
     @SuppressWarnings("unchecked")
-    private void syncDmUserStatus(String profileId, boolean isActive) {
-        // Fetch profile to get user_login_name
-        String dql = "SELECT user_login_name FROM cms_user_profile WHERE r_object_id = '" + profileId + "'";
+    private Map<String, String> getNamesByProfileId(String profileId) {
+        // object_name   = dm_user.user_name      (used for Documentum REST PATCH URL)
+        // user_login_name = dm_user.user_login_name (used for OTDS: loginName@DCTMPartitions)
+        String dql = "SELECT object_name, user_login_name FROM cms_user_profile WHERE r_object_id = '" + profileId + "'";
         Map<String, Object> response = executeDql(dql, 1, 1);
-        
         List<Map<String, Object>> users = (List<Map<String, Object>>) response.get("users");
         if (users != null && !users.isEmpty()) {
-            String loginName = (String) users.get(0).get("user_login_name");
-            if (loginName != null && !loginName.isBlank()) {
-                int userState = isActive ? 0 : 1; // 0=Active, 1=Inactive
-                // Update dm_user
-                String updateDql = "UPDATE dm_user OBJECTS SET user_state = " + userState + " WHERE user_name = '" + loginName + "'";
-                log.info("Syncing dm_user status for {}: user_state={}", loginName, userState);
-                executeDqlUpdate(updateDql);
-            }
+            Map<String, Object> row = users.get(0);
+            Map<String, String> result = new HashMap<>();
+            result.put("object_name",     (String) row.get("object_name"));
+            result.put("user_login_name", (String) row.get("user_login_name"));
+            return result;
         }
+        return Map.of();
     }
 
     /**

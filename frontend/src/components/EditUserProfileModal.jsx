@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
-import { X, Save, Loader2, User, Building2, MapPin, Tag, GraduationCap, Layers } from 'lucide-react';
-import { USER_GRADES, getDepartments, getLocations } from '../data/nabardMetadata.js';
+import { X, Save, Loader2, User, Building2, MapPin, Tag, GraduationCap, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
+import { USER_GRADES, getDepartments, getLocations, RO_LOCATIONS, TE_LOCATIONS } from '../data/nabardMetadata.js';
 
 const USER_GRADE_OPTIONS = [
     { value: '', label: '— Select grade —', level: '' },
@@ -13,9 +13,13 @@ const readonlyCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm
 const selectCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer';
 const disabledSelectCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none';
 
-const Label = ({ children }) => (
-    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{children}</label>
+const Label = ({ children, required }) => (
+    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        {children}{required && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
 );
+
+const errorCls = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400/20 focus:border-red-500 bg-white';
 
 const SelectWrapper = ({ children }) => (
     <div className="relative">
@@ -32,15 +36,30 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [form, setForm] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [errors, setErrors] = useState({});
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [] });
+
+    // Pending cases / delegate state
+    const [checkingInbox,       setCheckingInbox]       = useState(false);
+    const [pendingCases,        setPendingCases]        = useState([]);
+    const [showPendingBlock,    setShowPendingBlock]    = useState(false);
+
+    // Delegate modal state
+    const [delegateTask,         setDelegateTask]         = useState(null);
+    const [delegateUsers,        setDelegateUsers]        = useState([]);
+    const [loadingDelegateUsers, setLoadingDelegateUsers] = useState(false);
+    const [delegateSelectedUser, setDelegateSelectedUser] = useState('');
+    const [delegatingCaseId,     setDelegatingCaseId]     = useState(null);
+    const [delegateError,        setDelegateError]        = useState(null);
 
     useEffect(() => {
         if (!isOpen || !user) return;
-
-        // Fetch full profile to get repeating attrs (e.g. department_short_code_multi)
+        setPendingCases([]);
+        setShowPendingBlock(false);
+        setDelegateTask(null);
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
-            .catch(() => initForm(user)); // fallback to list data on error
+            .catch(() => initForm(user));
     }, [isOpen, user]);
 
     const initForm = (profile) => {
@@ -94,9 +113,107 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             is_active:                   profile.is_active              ?? false,
         });
         setError(null);
+        setErrors({});
+        setPendingCases([]);
+        setShowPendingBlock(false);
     };
 
     const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+
+    // When status dropdown changes — if switching to inactive, check inbox
+    const handleStatusChange = async (value) => {
+        const goingInactive = value === false || value === 'false';
+
+        // Always clear the pending block when user changes the dropdown
+        setShowPendingBlock(false);
+        setPendingCases([]);
+        set('is_active', !goingInactive);
+
+        if (goingInactive && user?.object_name) {
+            setCheckingInbox(true);
+            try {
+                const res = await api.get('/inbox/tasklist', {
+                    params: { username: user.object_name, page: 1, start: 0 }
+                });
+                const data = res.data || {};
+                let items = [];
+                if (Array.isArray(data.entries)) {
+                    items = data.entries.map(e => {
+                        const props = e?.content?.properties || e?.properties || e;
+                        return { ...props, _raw: e };
+                    });
+                } else if (Array.isArray(data.tasks)) {
+                    items = data.tasks;
+                }
+                if (items.length > 0) {
+                    setPendingCases(items);
+                    setShowPendingBlock(true);
+                    // Keep dropdown at Inactive — save is blocked until cases are delegated
+                }
+            } catch {
+                // Inbox check failed — allow proceeding
+            } finally {
+                setCheckingInbox(false);
+            }
+        }
+    };
+
+    // ── Delegate helpers ──────────────────────────────────────────────────────
+    const pf = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
+
+    const handleDelegateClick = async (task) => {
+        const caseName = pf(task, 'object_name') || task.caseName || '';
+        const parts    = caseName.split('-');
+        const offType  = (parts[1] || '').toUpperCase();
+        const isRoTe   = offType === 'RO' || offType === 'TE';
+        const roCode   = (parts[2] || '').toLowerCase();
+        const deptCode = (isRoTe ? parts[3] : parts[1] || '').toLowerCase();
+
+        setDelegateTask(task);
+        setDelegateSelectedUser('');
+        setDelegateUsers([]);
+        setDelegateError(null);
+        setLoadingDelegateUsers(true);
+        try {
+            if (isRoTe) {
+                const allLocs = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
+                const locObj  = allLocs.find(l => l.shortCode === roCode);
+                const location = locObj?.location || roCode;
+                const res = await api.get('/users/by-location', { params: { location } });
+                setDelegateUsers(res.data?.users || res.data || []);
+            } else {
+                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode } });
+                setDelegateUsers(res.data?.users || res.data || []);
+            }
+        } catch {
+            setDelegateError('Failed to load users.');
+        } finally {
+            setLoadingDelegateUsers(false);
+        }
+    };
+
+    const handleDelegateConfirm = async () => {
+        if (!delegateSelectedUser || !delegateTask) return;
+        const caseId = pf(delegateTask, 'id') || delegateTask.id || delegateTask.r_object_id;
+        setDelegatingCaseId(caseId);
+        try {
+            await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser });
+            const remaining = pendingCases.filter(t => {
+                const tid = pf(t, 'id') || t.id || t.r_object_id;
+                return tid !== caseId;
+            });
+            setPendingCases(remaining);
+            if (remaining.length === 0) {
+                setShowPendingBlock(false);
+                set('is_active', false);
+            }
+            setDelegateTask(null);
+        } catch (err) {
+            setDelegateError(err.response?.data?.message || 'Delegation failed.');
+        } finally {
+            setDelegatingCaseId(null);
+        }
+    };
 
     const handleOfficeTypeChange = (v) => {
         set('office_type',               v);
@@ -134,6 +251,15 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (showPendingBlock) return; // block save if pending cases exist
+        const v = {};
+        if (!form.designation?.trim())        v.designation        = 'Designation is required';
+        if (!form.uin?.trim())                v.uin                = 'UIN is required';
+        if (!form.user_email_address?.trim()) v.user_email_address = 'Email is required';
+        if (!form.hindi_user_name?.trim())    v.hindi_user_name    = 'Hindi Name is required';
+        if (!form.hindi_designation?.trim())  v.hindi_designation  = 'Hindi Designation is required';
+        if (Object.keys(v).length > 0) { setErrors(v); return; }
+        setErrors({});
         setLoading(true);
         setError(null);
         try {
@@ -145,7 +271,6 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             };
             await api.patch(`/users/profiles/${user.r_object_id}`, payload);
 
-            // Compute all groups for a given office config
             const getGroups = (offType, roCode, codes) => {
                 const groups = [];
                 if (offType === 'HO') {
@@ -188,14 +313,109 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
     if (!isOpen) return null;
 
+    const storedUser  = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole   = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isSuperAdmin = adminRole === 'Super Admin';
+
     const depts     = getDepartments(form.office_type, form.location);
     const needsLoc  = ['RO', 'TE'].includes(form.office_type) && !form.location;
     const locations = getLocations(form.office_type);
     const isHO      = form.office_type === 'HO';
     const isROTE    = ['RO', 'TE'].includes(form.office_type);
 
+    // Delegate case modal
+    const DelegateCaseModal = () => {
+        if (!delegateTask) return null;
+        const caseName   = pf(delegateTask, 'object_name') || delegateTask.caseName || '—';
+        const deptName   = pf(delegateTask, 'department_name') || '';
+        const parts      = caseName.split('-');
+        const offType    = (parts[1] || '').toUpperCase();
+        const isRoTe     = offType === 'RO' || offType === 'TE';
+        const roCode     = (parts[2] || '').toLowerCase();
+        const allLocs    = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
+        const locLabel   = isRoTe ? (allLocs.find(l => l.shortCode === roCode)?.location || roCode.toUpperCase()) : null;
+        const deptCode   = isRoTe ? parts[3] : parts[1] || '';
+        return (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-[#0A66C2] flex items-center justify-center shadow-sm">
+                                <ArrowRightLeft size={17} className="text-white" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-slate-900">Delegate Case</p>
+                                <p className="text-xs text-slate-500 font-mono">{caseName}</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setDelegateTask(null)}
+                            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                            <X size={18} />
+                        </button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                        <div className="text-xs text-slate-500 space-y-1">
+                            {isRoTe && locLabel && (
+                                <div>Location: <span className="font-semibold text-slate-700">{locLabel}</span> <span className="text-slate-400">({offType})</span></div>
+                            )}
+                            {deptName && (
+                                <div>Department: <span className="font-semibold text-slate-700">{deptName}</span>
+                                    {deptCode && <span className="ml-1 text-slate-400">({deptCode})</span>}
+                                </div>
+                            )}
+                        </div>
+                        {delegateError && (
+                            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{delegateError}</div>
+                        )}
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                                <Users size={12} /> Select User to Delegate
+                            </label>
+                            {loadingDelegateUsers ? (
+                                <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+                                    <Loader2 size={14} className="animate-spin" /> Loading users…
+                                </div>
+                            ) : delegateUsers.length === 0 ? (
+                                <div className="text-xs text-slate-400 py-2">No users found for this department.</div>
+                            ) : (
+                                <div className="relative">
+                                    <select
+                                        value={delegateSelectedUser}
+                                        onChange={e => setDelegateSelectedUser(e.target.value)}
+                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none pr-8 cursor-pointer"
+                                    >
+                                        <option value="">— Select user —</option>
+                                        {delegateUsers.map(u => (
+                                            <option key={u.r_object_id || u.user_login_name} value={u.object_name}>
+                                                {u.object_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 px-6 pb-5">
+                        <button onClick={() => setDelegateTask(null)}
+                            className="px-4 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleDelegateConfirm}
+                            disabled={!delegateSelectedUser || !!delegatingCaseId}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-[#0A66C2] hover:bg-[#094d92] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-all">
+                            {delegatingCaseId ? <><Loader2 size={12} className="animate-spin" /> Delegating…</> : <><ArrowRightLeft size={12} /> Delegate</>}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <DelegateCaseModal />
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[90vh]">
 
                 {/* Header */}
@@ -226,16 +446,18 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         className={readonlyCls} />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>UIN</Label>
+                                    <Label required>UIN</Label>
                                     <input type="text" value={form.uin}
-                                        onChange={e => set('uin', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('uin', e.target.value); setErrors(p => ({ ...p, uin: undefined })); }}
+                                        className={errors.uin ? errorCls : inputCls} />
+                                    {errors.uin && <p className="text-xs text-red-500">{errors.uin}</p>}
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>Designation</Label>
+                                    <Label required>Designation</Label>
                                     <input type="text" value={form.designation}
-                                        onChange={e => set('designation', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('designation', e.target.value); setErrors(p => ({ ...p, designation: undefined })); }}
+                                        className={errors.designation ? errorCls : inputCls} />
+                                    {errors.designation && <p className="text-xs text-red-500">{errors.designation}</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>User Role</Label>
@@ -244,10 +466,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         className={inputCls} />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>Email</Label>
+                                    <Label required>Email</Label>
                                     <input type="email" value={form.user_email_address}
-                                        onChange={e => set('user_email_address', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('user_email_address', e.target.value); setErrors(p => ({ ...p, user_email_address: undefined })); }}
+                                        className={errors.user_email_address ? errorCls : inputCls} />
+                                    {errors.user_email_address && <p className="text-xs text-red-500">{errors.user_email_address}</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>Mobile</Label>
@@ -263,16 +486,18 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Hindi Details</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <Label>Hindi Name</Label>
+                                    <Label required>Hindi Name</Label>
                                     <input type="text" value={form.hindi_user_name}
-                                        onChange={e => set('hindi_user_name', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('hindi_user_name', e.target.value); setErrors(p => ({ ...p, hindi_user_name: undefined })); }}
+                                        className={errors.hindi_user_name ? errorCls : inputCls} />
+                                    {errors.hindi_user_name && <p className="text-xs text-red-500">{errors.hindi_user_name}</p>}
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>Hindi Designation</Label>
+                                    <Label required>Hindi Designation</Label>
                                     <input type="text" value={form.hindi_designation}
-                                        onChange={e => set('hindi_designation', e.target.value)}
-                                        className={inputCls} />
+                                        onChange={e => { set('hindi_designation', e.target.value); setErrors(p => ({ ...p, hindi_designation: undefined })); }}
+                                        className={errors.hindi_designation ? errorCls : inputCls} />
+                                    {errors.hindi_designation && <p className="text-xs text-red-500">{errors.hindi_designation}</p>}
                                 </div>
                             </div>
                         </div>
@@ -283,7 +508,6 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <Building2 size={12} /> Office &amp; Location
                             </p>
                             <div className="space-y-3">
-                                {/* Office Type */}
                                 <div className="space-y-1">
                                     <Label>Office Type</Label>
                                     <SelectWrapper>
@@ -296,7 +520,6 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                     </SelectWrapper>
                                 </div>
 
-                                {/* Location + Short Code */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                         <Label><MapPin size={10} className="inline mr-0.5" />Location</Label>
@@ -326,7 +549,6 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                     </div>
                                 </div>
 
-                                {/* Department + Short Code */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                         <Label><Layers size={10} className="inline mr-0.5" />Department</Label>
@@ -415,16 +637,77 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                             </div>
                         </div>
 
-                        {/* ── Status ── */}
-                        <div className="flex items-center pt-1">
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" checked={form.is_active || false}
-                                    onChange={e => set('is_active', e.target.checked)}
-                                    className="sr-only peer" />
-                                <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0A66C2]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0A66C2]" />
-                                <span className="ml-3 text-sm font-medium text-slate-700">Active User</span>
-                            </label>
-                        </div>
+                        {/* ── User State (Super Admin only) ── */}
+                        {isSuperAdmin && <div className="space-y-3">
+                            <div className="space-y-1">
+                                <Label>User State</Label>
+                                <SelectWrapper>
+                                    <select
+                                        value={String(form.is_active ?? false)}
+                                        onChange={e => handleStatusChange(e.target.value)}
+                                        disabled={checkingInbox}
+                                        className={checkingInbox ? disabledSelectCls : selectCls}
+                                    >
+                                        <option value="true">Active</option>
+                                        <option value="false">Inactive</option>
+                                    </select>
+                                </SelectWrapper>
+                                {checkingInbox && (
+                                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                                        <Loader2 size={12} className="animate-spin" /> Checking inbox…
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Pending cases block */}
+                            {showPendingBlock && pendingCases.length > 0 && (
+                                <div className="space-y-2">
+                                    <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                                        <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                                        <span>Delegate the pending cases to make this user inactive.</span>
+                                    </div>
+                                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                        <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-slate-600">Pending Cases</span>
+                                            <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full font-medium">{pendingCases.length}</span>
+                                        </div>
+                                        <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                                            {pendingCases.map((task, idx) => {
+                                                const caseName = pf(task, 'object_name') || task.caseName || '—';
+                                                const desc     = pf(task, 'description') || '';
+                                                const status   = pf(task, 'status') || task.status || '';
+                                                const priority = pf(task, 'task_priority') || task.priority || '';
+                                                return (
+                                                    <div key={pf(task, 'id') || task.id || idx} className="px-3 py-2.5 flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-medium text-slate-800 truncate">{caseName}</p>
+                                                            <p className="text-xs text-slate-500 truncate">{desc}</p>
+                                                        </div>
+                                                        <div className="shrink-0 flex items-center gap-1.5">
+                                                            {status && <span className="px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium whitespace-nowrap">{status}</span>}
+                                                            {priority && (
+                                                                <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium whitespace-nowrap ${
+                                                                    priority === 'High' ? 'bg-red-100 text-red-700' :
+                                                                    priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                                    'bg-slate-100 text-slate-600'
+                                                                }`}>{priority}</span>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDelegateClick(task)}
+                                                                className="flex items-center gap-1 px-2 py-1 bg-[#0A66C2] hover:bg-[#094d92] text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap">
+                                                                <ArrowRightLeft size={11} /> Delegate
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>}
+
                     </form>
                 </div>
 
@@ -434,7 +717,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                         Cancel
                     </button>
-                    <button type="submit" form="editProfileForm" disabled={loading}
+                    <button type="submit" form="editProfileForm" disabled={loading || (isSuperAdmin && showPendingBlock)}
                         className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] disabled:opacity-50 flex items-center gap-2 transition-colors">
                         {loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                         Save Changes

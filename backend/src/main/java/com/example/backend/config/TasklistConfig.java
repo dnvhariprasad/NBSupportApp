@@ -9,4 +9,5 @@ import lombok.Data;
 @Data
 public class TasklistConfig {
     private String url;
+    private String cmsInboxUrl;
 }

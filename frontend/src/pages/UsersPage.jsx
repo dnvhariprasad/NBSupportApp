@@ -449,24 +449,7 @@ const UserDirectoryTab = ({ onToast }) => {
     const [subTab, setSubTab] = useState('profiles');
     return (
         <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Sub-nav */}
-            <div className="flex items-center gap-1 mb-5 border-b border-slate-200">
-                {[
-                    { id: 'profiles', label: 'User Profiles',       icon: User    },
-                    { id: 'dmusers',  label: 'Documentum Users',    icon: UserCog },
-                ].map(({ id, label, icon: Icon }) => (
-                    <button key={id} type="button" onClick={() => setSubTab(id)}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px ${
-                            subTab === id
-                                ? 'border-[#0A66C2] text-[#0A66C2]'
-                                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                        }`}>
-                        <Icon size={15} />{label}
-                    </button>
-                ))}
-            </div>
-            {subTab === 'profiles' && <CmsProfileTab onToast={onToast} />}
-            {subTab === 'dmusers'  && <DmUserTab     onToast={onToast} />}
+            <CmsProfileTab onToast={onToast} />
         </div>
     );
 };
@@ -2137,6 +2120,283 @@ const PasswordTab = ({ onToast }) => {
     );
 };
 
+// ─── User Access Tab ─────────────────────────────────────────────────────────
+const UserAccessTab = ({ onToast }) => {
+    const [officeType,    setOfficeType]    = useState('');
+    const [users,         setUsers]         = useState([]);
+    const [loading,       setLoading]       = useState(false);
+    const [searchQuery,   setSearchQuery]   = useState('');
+    const [currentPage,   setCurrentPage]   = useState(1);
+    const [actionInProgress, setActionInProgress] = useState(null); // object_name with pending action
+    const [localAdmins,   setLocalAdmins]   = useState(new Set()); // set of object_names in ecm_local_admin
+    const PAGE_SIZE = 15;
+
+    // Fetch ecm_local_admin group members on mount
+    useEffect(() => {
+        api.get('/groups/ecm_local_admin/members')
+            .then(res => {
+                const members = res.data?.users || [];
+                setLocalAdmins(new Set(members.map(m => m.name)));
+            })
+            .catch(() => {}); // non-fatal — just won't show badge
+    }, []);
+
+    const fetchUsersByOfficeType = async (ot) => {
+        setLoading(true);
+        setUsers([]);
+        setSearchQuery('');
+        setCurrentPage(1);
+        try {
+            const PAGE = 2000;
+            let page = 1;
+            let all  = [];
+            while (true) {
+                const res = await api.get('/users/profiles', {
+                    params: { page, size: PAGE, officeTypeFilter: ot },
+                });
+                all = all.concat(res.data.users || []);
+                if (!res.data.hasNext) break;
+                page++;
+            }
+            setUsers(all);
+        } catch {
+            onToast({ type: 'error', message: 'Failed to load users.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleOfficeTypeChange = (ot) => {
+        setOfficeType(ot);
+        if (ot) fetchUsersByOfficeType(ot);
+        else { setUsers([]); setSearchQuery(''); setCurrentPage(1); }
+    };
+
+    const handleMarkLocalAdmin = async (user) => {
+        setActionInProgress(user.object_name);
+        try {
+            await api.post('/groups/ecm_local_admin/members', {
+                memberName: user.object_name,   // Documentum users_names stores object_name
+                memberType: 'user',
+            });
+            setLocalAdmins(prev => new Set([...prev, user.object_name]));
+            onToast({ type: 'success', message: `'${user.object_name}' marked as Local Admin.` });
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to mark as Local Admin.';
+            onToast({ type: 'error', message: msg });
+        } finally {
+            setActionInProgress(null);
+        }
+    };
+
+    const handleRemoveLocalAdmin = async (user) => {
+        setActionInProgress(user.object_name);
+        try {
+            await api.delete(`/groups/ecm_local_admin/members/${encodeURIComponent(user.object_name)}`, {
+                params: { memberType: 'user' },
+            });
+            setLocalAdmins(prev => { const s = new Set(prev); s.delete(user.object_name); return s; });
+            onToast({ type: 'success', message: `Local Admin removed from '${user.object_name}'.` });
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to remove Local Admin.';
+            onToast({ type: 'error', message: msg });
+        } finally {
+            setActionInProgress(null);
+        }
+    };
+
+    const filtered = users.filter(u => {
+        const q = searchQuery.toLowerCase();
+        return (u.object_name || '').toLowerCase().includes(q)
+            || (u.user_login_name || '').toLowerCase().includes(q)
+            || (u.designation || '').toLowerCase().includes(q);
+    });
+
+    const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const paged        = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    const start        = filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+    const end          = Math.min(currentPage * PAGE_SIZE, filtered.length);
+
+    return (
+        <div className="flex-1 flex flex-col overflow-hidden gap-4">
+            {/* Filters */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-end gap-4 flex-wrap">
+                <div className="min-w-[200px]">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                        Office Type
+                    </label>
+                    <div className="relative">
+                        <select
+                            value={officeType}
+                            onChange={e => handleOfficeTypeChange(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white"
+                        >
+                            <option value="">— Select office type —</option>
+                            <option value="HO">HO — Head Office</option>
+                            <option value="RO">RO — Regional Office</option>
+                            <option value="TE">TE — Training Establishment</option>
+                        </select>
+                        <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    </div>
+                </div>
+
+                {users.length > 0 && (
+                    <div className="flex-1 min-w-[220px]">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                            Search
+                        </label>
+                        <div className="relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                                placeholder="Search by name, login, designation…"
+                                className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2]"
+                            />
+                            {searchQuery && (
+                                <button onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded">
+                                    <X size={13} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {users.length > 0 && !loading && (
+                    <span className="text-xs text-slate-500 pb-2">
+                        <span className="font-semibold text-slate-800">{filtered.length}</span> user{filtered.length !== 1 ? 's' : ''}
+                    </span>
+                )}
+            </div>
+
+            {/* Table */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
+                {!officeType && (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-2 text-slate-400 py-16">
+                        <Shield size={36} strokeWidth={1.5} />
+                        <p className="text-sm">Select an office type to view users</p>
+                    </div>
+                )}
+
+                {officeType && loading && (
+                    <div className="flex items-center justify-center flex-1 py-16">
+                        <Loader2 size={24} className="animate-spin text-[#0A66C2]" />
+                    </div>
+                )}
+
+                {officeType && !loading && users.length === 0 && (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-2 text-slate-400 py-16">
+                        <Users size={36} strokeWidth={1.5} />
+                        <p className="text-sm">No users found for {officeType}</p>
+                    </div>
+                )}
+
+                {officeType && !loading && users.length > 0 && (
+                    <>
+                        <div className="overflow-x-auto flex-1">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                                    <tr>
+                                        <th className="px-4 py-3 font-semibold text-slate-600 w-10 text-center">#</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-600">Name</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-600">Login</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-600">Designation</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-600">Department</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-600 text-center">Local Admin</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {paged.map((u, idx) => {
+                                        const isAdmin    = localAdmins.has(u.object_name);
+                                        const inProgress = actionInProgress === u.object_name;
+                                        return (
+                                        <tr key={u.user_login_name || idx} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-4 py-3 text-slate-400 text-center text-xs">
+                                                {(currentPage - 1) * PAGE_SIZE + idx + 1}
+                                            </td>
+                                            <td className="px-4 py-3 font-medium text-slate-800">
+                                                <div className="flex items-center gap-2">
+                                                    {u.object_name || '—'}
+                                                    {isAdmin && (
+                                                        <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium flex items-center gap-1">
+                                                            <Shield size={10} /> Local Admin
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-500 font-mono text-xs">{u.user_login_name || '—'}</td>
+                                            <td className="px-4 py-3 text-slate-600">{u.designation || '—'}</td>
+                                            <td className="px-4 py-3 text-slate-600">{u.department_name || '—'}</td>
+                                            <td className="px-4 py-3 text-center">
+                                                {isAdmin ? (
+                                                    <button
+                                                        onClick={() => handleRemoveLocalAdmin(u)}
+                                                        disabled={inProgress}
+                                                        title="Remove from Local Admin group"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed mx-auto"
+                                                    >
+                                                        {inProgress
+                                                            ? <><Loader2 size={12} className="animate-spin" /> Removing…</>
+                                                            : <><X size={12} /> Remove Local Admin</>
+                                                        }
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleMarkLocalAdmin(u)}
+                                                        disabled={inProgress}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0A66C2] hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed mx-auto"
+                                                    >
+                                                        {inProgress
+                                                            ? <><Loader2 size={12} className="animate-spin" /> Marking…</>
+                                                            : <><Shield size={12} /> Mark as Local Admin</>
+                                                        }
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination */}
+                        {totalPages > 1 && (
+                            <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-white text-xs text-slate-500">
+                                <span>Showing {start}–{end} of {filtered.length}</span>
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}
+                                        className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed">
+                                        <ChevronLeft size={15} />
+                                    </button>
+                                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                        .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                                        .reduce((acc, p, i, arr) => { if (i > 0 && p - arr[i-1] > 1) acc.push('…'); acc.push(p); return acc; }, [])
+                                        .map((item, i) => item === '…'
+                                            ? <span key={`e${i}`} className="px-1">…</span>
+                                            : <button key={item} onClick={() => setCurrentPage(item)}
+                                                className={`min-w-[28px] h-7 rounded-lg font-medium ${item === currentPage ? 'bg-[#0A66C2] text-white' : 'hover:bg-slate-100 text-slate-600'}`}>
+                                                {item}
+                                              </button>
+                                        )
+                                    }
+                                    <button onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}
+                                        className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed">
+                                        <ChevronRight size={15} />
+                                    </button>
+                                </div>
+                                <span>Page {currentPage} of {totalPages}</span>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // ─── Main UsersPage ───────────────────────────────────────────────────────────
 const UsersPage = () => {
     const [toast, setToast] = useState(null);
@@ -2147,6 +2407,7 @@ const UsersPage = () => {
     const allTabs = [
         { id: 'creation',  label: 'User Creation',        icon: UserPlus, roles: ['Super Admin'] },
         { id: 'directory', label: 'User Directory',       icon: Users,    roles: ['Super Admin', 'Local Admin'] },
+        { id: 'access',    label: 'User Access',          icon: Shield,   roles: ['Super Admin'] },
         { id: 'password',  label: 'User Password Update', icon: KeyRound, roles: ['Super Admin', 'Local Admin'] },
     ];
 
@@ -2188,9 +2449,10 @@ const UsersPage = () => {
 
             {/* Tab content */}
             <div className="flex-1 flex flex-col overflow-hidden">
-                {activeTab === 'creation'  && <UserCreateTab   onToast={setToast} />}
-                {activeTab === 'password'  && <PasswordTab     onToast={setToast} />}
-                {activeTab === 'directory' && <UserDirectoryTab onToast={setToast} />}
+                {activeTab === 'creation'  && <UserCreateTab    onToast={setToast} />}
+                {activeTab === 'password'  && <PasswordTab      onToast={setToast} />}
+                {activeTab === 'directory' && <UserDirectoryTab  onToast={setToast} />}
+                {activeTab === 'access'    && <UserAccessTab     onToast={setToast} />}
             </div>
         </div>
     );

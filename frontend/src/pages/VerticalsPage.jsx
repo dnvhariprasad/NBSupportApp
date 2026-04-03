@@ -3,9 +3,9 @@ import api from '../api/axios';
 import {
     Layers, Tag, Users, UserPlus, X, Loader2,
     CheckCircle2, AlertCircle, ChevronDown, Building2, MapPin,
-    UserCheck, UsersRound, Star,
+    UserCheck, UsersRound, Star, ClipboardList, ArrowRightLeft,
 } from 'lucide-react';
-import { HO_DEPARTMENTS, getDepartments, getLocations } from '../data/nabardMetadata.js';
+import { HO_DEPARTMENTS, RO_LOCATIONS, TE_LOCATIONS, getDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -658,12 +658,81 @@ const RemoveMembersTab = ({ setToast }) => {
     const [members,        setMembers]        = useState({ users: [], groups: [] });
     const [loadingVerts,   setLoadingVerts]   = useState(false);
     const [loadingMembers, setLoadingMembers] = useState(false);
+    const [pendingRemove,  setPendingRemove]  = useState(null);
+    const [inboxTasks,     setInboxTasks]     = useState([]);
+    const [inboxTotal,     setInboxTotal]     = useState(0);
+    const [loadingInbox,   setLoadingInbox]   = useState(false);
+    const [removing,       setRemoving]       = useState(false);
+
+    // Delegate case modal state
+    const [delegateTask,          setDelegateTask]          = useState(null);
+    const [delegateUsers,         setDelegateUsers]         = useState([]);
+    const [loadingDelegateUsers,  setLoadingDelegateUsers]  = useState(false);
+    const [delegateSelectedUser,  setDelegateSelectedUser]  = useState('');
+    const [delegatingCaseId,      setDelegatingCaseId]      = useState(null);
+
+    const pfield = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
+
+    const handleDelegateClick = async (task) => {
+        const caseName = pfield(task, 'object_name') || task.caseName || '';
+        // Case number format:
+        //   HO: NB-{DEPT}-DTV-...          → parts[1] = dept shortCode
+        //   RO: NB-RO-{RO_CODE}-{DEPT}-... → parts[1] = 'RO', parts[2] = location shortCode
+        //   TE: NB-TE-{TE_CODE}-{DEPT}-... → parts[1] = 'TE', parts[2] = location shortCode
+        const parts     = caseName.split('-');
+        const offType   = (parts[1] || '').toUpperCase();
+        const isRoTe    = offType === 'RO' || offType === 'TE';
+        const roCode    = (parts[2] || '').toLowerCase();
+        const deptCode  = (isRoTe ? parts[3] : parts[1] || '').toLowerCase();
+
+        setDelegateTask(task);
+        setDelegateSelectedUser('');
+        setDelegateUsers([]);
+        setLoadingDelegateUsers(true);
+        try {
+            if (isRoTe) {
+                const allLocations = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
+                const locObj = allLocations.find(l => l.shortCode === roCode);
+                const location = locObj?.location || roCode;
+                const res = await api.get('/users/by-location', { params: { location } });
+                setDelegateUsers(res.data?.users || res.data || []);
+            } else {
+                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode } });
+                setDelegateUsers(res.data?.users || res.data || []);
+            }
+        } catch {
+            setToast({ type: 'error', message: 'Failed to load users.' });
+        } finally {
+            setLoadingDelegateUsers(false);
+        }
+    };
+
+    const handleDelegateConfirm = async () => {
+        if (!delegateSelectedUser || !delegateTask) return;
+        const caseId = pfield(delegateTask, 'id') || delegateTask.id || delegateTask.r_object_id;
+        setDelegatingCaseId(caseId);
+        try {
+            const res = await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser });
+            setToast({ type: 'success', message: res.data?.message || 'Case delegated successfully.' });
+            setInboxTasks(prev => prev.filter(t => {
+                const tid = pfield(t, 'id') || t.id || t.r_object_id;
+                return tid !== caseId;
+            }));
+            setInboxTotal(prev => Math.max(0, prev - 1));
+            setDelegateTask(null);
+        } catch (err) {
+            setToast({ type: 'error', message: err.response?.data?.message || 'Delegation failed.' });
+        } finally {
+            setDelegatingCaseId(null);
+        }
+    };
 
     const isROTE = ['RO', 'TE'].includes(officeType);
 
     const resetBelow = (level) => {
         if (level === 'officeType') { setLocation(''); setRoShortCode(''); }
         setDept(''); setSelectedGroup(''); setVerticals([]); setMembers({ users: [], groups: [] });
+        setPendingRemove(null); setInboxTasks([]); setInboxTotal(0);
     };
 
     const handleOfficeTypeChange = (v) => {
@@ -708,7 +777,11 @@ const RemoveMembersTab = ({ setToast }) => {
     };
 
     const handleGroupChange = async (v) => {
-        setSelectedGroup(v); setMembers({ users: [], groups: [] });
+        setSelectedGroup(v);
+        setMembers({ users: [], groups: [] });
+        setPendingRemove(null);
+        setInboxTasks([]);
+        setInboxTotal(0);
         if (!v) return;
         setLoadingMembers(true);
         try {
@@ -718,35 +791,186 @@ const RemoveMembersTab = ({ setToast }) => {
         finally { setLoadingMembers(false); }
     };
 
-    const handleRemove = async (member) => {
-        try {
-            await api.delete(`/groups/${selectedGroup}/members/${member.name}`, {
-                params: { memberType: member.type },
-            });
-            setToast({ type: 'success', message: `'${member.name}' removed from '${selectedGroup}'.` });
-            setMembers(prev => ({
-                users:  prev.users.filter(u => u.name !== member.name),
-                groups: prev.groups.filter(g => g.name !== member.name),
-            }));
-            // Remove the vertical_id from cms_user_profile (fire-and-forget)
-            if (member.type === 'user') {
-                api.delete('/users/profile-vertical-ids', {
-                    params: { userLoginName: member.name, verticalGroupName: selectedGroup },
-                }).catch(e => console.warn('vertical_ids remove failed:', e?.response?.data?.message || e.message));
-            }
-        } catch (err) {
-            setToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove member.' });
+    /**
+     * Compute the case object_name prefix filter for the currently selected group.
+     * HO  → NB-<DEPTSC>-<VERTICALSUFFIX>-   e.g. NB-DDSI-DTV-
+     * RO/TE → NB-<OFFICETYPE>-<ROSHORTCODE>-<DEPTSC>-  e.g. NB-RO-TN-DIT-
+     */
+    const computeCasePrefix = () => {
+        const depts   = getDepartments(officeType, location);
+        const deptObj = depts.find(d => d.name === dept);
+        const deptSC  = (deptObj?.shortCode || '').toUpperCase();
+
+        if (officeType === 'HO') {
+            // group: ecm_ho_<deptSC_lower>_<verticalSuffix>
+            const base   = `ecm_ho_${deptSC.toLowerCase()}_`;
+            const suffix = selectedGroup.startsWith(base)
+                ? selectedGroup.slice(base.length).toUpperCase()
+                : '';
+            return deptSC && suffix ? `NB-${deptSC}-${suffix}-` : '';
+        } else {
+            // RO / TE
+            const roSC = roShortCode.toUpperCase();
+            return deptSC && roSC ? `NB-${officeType}-${roSC}-${deptSC}-` : '';
         }
     };
 
+    // Step 1: clicking X opens inbox check panel instead of removing immediately
+    const handleRemoveClick = async (member) => {
+        if (pendingRemove?.name === member.name) { setPendingRemove(null); setInboxTasks([]); setInboxTotal(0); return; }
+        setPendingRemove(member);
+        setInboxTasks([]);
+        setInboxTotal(0);
+        if (member.type !== 'user') return; // groups have no inbox — allow directly
+        setLoadingInbox(true);
+        try {
+            const res = await api.get('/inbox/tasklist', { params: { username: member.name, page: 1, start: 0 } });
+            const data = res.data || {};
+            let allTasks = [];
+            if (Array.isArray(data.entries)) {
+                allTasks = data.entries.map(entry => {
+                    const props = entry?.content?.properties || entry?.properties || entry;
+                    return props;
+                });
+            } else if (Array.isArray(data.tasks)) {
+                allTasks = data.tasks;
+            }
+            const prefix = computeCasePrefix();
+            const getCaseName = (t) => t.packagescase_folderobject_name || t.object_name || t.caseName || '';
+            const filtered = prefix
+                ? allTasks.filter(t => getCaseName(t).toUpperCase().startsWith(prefix))
+                : allTasks;
+            setInboxTasks(filtered);
+            setInboxTotal(filtered.length);
+        } catch { setInboxTasks([]); setInboxTotal(0); }
+        finally { setLoadingInbox(false); }
+    };
+
+    // Step 2: confirmed removal (only reachable when inbox is empty or member is a group)
+    const handleConfirmRemove = async () => {
+        if (!pendingRemove) return;
+        setRemoving(true);
+        try {
+            await api.delete(`/groups/${selectedGroup}/members/${pendingRemove.name}`, {
+                params: { memberType: pendingRemove.type },
+            });
+            setToast({ type: 'success', message: `'${pendingRemove.name}' removed from '${selectedGroup}'.` });
+            setMembers(prev => ({
+                users:  prev.users.filter(u => u.name !== pendingRemove.name),
+                groups: prev.groups.filter(g => g.name !== pendingRemove.name),
+            }));
+            if (pendingRemove.type === 'user') {
+                api.delete('/users/profile-vertical-ids', {
+                    params: { userLoginName: pendingRemove.name, verticalGroupName: selectedGroup },
+                }).catch(e => console.warn('vertical_ids remove failed:', e?.response?.data?.message || e.message));
+            }
+            setPendingRemove(null); setInboxTasks([]); setInboxTotal(0);
+        } catch (err) {
+            setToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove member.' });
+        } finally { setRemoving(false); }
+    };
+
+    const hasPendingCases = inboxTotal > 0;
     const allMembers = [...members.users, ...members.groups];
+
+    // ── Delegate Case Modal ──────────────────────────────────────────────────
+    const DelegateCaseModal = () => {
+        if (!delegateTask) return null;
+        const caseName   = pfield(delegateTask, 'object_name') || delegateTask.caseName || '—';
+        const deptName   = pfield(delegateTask, 'department_name') || '';
+        const parts      = caseName.split('-');
+        const offType    = (parts[1] || '').toUpperCase();
+        const isRoTe     = offType === 'RO' || offType === 'TE';
+        const roCode     = (parts[2] || '').toLowerCase();
+        const allLocs    = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
+        const locLabel   = isRoTe ? (allLocs.find(l => l.shortCode === roCode)?.location || roCode.toUpperCase()) : null;
+        const deptShortCode = isRoTe ? parts[3] : parts[1] || '';
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-[#0A66C2] flex items-center justify-center shadow-sm">
+                                <ArrowRightLeft size={17} className="text-white" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-slate-900">Delegate Case</p>
+                                <p className="text-xs text-slate-500 font-mono">{caseName}</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setDelegateTask(null)}
+                            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    {/* Body */}
+                    <div className="p-6 space-y-4">
+                        <div className="text-xs text-slate-500 space-y-1">
+                            {isRoTe && locLabel && (
+                                <div>Location: <span className="font-semibold text-slate-700">{locLabel}</span> <span className="text-slate-400">({offType})</span></div>
+                            )}
+                            {deptName && (
+                                <div>Department: <span className="font-semibold text-slate-700">{deptName}</span>
+                                    {deptShortCode && <span className="ml-1 text-slate-400">({deptShortCode})</span>}
+                                </div>
+                            )}
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                                <Users size={12} /> Select User to Delegate
+                            </label>
+                            {loadingDelegateUsers ? (
+                                <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+                                    <Loader2 size={14} className="animate-spin" /> Loading users…
+                                </div>
+                            ) : delegateUsers.length === 0 ? (
+                                <div className="text-xs text-slate-400 py-2">No users found for {isRoTe ? <><span className="font-semibold">{locLabel || roCode.toUpperCase()}</span> ({offType})</> : <>department <span className="font-semibold">{deptShortCode}</span></>}.</div>
+                            ) : (
+                                <div className="relative">
+                                    <select
+                                        value={delegateSelectedUser}
+                                        onChange={e => setDelegateSelectedUser(e.target.value)}
+                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none pr-8 cursor-pointer"
+                                    >
+                                        <option value="">— Select user —</option>
+                                        {delegateUsers.map(u => (
+                                            <option key={u.r_object_id || u.user_login_name} value={u.object_name}>
+                                                {u.object_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-end gap-2 px-6 pb-5">
+                        <button onClick={() => setDelegateTask(null)}
+                            className="px-4 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleDelegateConfirm}
+                            disabled={!delegateSelectedUser || !!delegatingCaseId}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-[#0A66C2] hover:bg-[#094d92] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-all">
+                            {delegatingCaseId ? <><Loader2 size={12} className="animate-spin" /> Delegating…</> : <><ArrowRightLeft size={12} /> Delegate</>}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-5">
+            <DelegateCaseModal />
             <Card className="space-y-4">
                 <SectionTitle>Select Group</SectionTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Office Type */}
                     <div>
                         <Label icon={Building2}>Office Type</Label>
                         <Select value={officeType} onChange={handleOfficeTypeChange}
@@ -757,7 +981,6 @@ const RemoveMembersTab = ({ setToast }) => {
                                 { value: 'TE', label: 'TE — Training Establishment' },
                             ]} />
                     </div>
-                    {/* Location (RO/TE only) */}
                     {isROTE && (
                         <div>
                             <Label icon={MapPin}>Location</Label>
@@ -767,7 +990,6 @@ const RemoveMembersTab = ({ setToast }) => {
                                 options={getLocations(officeType).map(l => ({ value: l.location, label: l.location }))} />
                         </div>
                     )}
-                    {/* Department */}
                     <div>
                         <Label icon={Layers}>Department</Label>
                         <Select value={dept} onChange={handleDeptChange}
@@ -806,15 +1028,112 @@ const RemoveMembersTab = ({ setToast }) => {
                             ? <p className="text-sm text-slate-400 text-center py-4">No members in this group</p>
                             : <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                                 {allMembers.map(m => (
-                                    <div key={`${m.type}-${m.name}`} className="flex items-center justify-between px-4 py-2.5">
-                                        <div className="flex items-center gap-2.5">
-                                            <MemberTag type={m.type} />
-                                            <span className="text-sm text-slate-700 font-mono">{m.name}</span>
+                                    <div key={`${m.type}-${m.name}`}>
+                                        {/* Member row */}
+                                        <div className={`flex items-center justify-between px-4 py-2.5 transition-colors ${pendingRemove?.name === m.name ? 'bg-red-50/60' : ''}`}>
+                                            <div className="flex items-center gap-2.5">
+                                                <MemberTag type={m.type} />
+                                                <span className="text-sm text-slate-700 font-mono">{m.name}</span>
+                                            </div>
+                                            <button onClick={() => handleRemoveClick(m)}
+                                                className={`p-1.5 rounded-lg transition-colors ${pendingRemove?.name === m.name ? 'text-red-400 bg-red-100' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                                                title={pendingRemove?.name === m.name ? 'Cancel' : 'Remove'}>
+                                                <X size={14} />
+                                            </button>
                                         </div>
-                                        <button onClick={() => handleRemove(m)}
-                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Remove">
-                                            <X size={14} />
-                                        </button>
+
+                                        {/* Inline inbox panel — shown only for the pending member */}
+                                        {pendingRemove?.name === m.name && (
+                                            <div className="border-t border-red-100 bg-slate-50 px-4 py-4 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                                                        <ClipboardList size={11} /> Case Inbox — {m.name}
+                                                    </p>
+                                                    {computeCasePrefix() && (
+                                                        <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                                            filter: {computeCasePrefix()}*
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {loadingInbox && (
+                                                    <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+                                                        <Loader2 size={14} className="animate-spin" /> Checking inbox…
+                                                    </div>
+                                                )}
+
+                                                {!loadingInbox && m.type === 'user' && (
+                                                    <>
+                                                        {hasPendingCases ? (
+                                                            <>
+                                                                <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                                                                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                                                                    <span>Kindly delegate the pending cases to remove this user from the vertical.</span>
+                                                                </div>
+                                                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                                                    <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                                                                        <span className="text-xs font-semibold text-slate-600">Pending Cases</span>
+                                                                        <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full font-medium">{inboxTotal}</span>
+                                                                    </div>
+                                                                    <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                                                                        {inboxTasks.map((task, idx) => {
+                                                                            const pf = (f) => task[`packagescase_folder${f}`] || task[f] || '';
+                                                                            const caseName = pf('object_name') || task.caseName || '—';
+                                                                            const desc     = pf('description') || '';
+                                                                            const status   = pf('status') || task.status || '';
+                                                                            const priority = pf('task_priority') || task.priority || '';
+                                                                            return (
+                                                                            <div key={pf('id') || task.id || idx} className="px-3 py-2.5 flex items-start justify-between gap-3">
+                                                                                <div className="min-w-0">
+                                                                                    <p className="text-xs font-medium text-slate-800 truncate">{caseName}</p>
+                                                                                    <p className="text-xs text-slate-500 truncate">{desc}</p>
+                                                                                </div>
+                                                                                <div className="shrink-0 flex items-center gap-1.5">
+                                                                                    {status && <span className="px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium whitespace-nowrap">{status}</span>}
+                                                                                    {priority && (
+                                                                                        <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium whitespace-nowrap ${
+                                                                                            priority === 'High' ? 'bg-red-100 text-red-700' :
+                                                                                            priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                                                            'bg-slate-100 text-slate-600'
+                                                                                        }`}>{priority}</span>
+                                                                                    )}
+                                                                                    <button
+                                                                                        onClick={() => handleDelegateClick(task)}
+                                                                                        className="flex items-center gap-1 px-2 py-1 bg-[#0A66C2] hover:bg-[#094d92] text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap">
+                                                                                        <ArrowRightLeft size={11} /> Delegate
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5">
+                                                                <CheckCircle2 size={14} className="shrink-0" />
+                                                                No pending cases. Safe to remove.
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+
+                                                <div className="flex items-center gap-2 pt-1">
+                                                    <button
+                                                        onClick={handleConfirmRemove}
+                                                        disabled={hasPendingCases || removing || loadingInbox}
+                                                        title={hasPendingCases ? 'Delegate pending cases first' : ''}
+                                                        className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                                        {removing ? <><Loader2 size={12} className="animate-spin" /> Removing…</> : 'Remove'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setPendingRemove(null); setInboxTasks([]); setInboxTotal(0); }}
+                                                        className="px-4 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors">
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

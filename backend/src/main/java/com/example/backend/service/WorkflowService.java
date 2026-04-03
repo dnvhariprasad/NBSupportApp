@@ -21,19 +21,17 @@ public class WorkflowService {
     private final RestClient restClient;
 
     public WorkflowService(DctmConfig dctmConfig,
-                          DctmAuthService authService,
-                          RestClient.Builder restClientBuilder) {
+            DctmAuthService authService,
+            RestClient.Builder restClientBuilder) {
         this.dctmConfig = dctmConfig;
         this.authService = authService;
         this.restClient = restClientBuilder.build();
     }
 
-    // Use this for regular read operations
     private String getAuthHeader() {
         return authService.getUserAuthHeader();
     }
 
-    // Use this for privileged write operations
     private String getServiceAuthHeader() {
         return authService.getServiceAuthHeader();
     }
@@ -56,42 +54,97 @@ public class WorkflowService {
         return templates;
     }
 
-    // Use DQL to fetch running workflows with task details
-    // Use standard REST API to fetch workflows
     public Map<String, Object> getRunningWorkflows(String processName, int page, int itemsPerPage) {
-        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/workflows";
-
-        // Build query params
-        // Filter by process_id (the r_object_id of the workflow template)
-        // Note: REST API filter doesn't support AND for multiple conditions easily
-        // The 'processName' parameter should be the process template ID (e.g.,
-        // 4b02cba08000624a)
-
-        String filterQuery = "process_id='" + processName + "'";
-
-        // Build URL manually to avoid over-encoding of the filter parameter
-        // The filter expression like process_id='xxx' should NOT have = encoded
-        String fullUrl = url + "?filter=" + filterQuery +
-                "&items-per-page=" + itemsPerPage +
-                "&page=" + page +
-                "&inline=true";
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+        
+        // Use DQL to get workflows with their associated case (component) name
+        // Note: We join with dmi_package (p) and dm_sysobject (c) to get the case number (object_name of the component)
+        String dql = "SELECT w.r_object_id, w.object_name, w.r_creator_name, w.r_runtime_state, w.r_start_date, " +
+                    "p.r_component_id as case_id, c.object_name as case_number " +
+                    "FROM dm_workflow w, dmi_package p, dm_sysobject c " +
+                    "WHERE w.process_id = '" + processName + "' " +
+                    "AND p.r_workflow_id = w.r_object_id " +
+                    "AND c.r_object_id = p.r_component_id";
 
         try {
+            // Using DQL via the repository endpoint
             return restClient.get()
-                    .uri(fullUrl)
+                    .uri(baseUrl + "?dql={dql}&page={page}&items-per-page={size}&inline=true", 
+                         dql, page, itemsPerPage)
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
                     .body(Map.class);
         } catch (Exception e) {
-            log.error("Error fetching workflows", e);
-            throw new RuntimeException("Failed to fetch running workflows: " + e.getMessage());
+            log.error("Error fetching workflows with DQL for process {}", processName, e);
+            // Fallback to basic REST if DQL fails (e.g. if processName is not an ID)
+            String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/workflows";
+            String filter = "process_id='" + processName + "'";
+            return restClient.get()
+                    .uri(url + "?filter=" + filter + "&items-per-page=" + itemsPerPage + "&page=" + page + "&inline=true")
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
         }
     }
 
-    /**
-     * Get workflows associated with a specific case
-     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getWorkflowsByCaseNumber(String caseNumber) {
+        Map<String, Object> result = new HashMap<>();
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+        try {
+            String safeNumber = caseNumber.trim().replace("'", "''");
+            String dql = "SELECT r_object_id, object_name, subject FROM cms_case_folder " +
+                    "WHERE object_name = '" + safeNumber + "' ENABLE(RETURN_TOP 1)";
+
+            Map<String, Object> caseResponse = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=1", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            String caseObjectId = null;
+            String caseSubject = null;
+
+            if (caseResponse != null && caseResponse.containsKey("entries")) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) caseResponse.get("entries");
+                if (!entries.isEmpty()) {
+                    Map<String, Object> content = (Map<String, Object>) entries.get(0).get("content");
+                    if (content != null && content.containsKey("properties")) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        caseObjectId = (String) props.get("r_object_id");
+                        caseSubject = (String) props.get("subject");
+                    }
+                }
+            }
+
+            if (caseObjectId == null) {
+                result.put("error", "Case not found: " + caseNumber);
+                result.put("caseNumber", caseNumber);
+                result.put("workflows", new ArrayList<>());
+                result.put("count", 0);
+                return result;
+            }
+
+            Map<String, Object> workflowResult = getWorkflowsForCase(caseObjectId);
+            workflowResult.put("caseNumber", caseNumber);
+            workflowResult.put("caseObjectId", caseObjectId);
+            workflowResult.put("caseSubject", caseSubject);
+            return workflowResult;
+
+        } catch (Exception e) {
+            log.error("Error searching workflows by case number {}: {}", caseNumber, e.getMessage());
+            result.put("error", "Failed to search by case number: " + e.getMessage());
+            result.put("caseNumber", caseNumber);
+            result.put("workflows", new ArrayList<>());
+            result.put("count", 0);
+            return result;
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public Map<String, Object> getWorkflowsForCase(String caseId) {
         Map<String, Object> result = new HashMap<>();
@@ -101,7 +154,6 @@ public class WorkflowService {
         debugLogs.add("Starting workflow search for Case ID: " + caseId);
 
         try {
-            // Step 1: Get chronicle ID for the case
             String chronId = "";
             try {
                 String caseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
@@ -121,8 +173,6 @@ public class WorkflowService {
                 debugLogs.add("Could not fetch chronicle ID: " + e.getMessage());
             }
 
-            // Step 2: Build DQL to find workflow packages
-            // Note: r_component_id is a repeating attribute, use ANY clause
             StringBuilder packageDql = new StringBuilder();
             packageDql.append("SELECT r_object_id, r_workflow_id, r_package_name FROM dmi_package WHERE ");
             packageDql.append("ANY r_component_id = '").append(caseId).append("'");
@@ -132,8 +182,6 @@ public class WorkflowService {
 
             String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
 
-            debugLogs.add("Package DQL: " + packageDql.toString());
-
             Map<String, Object> packageResponse = restClient.get()
                     .uri(baseUrl + "?dql={dql}&inline=true&items-per-page={itemsPerPage}",
                             packageDql.toString(), 100)
@@ -142,12 +190,9 @@ public class WorkflowService {
                     .retrieve()
                     .body(Map.class);
 
-            // Step 3: Extract workflow IDs
             List<String> workflowIds = new ArrayList<>();
             if (packageResponse != null && packageResponse.containsKey("entries")) {
                 List<Map<String, Object>> entries = (List<Map<String, Object>>) packageResponse.get("entries");
-                debugLogs.add("Found " + entries.size() + " package entries.");
-
                 for (Map<String, Object> entry : entries) {
                     Map<String, Object> content = (Map<String, Object>) entry.get("content");
                     if (content != null && content.containsKey("properties")) {
@@ -155,180 +200,269 @@ public class WorkflowService {
                         String wfId = (String) props.get("r_workflow_id");
                         if (wfId != null && !workflowIds.contains(wfId) && !wfId.equals("0000000000000000")) {
                             workflowIds.add(wfId);
-                            debugLogs.add("Added Workflow ID: " + wfId);
                         }
                     }
                 }
-            } else {
-                debugLogs.add("No package entries found.");
             }
 
-            log.info("Found {} unique workflow IDs for case {}", workflowIds.size(), caseId);
-
-            // Step 4: Fetch details for each workflow
             for (String workflowId : workflowIds) {
                 try {
                     Map<String, Object> workflowDetails = new HashMap<>();
                     workflowDetails.put("r_object_id", workflowId);
 
-                    // Fetch workflow object properties
                     try {
-                        String workflowUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
-                                "/objects/" + workflowId;
-
+                        String wfDql = "SELECT object_name, r_object_id, r_creator_name, supervisor_name, r_start_date, process_id, r_runtime_state FROM dm_workflow WHERE r_object_id = '"
+                                + workflowId + "'";
                         Map<String, Object> wfResponse = restClient.get()
-                                .uri(workflowUrl)
+                                .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=1", wfDql)
                                 .header("Authorization", getAuthHeader())
                                 .header("Accept", "application/vnd.emc.documentum+json")
                                 .retrieve()
                                 .body(Map.class);
 
-                        if (wfResponse != null && wfResponse.containsKey("properties")) {
-                            workflowDetails.putAll((Map<String, Object>) wfResponse.get("properties"));
+                        if (wfResponse != null && wfResponse.containsKey("entries")) {
+                            List<Map<String, Object>> entries = (List<Map<String, Object>>) wfResponse.get("entries");
+                            if (!entries.isEmpty()) {
+                                Map<String, Object> content = (Map<String, Object>) entries.get(0).get("content");
+                                if (content != null && content.containsKey("properties")) {
+                                    workflowDetails.putAll((Map<String, Object>) content.get("properties"));
+                                }
+                            }
                         }
                     } catch (Exception e) {
-                        debugLogs.add("Error fetching workflow object " + workflowId + ": " + e.getMessage());
                         workflowDetails.put("process_name", "Unknown (ID: " + workflowId + ")");
                         workflowDetails.put("r_runtime_state", "unknown");
                     }
 
-                    // Fetch work items (activity history)
-                    try {
-                        String tasksDql = "SELECT r_object_id, r_act_seqno, r_runtime_state, r_performer_name, r_creation_date, r_act_def_id, a_wq_name "
-                                +
-                                "FROM dmi_workitem WHERE r_workflow_id = '" + workflowId
-                                + "' ORDER BY r_act_seqno ASC, r_creation_date ASC";
-
-                        Map<String, Object> tasksResponse = restClient.get()
-                                .uri(baseUrl + "?dql={dql}&inline=true&items-per-page={itemsPerPage}",
-                                        tasksDql, 100)
-                                .header("Authorization", getAuthHeader())
-                                .header("Accept", "application/vnd.emc.documentum+json")
-                                .retrieve()
-                                .body(Map.class);
-
-                        List<Map<String, Object>> tasks = new ArrayList<>();
-                        if (tasksResponse != null && tasksResponse.containsKey("entries")) {
-                            List<Map<String, Object>> taskEntries = (List<Map<String, Object>>) tasksResponse
-                                    .get("entries");
-                            for (Map<String, Object> taskEntry : taskEntries) {
-                                Map<String, Object> taskContent = (Map<String, Object>) taskEntry.get("content");
-                                if (taskContent != null && taskContent.containsKey("properties")) {
-                                    tasks.add((Map<String, Object>) taskContent.get("properties"));
-                                }
-                            }
-                        }
-                        workflowDetails.put("workItems", tasks);
-                    } catch (Exception e) {
-                        debugLogs.add("Error fetching work items for " + workflowId + ": " + e.getMessage());
-                        workflowDetails.put("workItems", new ArrayList<>());
-                    }
-
-                    // Fetch queue items (current inbox status)
-                    try {
-                        String queueDql = "SELECT r_object_id, name, task_state, sent_by, date_sent, item_id, router_id "
-                                +
-                                "FROM dmi_queue_item WHERE router_id = '" + workflowId + "'";
-
-                        Map<String, Object> queueResponse = restClient.get()
-                                .uri(baseUrl + "?dql={dql}&inline=true&items-per-page={itemsPerPage}",
-                                        queueDql, 100)
-                                .header("Authorization", getAuthHeader())
-                                .header("Accept", "application/vnd.emc.documentum+json")
-                                .retrieve()
-                                .body(Map.class);
-
-                        List<Map<String, Object>> queueItems = new ArrayList<>();
-                        if (queueResponse != null && queueResponse.containsKey("entries")) {
-                            List<Map<String, Object>> qEntries = (List<Map<String, Object>>) queueResponse
-                                    .get("entries");
-                            for (Map<String, Object> qEntry : qEntries) {
-                                Map<String, Object> qContent = (Map<String, Object>) qEntry.get("content");
-                                if (qContent != null && qContent.containsKey("properties")) {
-                                    queueItems.add((Map<String, Object>) qContent.get("properties"));
-                                }
-                            }
-                        }
-                        workflowDetails.put("queueItems", queueItems);
-                    } catch (Exception e) {
-                        debugLogs.add("Error fetching queue items for " + workflowId + ": " + e.getMessage());
-                        workflowDetails.put("queueItems", new ArrayList<>());
-                    }
-
+                    // For the multi-workflow fetch, we use simpler queries to be faster/safer
+                    workflowDetails.put("workItems", new ArrayList<>());
+                    workflowDetails.put("queueItems", new ArrayList<>());
                     workflows.add(workflowDetails);
                 } catch (Exception e) {
-                    debugLogs.add("Critical error processing workflow " + workflowId + ": " + e.getMessage());
+                    debugLogs.add("Error processing workflow " + workflowId + ": " + e.getMessage());
                 }
             }
 
             result.put("workflows", workflows);
             result.put("count", workflows.size());
             result.put("debug", debugLogs);
-            log.info("Successfully fetched {} workflow details for case {}", workflows.size(), caseId);
 
         } catch (Exception e) {
             log.error("Error fetching workflows for case {}: {}", caseId, e.getMessage());
             result.put("workflows", workflows);
             result.put("count", 0);
             result.put("error", "Failed to fetch workflow information: " + e.getMessage());
-            debugLogs.add("Exception: " + e.getMessage());
             result.put("debug", debugLogs);
         }
 
         return result;
     }
 
-    /**
-     * Restart a workflow (privileged operation)
-     * Uses service account with elevated permissions
-     */
-    public Map<String, Object> restartWorkflow(String workflowId) {
-        log.info("Restarting workflow: {}", workflowId);
-
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getWorkflowById(String workflowId) {
         Map<String, Object> result = new HashMap<>();
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
 
         try {
-            String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
-                        "/workflows/" + workflowId + "/restart";
-
-            // Use service account for privileged operation
-            Map<String, Object> response = restClient.post()
-                    .uri(url)
-                    .header("Authorization", getServiceAuthHeader())
+            // 1. Basic Workflow Properties
+            String wfDql = "SELECT object_name, r_object_id, r_creator_name, supervisor_name, r_start_date, process_id, r_runtime_state FROM dm_workflow WHERE r_object_id = '"
+                    + workflowId + "'";
+            Map<String, Object> wfResponse = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=1", wfDql)
+                    .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
                     .body(Map.class);
 
-            result.put("success", true);
-            result.put("workflowId", workflowId);
-            result.put("message", "Workflow restarted successfully");
-            result.put("response", response);
+            if (wfResponse != null && wfResponse.containsKey("entries")) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) wfResponse.get("entries");
+                if (!entries.isEmpty()) {
+                    Map<String, Object> content = (Map<String, Object>) entries.get(0).get("content");
+                    if (content != null && content.containsKey("properties")) {
+                        result.putAll((Map<String, Object>) content.get("properties"));
+                    }
+                }
+            }
 
-            log.info("Successfully restarted workflow: {}", workflowId);
+            // 1.5 Fetch associated Case Number
+            try {
+                String caseDql = "SELECT c.object_name as case_number " +
+                        "FROM dmi_package p, dm_sysobject c " +
+                        "WHERE p.r_workflow_id = '" + workflowId + "' " +
+                        "AND c.r_object_id = p.r_component_id ENABLE(RETURN_TOP 1)";
+                Map<String, Object> caseResponse = restClient.get()
+                        .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=1", caseDql)
+                        .header("Authorization", getAuthHeader())
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .retrieve()
+                        .body(Map.class);
+                if (caseResponse != null && caseResponse.containsKey("entries")) {
+                    List<Map<String, Object>> caseEntries = (List<Map<String, Object>>) caseResponse.get("entries");
+                    if (!caseEntries.isEmpty()) {
+                        Map<String, Object> caseContent = (Map<String, Object>) caseEntries.get(0).get("content");
+                        if (caseContent != null && caseContent.containsKey("properties")) {
+                            Map<String, Object> props = (Map<String, Object>) caseContent.get("properties");
+                            if (props.containsKey("case_number")) {
+                                result.put("case_number", props.get("case_number"));
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Error fetching case number for workflow {}: {}", workflowId, e.getMessage());
+            }
+
+
+            // 2. Fetch Work Items (With Activity Names)
+            try {
+                // Join dmi_workitem with dm_activity to get human-readable names
+                String tasksDql = "SELECT i.r_object_id, i.r_act_seqno, i.r_runtime_state, i.r_performer_name, i.r_creation_date, i.r_act_def_id, i.a_wq_name, a.object_name as r_act_name "
+                        + "FROM dmi_workitem i, dm_activity a "
+                        + "WHERE i.r_act_def_id = a.r_object_id AND i.r_workflow_id = '" + workflowId + "' "
+                        + "ORDER BY i.r_act_seqno ASC, i.r_creation_date ASC";
+
+                Map<String, Object> tasksResponse = restClient.get()
+                        .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=100", tasksDql)
+                        .header("Authorization", getAuthHeader())
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .retrieve()
+                        .body(Map.class);
+
+                List<Map<String, Object>> tasks = new ArrayList<>();
+                if (tasksResponse != null && tasksResponse.containsKey("entries")) {
+                    List<Map<String, Object>> taskEntries = (List<Map<String, Object>>) tasksResponse.get("entries");
+                    for (Map<String, Object> taskEntry : taskEntries) {
+                        Map<String, Object> taskContent = (Map<String, Object>) taskEntry.get("content");
+                        if (taskContent != null && taskContent.containsKey("properties")) {
+                            tasks.add((Map<String, Object>) taskContent.get("properties"));
+                        }
+                    }
+                } else {
+                    // Fallback to simple query if join fails or returns nothing
+                    log.info("Join query returned no entries, falling back to simple workitem query for workflow {}",
+                            workflowId);
+                    String simpleTasksDql = "SELECT r_object_id, r_act_seqno, r_runtime_state, r_performer_name, r_creation_date, r_act_def_id, a_wq_name FROM dmi_workitem WHERE r_workflow_id = '"
+                            + workflowId + "'";
+                    Map<String, Object> simpleTasksResponse = restClient.get()
+                            .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=100", simpleTasksDql)
+                            .header("Authorization", getAuthHeader())
+                            .header("Accept", "application/vnd.emc.documentum+json")
+                            .retrieve()
+                            .body(Map.class);
+                    if (simpleTasksResponse != null && simpleTasksResponse.containsKey("entries")) {
+                        List<Map<String, Object>> taskEntries = (List<Map<String, Object>>) simpleTasksResponse
+                                .get("entries");
+                        for (Map<String, Object> taskEntry : taskEntries) {
+                            Map<String, Object> taskContent = (Map<String, Object>) taskEntry.get("content");
+                            if (taskContent != null && taskContent.containsKey("properties")) {
+                                tasks.add((Map<String, Object>) taskContent.get("properties"));
+                            }
+                        }
+                    }
+                }
+                result.put("workItems", tasks);
+            } catch (Exception e) {
+                log.warn("Error fetching work items for workflow {}: {}", workflowId, e.getMessage());
+                result.put("workItems", new ArrayList<>());
+            }
+
+            // 3. Fetch Queue Items (Resilient to missing BPS fields)
+            try {
+                // Try basic fields first (always supported)
+                String queueDql = "SELECT r_object_id, name, task_state, sent_by, date_sent, item_id, router_id FROM dmi_queue_item WHERE router_id = '"
+                        + workflowId + "'";
+
+                Map<String, Object> queueResponse = restClient.get()
+                        .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=100", queueDql)
+                        .header("Authorization", getAuthHeader())
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .retrieve()
+                        .body(Map.class);
+
+                List<Map<String, Object>> queueItems = new ArrayList<>();
+                if (queueResponse != null && queueResponse.containsKey("entries")) {
+                    List<Map<String, Object>> qEntries = (List<Map<String, Object>>) queueResponse.get("entries");
+                    for (Map<String, Object> qEntry : qEntries) {
+                        Map<String, Object> qContent = (Map<String, Object>) qEntry.get("content");
+                        if (qContent != null && qContent.containsKey("properties")) {
+                            Map<String, Object> qProps = new HashMap<>(
+                                    (Map<String, Object>) qContent.get("properties"));
+
+                            // 4. Optionally fetch BPS fields for specific item if it's paused
+                            String state = String.valueOf(qProps.get("task_state"));
+                            if ("paused".equalsIgnoreCase(state) || "4".equals(state)) {
+                                try {
+                                    String bpsDql = "SELECT message, source, step_id FROM dmi_queue_item WHERE r_object_id = '"
+                                            + qProps.get("r_object_id") + "'";
+                                    Map<String, Object> bpsRes = restClient.get()
+                                            .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=1", bpsDql)
+                                            .header("Authorization", getAuthHeader())
+                                            .header("Accept", "application/vnd.emc.documentum+json")
+                                            .retrieve()
+                                            .body(Map.class);
+                                    if (bpsRes != null && bpsRes.containsKey("entries")) {
+                                        List<Map<String, Object>> bpsEntries = (List<Map<String, Object>>) bpsRes
+                                                .get("entries");
+                                        if (!bpsEntries.isEmpty()) {
+                                            Map<String, Object> bpsProps = (Map<String, Object>) ((Map<String, Object>) bpsEntries
+                                                    .get(0).get("content")).get("properties");
+                                            qProps.putAll(bpsProps);
+                                        }
+                                    }
+                                } catch (Exception ignored) {
+                                    // BPS fields probably don't exist in this repo
+                                }
+                            }
+                            queueItems.add(qProps);
+                        }
+                    }
+                }
+                result.put("queueItems", queueItems);
+            } catch (Exception e) {
+                log.warn("Error fetching queue items for workflow {}: {}", workflowId, e.getMessage());
+                result.put("queueItems", new ArrayList<>());
+            }
+
+            // 5. Fetch Process Variables
+            try {
+                String varDql = "SELECT object_name, string_value FROM dmc_wfsd_element_string WHERE workflow_id='"
+                        + workflowId + "' ORDER BY object_name ASC";
+                Map<String, Object> varResponse = restClient.get()
+                        .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=100", varDql)
+                        .header("Authorization", getAuthHeader())
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .retrieve()
+                        .body(Map.class);
+
+                List<Map<String, Object>> variables = new ArrayList<>();
+                if (varResponse != null && varResponse.containsKey("entries")) {
+                    List<Map<String, Object>> varEntries = (List<Map<String, Object>>) varResponse.get("entries");
+                    for (Map<String, Object> varEntry : varEntries) {
+                        Map<String, Object> varContent = (Map<String, Object>) varEntry.get("content");
+                        if (varContent != null && varContent.containsKey("properties")) {
+                            variables.add((Map<String, Object>) varContent.get("properties"));
+                        }
+                    }
+                }
+                result.put("processVariables", variables);
+            } catch (Exception ignored) {
+            }
+
+            result.put("r_object_id", workflowId);
+            return result;
 
         } catch (Exception e) {
-            log.error("Error restarting workflow {}: {}", workflowId, e.getMessage());
-            result.put("success", false);
-            result.put("error", "Failed to restart workflow: " + e.getMessage());
+            log.error("Error fetching workflow {}: {}", workflowId, e.getMessage());
+            result.put("error", "Failed to fetch workflow: " + e.getMessage());
+            result.put("r_object_id", workflowId);
+            return result;
         }
-
-        return result;
     }
 
-    /**
-     * Retry a workflow activity (privileged operation)
-     * Uses service account with elevated permissions
-     */
-    public Map<String, Object> retryActivity(String workflowId, String activityId) {
-        log.info("Retrying activity {} in workflow {}", activityId, workflowId);
-
-        Map<String, Object> result = new HashMap<>();
-
+    public Map<String, Object> restartWorkflow(String workflowId) {
         try {
             String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
-                        "/workflows/" + workflowId + "/activities/" + activityId + "/retry";
-
-            // Use service account for privileged operation
+                    "/workflows/" + workflowId + "/restart";
             Map<String, Object> response = restClient.post()
                     .uri(url)
                     .header("Authorization", getServiceAuthHeader())
@@ -336,20 +470,39 @@ public class WorkflowService {
                     .retrieve()
                     .body(Map.class);
 
+            Map<String, Object> result = new HashMap<>();
             result.put("success", true);
-            result.put("workflowId", workflowId);
-            result.put("activityId", activityId);
-            result.put("message", "Activity retry initiated successfully");
-            result.put("response", response);
+            result.put("message", "Workflow restarted successfully");
+            return result;
+        } catch (Exception e) {
+            log.error("Error restarting workflow {}: {}", workflowId, e.getMessage());
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("error", e.getMessage());
+            return result;
+        }
+    }
 
-            log.info("Successfully initiated retry for activity {} in workflow {}", activityId, workflowId);
+    public Map<String, Object> retryActivity(String workflowId, String activityId) {
+        try {
+            String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
+                    "/workflows/" + workflowId + "/activities/" + activityId + "/retry";
+            Map<String, Object> response = restClient.post()
+                    .uri(url)
+                    .header("Authorization", getServiceAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
 
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            return result;
         } catch (Exception e) {
             log.error("Error retrying activity {} in workflow {}: {}", activityId, workflowId, e.getMessage());
+            Map<String, Object> result = new HashMap<>();
             result.put("success", false);
-            result.put("error", "Failed to retry activity: " + e.getMessage());
+            result.put("error", e.getMessage());
+            return result;
         }
-
-        return result;
     }
 }

@@ -262,6 +262,35 @@ public class InboxService {
         }
     }
 
+    // ─── CMS Tasklist all-user-inbox proxy ───────────────────────────────────
+    //
+    // Proxies: GET <cms-inbox-url>/cms_all_user_inbox
+    //          ?inline=true&input_performer_name=<username>&page=<page>&start=<start>
+    //
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getTasklistInbox(String username, int page, int start) {
+        try {
+            String encoded = java.net.URLEncoder.encode(username, StandardCharsets.UTF_8);
+            String url = tasklistConfig.getCmsInboxUrl()
+                    + "/cms_all_user_inbox"
+                    + "?inline=true&input_performer_name=" + encoded
+                    + "&page=" + page + "&start=" + start;
+            log.info("CMS tasklist inbox URL: {}", url);
+            Map<String, Object> response = restClient.get()
+                    .uri(java.net.URI.create(url))
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/json")
+                    .retrieve()
+                    .body(Map.class);
+            if (response == null) return Map.of("success", false, "entries", List.of(), "total", 0);
+            response.put("success", true);
+            return response;
+        } catch (Exception e) {
+            log.error("CMS tasklist inbox failed for '{}': {}", username, e.getMessage());
+            return Map.of("success", false, "message", e.getMessage(), "entries", List.of(), "total", 0);
+        }
+    }
+
     // ─── Debug: raw dmi_queue_item response ──────────────────────────────────
 
     @SuppressWarnings("unchecked")
