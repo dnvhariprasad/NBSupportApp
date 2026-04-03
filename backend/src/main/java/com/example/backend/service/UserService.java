@@ -15,11 +15,14 @@ public class UserService {
 
     private final DctmConfig dctmConfig;
     private final OtdsService otdsService;
+    private final EmailService emailService;
     private final RestClient restClient;
 
-    public UserService(DctmConfig dctmConfig, OtdsService otdsService, RestClient.Builder restClientBuilder) {
+    public UserService(DctmConfig dctmConfig, OtdsService otdsService, EmailService emailService,
+                       RestClient.Builder restClientBuilder) {
         this.dctmConfig = dctmConfig;
         this.otdsService = otdsService;
+        this.emailService = emailService;
         this.restClient = restClientBuilder.build();
     }
 
@@ -189,7 +192,7 @@ public class UserService {
      * Updates the password of an inline-password dm_user.
      * Tries multiple Documentum REST approaches in order and logs the result of each.
      */
-    public Map<String, Object> updateInlineUserPassword(String loginName, String newPassword) {
+    public Map<String, Object> updateInlineUserPassword(String loginName, String newPassword, String adminUser) {
         String encoded = java.net.URLEncoder.encode(loginName, StandardCharsets.UTF_8).replace("+", "%20");
         String userUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/users/" + encoded;
         Map<String, Object> body = Map.of("properties", Map.of("user_password", newPassword));
@@ -207,7 +210,8 @@ public class UserService {
                     .retrieve()
                     .toBodilessEntity();
             log.info("[InlinePwd] POST+PATCH succeeded for: {}", loginName);
-            return Map.of("success", true, "message", "Password updated successfully for user: " + loginName);
+            boolean emailSent = sendPasswordEmail(loginName, newPassword, adminUser);
+            return Map.of("success", true, "message", "Password updated successfully for user: " + loginName, "emailSent", emailSent);
         } catch (RestClientResponseException e1) {
             String r1 = e1.getResponseBodyAsString(StandardCharsets.UTF_8);
             log.warn("[InlinePwd] POST+PATCH failed [{}]: {}", e1.getStatusCode(), r1);
@@ -225,7 +229,8 @@ public class UserService {
                         .retrieve()
                         .toBodilessEntity();
                 log.info("[InlinePwd] POST+PUT succeeded for: {}", loginName);
-                return Map.of("success", true, "message", "Password updated successfully for user: " + loginName);
+                boolean emailSent = sendPasswordEmail(loginName, newPassword, adminUser);
+                return Map.of("success", true, "message", "Password updated successfully for user: " + loginName, "emailSent", emailSent);
             } catch (RestClientResponseException e2) {
                 String r2 = e2.getResponseBodyAsString(StandardCharsets.UTF_8);
                 log.error("[InlinePwd] POST+PUT also failed [{}]: {}", e2.getStatusCode(), r2);
@@ -236,13 +241,49 @@ public class UserService {
         }
     }
 
-    public Map<String, Object> updateUserPassword(String loginName, String newPassword) {
+    public Map<String, Object> updateUserPassword(String loginName, String newPassword, String adminUser) {
         // OTDS manages passwords for OTDS users — delegate to OtdsService
         otdsService.updateUserPassword(loginName, newPassword);
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         result.put("message", "Password updated successfully for user: " + loginName);
+
+        // Send email notification
+        boolean emailSent = sendPasswordEmail(loginName, newPassword, adminUser);
+        result.put("emailSent", emailSent);
         return result;
+    }
+
+    /**
+     * Looks up the user's email (user_address) from dm_user and sends a password-reset notification.
+     * Returns true if email was sent, false if skipped or failed.
+     */
+    @SuppressWarnings("unchecked")
+    private boolean sendPasswordEmail(String loginName, String newPassword, String adminUser) {
+        if (adminUser == null || adminUser.isBlank()) {
+            log.warn("[Email] No adminUser provided — skipping password email for '{}'", loginName);
+            return false;
+        }
+        try {
+            String safe = loginName.replace("'", "''");
+            String dql = "SELECT user_name, user_address FROM dm_user WHERE user_login_name = '" + safe + "'";
+            Map<String, Object> result = executeDql(dql, 1, 1);
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) result.get("users");
+            if (rows == null || rows.isEmpty()) {
+                log.warn("[Email] No dm_user found for login '{}' — skipping email", loginName);
+                return false;
+            }
+            String userName = (String) rows.get(0).get("user_name");
+            String email = (String) rows.get(0).get("user_address");
+            if (email == null || email.isBlank()) {
+                log.warn("[Email] No email address for user '{}' — skipping email", loginName);
+                return false;
+            }
+            return emailService.sendPasswordResetEmail(email, userName, newPassword, adminUser);
+        } catch (Exception e) {
+            log.error("[Email] Failed to send password email for '{}': {}", loginName, e.getMessage());
+            return false;
+        }
     }
 
     public Map<String, Object> searchDmUsers(String query, int page, int itemsPerPage, String officeTypeFilter) {

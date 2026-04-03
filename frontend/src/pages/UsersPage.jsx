@@ -1027,7 +1027,9 @@ const UserCreateTab = ({ onToast }) => {
             if (form.user_source === 'inline password') {
                 // Set the password via the existing update-password API after creation
                 try {
-                    await api.patch(`/users/${loginName}/inline-password`, { password: form.user_password });
+                    const storedUsr = JSON.parse(localStorage.getItem('user') || '{}');
+                    const adminUser = storedUsr.properties?.user_name || storedUsr.user_name || 'Admin';
+                    await api.patch(`/users/${loginName}/inline-password`, { password: form.user_password, adminUser });
                     onToast({ type: 'success', message: `User "${form.user_name}" created successfully.` });
                 } catch (pwErr) {
                     const pwMsg = pwErr.response?.data?.message || pwErr.message || 'Password update failed';
@@ -1454,8 +1456,11 @@ const UpdatePasswordTab = ({ onToast }) => {
         if (Object.keys(errs).length) { setErrors(errs); return; }
         setSubmitting(true);
         try {
+            const storedUsr = JSON.parse(localStorage.getItem('user') || '{}');
+            const adminUser = storedUsr.properties?.user_name || storedUsr.user_name || 'Admin';
             await api.patch(`/users/${encodeURIComponent(selectedUser.user_login_name)}/password`, {
                 password: newPassword,
+                adminUser,
             });
             onToast({ type: 'success', message: `Password updated for "${selectedUser.object_name || selectedUser.user_login_name}".` });
             clearUser();
@@ -1768,7 +1773,9 @@ const BulkPasswordTab = ({ onToast }) => {
             const user = selectedUsers[i];
             setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'processing' } : r));
             try {
-                await api.patch(`/users/${encodeURIComponent(user.user_login_name)}/password`, { password: newPassword });
+                const storedUsr = JSON.parse(localStorage.getItem('user') || '{}');
+                const adminUser = storedUsr.properties?.user_name || storedUsr.user_name || 'Admin';
+                await api.patch(`/users/${encodeURIComponent(user.user_login_name)}/password`, { password: newPassword, adminUser });
                 setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'success' } : r));
                 successCount++;
             } catch (err) {
@@ -2408,7 +2415,7 @@ const UsersPage = () => {
         { id: 'creation',  label: 'User Creation',        icon: UserPlus, roles: ['Super Admin'] },
         { id: 'directory', label: 'User Directory',       icon: Users,    roles: ['Super Admin', 'Local Admin'] },
         { id: 'access',    label: 'User Access',          icon: Shield,   roles: ['Super Admin'] },
-        { id: 'password',  label: 'User Password Update', icon: KeyRound, roles: ['Super Admin', 'Local Admin'] },
+        { id: 'password',  label: 'User Password Update', icon: KeyRound, roles: ['Super Admin'] },
     ];
 
     const tabs = allTabs.filter(tab => tab.roles.includes(adminRole));
