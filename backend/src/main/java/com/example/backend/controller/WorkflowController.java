@@ -36,13 +36,26 @@ public class WorkflowController {
         return ResponseEntity.ok(workflowService.getWorkflowsForCase(caseId));
     }
 
+    /** Search workflows by case number (e.g. NB-DDSI-ACV-2026-27-001939) */
+    @GetMapping("/search/by-case")
+    public ResponseEntity<Map<String, Object>> getWorkflowsByCaseNumber(
+            @RequestParam String caseNumber) {
+        return ResponseEntity.ok(workflowService.getWorkflowsByCaseNumber(caseNumber));
+    }
+
+    @GetMapping("/{workflowId}")
+    public ResponseEntity<Map<String, Object>> getWorkflowById(@PathVariable String workflowId) {
+        return ResponseEntity.ok(workflowService.getWorkflowById(workflowId));
+    }
+
     @PostMapping("/{workflowId}/restart")
     public ResponseEntity<Map<String, Object>> restartWorkflow(@PathVariable String workflowId) {
         return ResponseEntity.ok(workflowService.restartWorkflow(workflowId));
     }
 
     @PostMapping("/{workflowId}/activity/{activityId}/retry")
-    public ResponseEntity<Map<String, Object>> retryActivity(@PathVariable String workflowId, @PathVariable String activityId) {
+    public ResponseEntity<Map<String, Object>> retryActivity(@PathVariable String workflowId,
+            @PathVariable String activityId) {
         return ResponseEntity.ok(workflowService.retryActivity(workflowId, activityId));
     }
 }
