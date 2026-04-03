@@ -146,4 +146,34 @@ public class MetadataController {
                     .body(Map.of("success", false, "message", e.getMessage()));
         }
     }
+
+    /**
+     * Create a case type dm_folder under /ECM CONFIG/Case Type.
+     * POST /api/metadata/case-types
+     * Body: { "object_name": "test" }
+     */
+    @PostMapping("/case-types")
+    public ResponseEntity<Map<String, Object>> createCaseType(@RequestBody Map<String, Object> request) {
+        try {
+            String objectName = (String) request.get("object_name");
+            return ResponseEntity.ok(metadataService.createCaseType(objectName));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * List existing case type folders under /ECM CONFIG/Case Type.
+     * GET /api/metadata/case-types
+     */
+    @GetMapping("/case-types")
+    public ResponseEntity<?> listCaseTypes() {
+        try {
+            return ResponseEntity.ok(metadataService.listCaseTypes());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
 }
