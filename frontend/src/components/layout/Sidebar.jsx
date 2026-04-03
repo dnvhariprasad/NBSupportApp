@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { Users, Compass, Settings, Database, Network, FolderCog, ArrowRightLeft } from 'lucide-react';
 
 const Sidebar = () => {
@@ -15,6 +16,9 @@ import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, N
 =======
 import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft, Inbox } from 'lucide-react';
 >>>>>>> 7dd3a7a60971f60fc1ca104b79be6c3773b37526
+=======
+import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft, Inbox, Building2 } from 'lucide-react';
+>>>>>>> eeab23cb8252329829b72b5e82901187a3f1ea06
 
 const Sidebar = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -26,6 +30,7 @@ const Sidebar = () => {
         { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
         { name: 'Users',        path: '/dashboard/users',     icon: Users,        roles: null },
         { name: 'Verticals',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin'] },
+        { name: 'Departments',  path: '/dashboard/departments', icon: Building2,  roles: ['Super Admin'] },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
         { name: 'Case Inbox',   path: '/dashboard/inbox2',    icon: Inbox,         roles: null },
         { name: 'Delegate Case',path: '/dashboard/delegate',  icon: ArrowRightLeft,roles: ['Super Admin'] },

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
-import { getDepartments, getLocations } from '../data/nabardMetadata';
+import { getLocations, fetchDepartments } from '../data/nabardMetadata';
 import {
     ArrowRightLeft, Search, Loader2, ChevronLeft, ChevronRight,
     ChevronsLeft, X, UserRoundCog, Users, Building2, MapPin, FolderOpen,
@@ -237,8 +237,13 @@ const DelegatePage = () => {
     const [movementCase, setMovementCase] = useState(null); // Movement Register modal
 
     const locations   = getLocations(officeType);
-    const departments = getDepartments(officeType, location);
+    const [departments, setDepartments] = useState([]);
     const isRoTe      = officeType === 'RO' || officeType === 'TE';
+
+    useEffect(() => {
+        if (!officeType || (isRoTe && !location)) { setDepartments([]); return; }
+        fetchDepartments(officeType, location).then(setDepartments);
+    }, [officeType, location]);
 
     const fetchCases = useCallback(async (query, hoRo, deptName, pg) => {
         setLoadingCases(true);

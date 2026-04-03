@@ -4,7 +4,7 @@ import {
     FolderOpen, FileText, Layers, Building2, MapPin, Tag,
     CheckCircle2, AlertCircle, X, Loader2, Plus, Hash, RefreshCw, Trash2, Pencil
 } from 'lucide-react';
-import { getDepartments, getLocations } from '../data/nabardMetadata.js';
+import { getLocations, fetchDepartments } from '../data/nabardMetadata.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 const Toast = ({ toast, onDismiss }) => {
@@ -301,8 +301,14 @@ const FileNumberTab = ({ onToast }) => {
     const isHO            = form.officeType === 'HO';
     const locationOptions = getLocations(form.officeType);
 
+    // Dynamic department fetching
+    const [allDeptOptions, setAllDeptOptions] = useState([]);
+    useEffect(() => {
+        if (!form.officeType || (!isHO && !form.location)) { setAllDeptOptions([]); return; }
+        fetchDepartments(form.officeType, form.location).then(setAllDeptOptions);
+    }, [form.officeType, form.location]);
+
     // For Local Admin: filter departments to only those in their profile
-    const allDeptOptions  = getDepartments(form.officeType, form.location);
     const deptOptions     = isLocalAdmin && profileCtx
         ? (() => {
             const raw = profileCtx.department_short_code_multi;
@@ -536,9 +542,116 @@ const FileNumberTab = ({ onToast }) => {
     );
 };
 
+// ─── Case Type Tab ───────────────────────────────────────────────────────────
+const CaseTypeTab = ({ onToast }) => {
+    const [caseType, setCaseType]       = useState('');
+    const [submitting, setSubmitting]   = useState(false);
+    const [items, setItems]             = useState([]);
+    const [loading, setLoading]         = useState(false);
+    const [refreshKey, setRefreshKey]   = useState(0);
+
+    // Fetch existing case types
+    useEffect(() => {
+        setLoading(true);
+        api.get('/metadata/case-types')
+            .then(res => setItems(Array.isArray(res.data) ? res.data : []))
+            .catch(() => setItems([]))
+            .finally(() => setLoading(false));
+    }, [refreshKey]);
+
+    const handleCreate = async () => {
+        if (!caseType.trim()) return;
+        setSubmitting(true);
+        try {
+            const res = await api.post('/metadata/case-types', { object_name: caseType.trim() });
+            if (res.data?.success) {
+                onToast({ type: 'success', message: res.data.message });
+                setCaseType('');
+                setRefreshKey(k => k + 1);
+            } else {
+                onToast({ type: 'error', message: res.data?.message || 'Creation failed' });
+            }
+        } catch (err) {
+            onToast({ type: 'error', message: err.response?.data?.message || err.message });
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Create form */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+                        <FolderOpen size={20} className="text-indigo-600" />
+                    </div>
+                    <div>
+                        <p className="text-sm font-semibold text-slate-900">Create Case Type</p>
+                        <p className="text-xs text-slate-400">
+                            Creates a <code className="font-mono bg-slate-100 px-1 rounded">dm_folder</code> under /ECM CONFIG/Case Type
+                        </p>
+                    </div>
+                </div>
+
+                <div>
+                    <FieldLabel icon={Tag} label="Case Type" required />
+                    <input
+                        type="text"
+                        value={caseType}
+                        onChange={e => setCaseType(e.target.value)}
+                        placeholder="e.g. test"
+                        className={inputCls(false)}
+                    />
+                </div>
+
+                <button
+                    onClick={handleCreate}
+                    disabled={!caseType.trim() || submitting}
+                    className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                        caseType.trim() && !submitting
+                            ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-500/20'
+                            : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    }`}
+                >
+                    {submitting ? <><Loader2 size={15} className="animate-spin" /> Creating…</> : <><Plus size={15} /> Create Case Type</>}
+                </button>
+            </div>
+
+            {/* Existing list */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                    <span className="text-sm font-semibold text-slate-700">Existing Case Types</span>
+                    <button onClick={() => setRefreshKey(k => k + 1)}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                        title="Refresh">
+                        <RefreshCw size={14} />
+                    </button>
+                </div>
+                {loading ? (
+                    <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-slate-300" /></div>
+                ) : items.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 text-sm">No case types found</div>
+                ) : (
+                    <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+                        {items.map((item, idx) => (
+                            <div key={item.r_object_id || idx}
+                                className="flex items-center gap-3 px-3 py-2.5 bg-slate-50 rounded-lg">
+                                <FolderOpen size={14} className="text-indigo-500 shrink-0" />
+                                <span className="text-sm text-slate-800 font-medium">{item.object_name}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // ─── Case section — inner tabs ────────────────────────────────────────────────
 const CASE_TABS = [
     { id: 'filenumber', label: 'File Number', icon: FileText },
+    { id: 'casetype',   label: 'Case Type',   icon: FolderOpen },
 ];
 
 const CaseSection = ({ onToast }) => {
@@ -559,6 +672,7 @@ const CaseSection = ({ onToast }) => {
                 ))}
             </div>
             {activeTab === 'filenumber' && <FileNumberTab onToast={onToast} />}
+            {activeTab === 'casetype'   && <CaseTypeTab onToast={onToast} />}
         </div>
     );
 };

@@ -8,7 +8,7 @@ import {
     Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers, Save
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
-import { USER_GRADES, getDepartments, getLocations } from '../data/nabardMetadata.js';
+import { USER_GRADES } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
 async function fetchAllUsers(officeTypeFilter) {
