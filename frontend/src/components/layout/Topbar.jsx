@@ -119,8 +119,8 @@ const Topbar = () => {
     return (
         <header className="h-16 bg-white border-b border-slate-200 fixed top-0 right-0 left-64 z-10 flex items-center justify-end px-8 shadow-sm">
             <div className="flex items-center gap-6">
-                {/* Login Ticket Section */}
-                <div className="relative" ref={ticketDropdownRef}>
+                {/* Login Ticket Section - hidden */}
+                {false && <div className="relative" ref={ticketDropdownRef}>
                     <button
                         onClick={() => {
                             setIsTicketOpen(!isTicketOpen);
@@ -237,7 +237,7 @@ const Topbar = () => {
                             </div>
                         </div>
                     )}
-                </div>
+                </div>}
 
                 {/* Profile Section */}
                 <div className="relative" ref={dropdownRef}>

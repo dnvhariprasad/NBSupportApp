@@ -536,5 +536,5 @@ const DelegatePage = () => {
     );
 };
 
-export { DelegatePage as DelegateContent };
+export { DelegatePage as DelegateContent, CaseDetailsModal, MovementRegisterModal };
 export default DelegatePage;

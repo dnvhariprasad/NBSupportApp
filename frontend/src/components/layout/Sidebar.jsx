@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, Building2 } from 'lucide-react';
+import { GitBranch, Users, Compass, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, Building2 } from 'lucide-react';
 
 const Sidebar = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -27,7 +27,7 @@ const Sidebar = () => {
                         <Compass className="text-white" size={24} />
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold text-slate-900 leading-tight">NB Support</h1>
+                        <h1 className="text-lg font-bold text-slate-900 leading-tight">NB Admin</h1>
                     </div>
                 </div>
             </div>
@@ -58,13 +58,6 @@ const Sidebar = () => {
                 </div>
             </div>
             
-            {/* Footer Section */}
-            <div className="p-4 border-t border-slate-100 space-y-1">
-                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors text-left">
-                    <Settings size={18} className="text-slate-500" />
-                    <span>Settings</span>
-                </button>
-            </div>
         </aside>
     );
 };

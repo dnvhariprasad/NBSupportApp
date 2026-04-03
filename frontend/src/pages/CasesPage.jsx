@@ -4,10 +4,10 @@ import {
     Search, ChevronLeft, ChevronRight, Briefcase,
     ChevronsLeft, Loader2, X, Eye, RefreshCw,
     FileText, CheckCircle, AlertCircle, PlayCircle, Clock,
-    AlertTriangle, Inbox, ArrowRightLeft
+    AlertTriangle, Inbox, ArrowRightLeft, ClipboardList
 } from 'lucide-react';
 import { CaseInboxContent } from './CaseInbox2Page';
-import { DelegateContent } from './DelegatePage';
+import { DelegateContent, CaseDetailsModal, MovementRegisterModal } from './DelegatePage';
 
 const CasesPage = () => {
     const [activeTab, setActiveTab] = useState('cases');
@@ -35,6 +35,10 @@ const CasesPage = () => {
     // Log Modal State
     const [logModalOpen, setLogModalOpen] = useState(false);
     const [selectedLogItem, setSelectedLogItem] = useState(null);
+
+    // Case Details & Movement Register modals
+    const [detailCase, setDetailCase] = useState(null);
+    const [movementCase, setMovementCase] = useState(null);
 
     const fetchCases = useCallback(async (searchTerm, pageNum) => {
         setLoading(true);
@@ -313,6 +317,7 @@ const CasesPage = () => {
                                         <th className="px-6 py-3 font-semibold text-slate-700">Case Number</th>
                                         <th className="px-6 py-3 font-semibold text-slate-700">Description</th>
                                         <th className="px-6 py-3 font-semibold text-slate-700">Office / Dept</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-700 text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -323,11 +328,12 @@ const CasesPage = () => {
                                                 <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-32"></div></td>
                                                 <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-40"></div></td>
                                                 <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-24"></div></td>
+                                                <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-16 mx-auto"></div></td>
                                             </tr>
                                         ))
                                     ) : cases.length === 0 ? (
                                         <tr>
-                                            <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
+                                            <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
                                                 <p className="font-medium">No cases found</p>
                                                 <p className="text-xs mt-1">Try a different search term</p>
                                             </td>
@@ -342,6 +348,18 @@ const CasesPage = () => {
                                                     <div className="flex flex-col">
                                                         <span>{c.ho_ro}</span>
                                                         <span className="text-xs text-slate-400">{c.department_name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-2.5">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <button onClick={() => setDetailCase(c)} title="Case Details"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#0A66C2] hover:bg-blue-50 transition-all">
+                                                            <FileText size={15} />
+                                                        </button>
+                                                        <button onClick={() => setMovementCase(c)} title="Movement Register"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                                                            <ClipboardList size={15} />
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -613,6 +631,12 @@ const CasesPage = () => {
             )}
             </>
             )}
+
+            {/* Case Details Modal */}
+            {detailCase && <CaseDetailsModal caseItem={detailCase} onClose={() => setDetailCase(null)} />}
+
+            {/* Movement Register Modal */}
+            {movementCase && <MovementRegisterModal caseItem={movementCase} onClose={() => setMovementCase(null)} />}
         </div>
     );
 };
