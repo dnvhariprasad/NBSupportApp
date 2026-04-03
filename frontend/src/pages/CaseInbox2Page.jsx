@@ -295,15 +295,9 @@ setCases(items);
     const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
 
     return (
-        <div className="p-6 max-w-7xl mx-auto h-full flex flex-col">
+        <div className="max-w-7xl mx-auto h-full flex flex-col">
             {detailCase   && <CaseDetailsModal     caseItem={detailCase}   onClose={() => setDetailCase(null)} />}
             {movementCase && <MovementRegisterModal caseItem={movementCase} onClose={() => setMovementCase(null)} />}
-
-            {/* Page header */}
-            <div className="flex items-center gap-2 mb-5">
-                <Inbox size={20} className="text-[#0A66C2]" />
-                <h1 className="text-xl font-bold text-slate-900">Case Inbox</h1>
-            </div>
 
             {/* User selector */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-5">
@@ -487,4 +481,5 @@ setCases(items);
     );
 };
 
+export { CaseInbox2Page as CaseInboxContent };
 export default CaseInbox2Page;

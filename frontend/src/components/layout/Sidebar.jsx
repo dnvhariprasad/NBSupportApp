@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { Users, Compass, Settings, Database, Network, FolderCog, ArrowRightLeft } from 'lucide-react';
 
 const Sidebar = () => {
@@ -19,21 +20,22 @@ import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, N
 =======
 import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft, Inbox, Building2 } from 'lucide-react';
 >>>>>>> eeab23cb8252329829b72b5e82901187a3f1ea06
+=======
+import { GitBranch, Users, Compass, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, Building2 } from 'lucide-react';
+>>>>>>> 6d19c10d54d1242794f9e5e9afbdb832960dc455
 
 const Sidebar = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
     const adminRole = storedUser.properties?.admin_role || storedUser.admin_role || null;
 
     const allNavItems = [
-        { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
-        { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null },
-        { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
         { name: 'Users',        path: '/dashboard/users',     icon: Users,        roles: null },
         { name: 'Verticals',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin'] },
         { name: 'Departments',  path: '/dashboard/departments', icon: Building2,  roles: ['Super Admin'] },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
-        { name: 'Case Inbox',   path: '/dashboard/inbox2',    icon: Inbox,         roles: null },
-        { name: 'Delegate Case',path: '/dashboard/delegate',  icon: ArrowRightLeft,roles: ['Super Admin'] },
+        { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
+        { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null },
+        { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null },
 >>>>>>> d35b9a4c6d05f0ec0cdb9679db6b9447bf1a31c4
     ];
@@ -49,7 +51,7 @@ const Sidebar = () => {
                         <Compass className="text-white" size={24} />
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold text-slate-900 leading-tight">NB Support</h1>
+                        <h1 className="text-lg font-bold text-slate-900 leading-tight">NB Admin</h1>
                     </div>
                 </div>
             </div>
@@ -80,13 +82,6 @@ const Sidebar = () => {
                 </div>
             </div>
             
-            {/* Footer Section */}
-            <div className="p-4 border-t border-slate-100 space-y-1">
-                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors text-left">
-                    <Settings size={18} className="text-slate-500" />
-                    <span>Settings</span>
-                </button>
-            </div>
         </aside>
     );
 };

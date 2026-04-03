@@ -54,7 +54,9 @@ public class CaseService {
 
                 dql = String.format(
                     "SELECT r_object_id, object_name, subject, ho_ro, description, " +
-                    "department_name, functions, r_creation_date " +
+                    "department_name, functions, r_creation_date, r_creator_name, " +
+                    "task_priority, status, case_nature, disposal_level, " +
+                    "file_number, types, language_type " +
                     "FROM cms_case_folder " +
                     "WHERE r_creation_date >= DATE('%s', 'yyyy-mm-dd') " +
                     "ORDER BY r_creation_date DESC " +
@@ -71,7 +73,9 @@ public class CaseService {
 
                 dql = String.format(
                     "SELECT r_object_id, object_name, subject, ho_ro, description, " +
-                    "department_name, functions, r_creation_date " +
+                    "department_name, functions, r_creation_date, r_creator_name, " +
+                    "task_priority, status, case_nature, disposal_level, " +
+                    "file_number, types, language_type " +
                     "FROM cms_case_folder " +
                     "WHERE object_name LIKE '%%%s%%' " +
                     "ORDER BY r_creation_date DESC " +

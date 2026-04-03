@@ -4,10 +4,13 @@ import {
     Search, ChevronLeft, ChevronRight, Briefcase,
     ChevronsLeft, Loader2, X, Eye, RefreshCw,
     FileText, CheckCircle, AlertCircle, PlayCircle, Clock,
-    AlertTriangle
+    AlertTriangle, Inbox, ArrowRightLeft, ClipboardList
 } from 'lucide-react';
+import { CaseInboxContent } from './CaseInbox2Page';
+import { DelegateContent, CaseDetailsModal, MovementRegisterModal } from './DelegatePage';
 
 const CasesPage = () => {
+    const [activeTab, setActiveTab] = useState('cases');
     const [cases, setCases] = useState([]);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
@@ -32,6 +35,10 @@ const CasesPage = () => {
     // Log Modal State
     const [logModalOpen, setLogModalOpen] = useState(false);
     const [selectedLogItem, setSelectedLogItem] = useState(null);
+
+    // Case Details & Movement Register modals
+    const [detailCase, setDetailCase] = useState(null);
+    const [movementCase, setMovementCase] = useState(null);
 
     const fetchCases = useCallback(async (searchTerm, pageNum) => {
         setLoading(true);
@@ -194,12 +201,63 @@ const CasesPage = () => {
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
-            {/* Header + Search */}
+            {/* Header */}
             <div className="flex items-center justify-between gap-4 mb-6">
                 <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                     <Briefcase className="text-[#0A66C2]" />
                     Case Management
                 </h1>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex items-center gap-1 mb-6 border-b border-slate-200">
+                <button
+                    onClick={() => setActiveTab('cases')}
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+                        activeTab === 'cases'
+                            ? 'border-[#0A66C2] text-[#0A66C2]'
+                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    }`}
+                >
+                    <Briefcase size={16} />
+                    Cases
+                </button>
+                <button
+                    onClick={() => setActiveTab('inbox')}
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+                        activeTab === 'inbox'
+                            ? 'border-[#0A66C2] text-[#0A66C2]'
+                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    }`}
+                >
+                    <Inbox size={16} />
+                    Case Inbox
+                </button>
+                <button
+                    onClick={() => setActiveTab('delegate')}
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+                        activeTab === 'delegate'
+                            ? 'border-[#0A66C2] text-[#0A66C2]'
+                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    }`}
+                >
+                    <ArrowRightLeft size={16} />
+                    Delegate Case
+                </button>
+            </div>
+
+            {/* Case Inbox Tab */}
+            {activeTab === 'inbox' && <CaseInboxContent />}
+
+            {/* Delegate Case Tab */}
+            {activeTab === 'delegate' && <DelegateContent />}
+
+            {/* Cases Tab */}
+            {activeTab === 'cases' && (
+            <>
+            {/* Search */}
+            <div className="flex items-center justify-end gap-4 mb-6">
+                <div>
                 
                 <form onSubmit={handleSearch} className="flex items-center gap-2">
                     <div className="relative">
@@ -226,6 +284,7 @@ const CasesPage = () => {
                         Search
                     </button>
                 </form>
+                </div>
             </div>
 
             {/* Results Table */}
@@ -256,10 +315,9 @@ const CasesPage = () => {
                                     <tr>
                                         <th className="px-6 py-3 font-semibold text-slate-700 w-16">#</th>
                                         <th className="px-6 py-3 font-semibold text-slate-700">Case Number</th>
-                                        <th className="px-6 py-3 font-semibold text-slate-700">Subject</th>
                                         <th className="px-6 py-3 font-semibold text-slate-700">Description</th>
                                         <th className="px-6 py-3 font-semibold text-slate-700">Office / Dept</th>
-                                        <th className="px-6 py-3 font-semibold text-slate-700 text-center w-24">Actions</th>
+                                        <th className="px-6 py-3 font-semibold text-slate-700 text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -268,15 +326,14 @@ const CasesPage = () => {
                                             <tr key={i} className="animate-pulse">
                                                 <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-8"></div></td>
                                                 <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-32"></div></td>
-                                                <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-48"></div></td>
                                                 <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-40"></div></td>
                                                 <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-24"></div></td>
-                                                <td className="px-6 py-2.5"><div className="h-8 bg-slate-100 rounded w-8 mx-auto"></div></td>
+                                                <td className="px-6 py-2.5"><div className="h-4 bg-slate-100 rounded w-16 mx-auto"></div></td>
                                             </tr>
                                         ))
                                     ) : cases.length === 0 ? (
                                         <tr>
-                                            <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
+                                            <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
                                                 <p className="font-medium">No cases found</p>
                                                 <p className="text-xs mt-1">Try a different search term</p>
                                             </td>
@@ -286,7 +343,6 @@ const CasesPage = () => {
                                             <tr key={c.r_object_id || idx} className="hover:bg-blue-50/30 transition-colors group">
                                                 <td className="px-6 py-2.5 text-slate-400 font-mono text-xs">{(page - 1) * pageSize + idx + 1}</td>
                                                 <td className="px-6 py-2.5 font-medium text-slate-900">{c.object_name || '-'}</td>
-                                                <td className="px-6 py-2.5 text-slate-600 font-medium">{c.subject || '-'}</td>
                                                 <td className="px-6 py-2.5 text-slate-500 max-w-xs truncate" title={c.description}>{c.description || '-'}</td>
                                                 <td className="px-6 py-2.5 text-slate-500">
                                                     <div className="flex flex-col">
@@ -294,14 +350,17 @@ const CasesPage = () => {
                                                         <span className="text-xs text-slate-400">{c.department_name}</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-2.5 text-center">
-                                                    <button
-                                                        onClick={() => handleViewWorkflow(c)}
-                                                        className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-[#0A66C2] hover:border-[#0A66C2] shadow-sm rounded-lg transition-all"
-                                                        title="View Workflow"
-                                                    >
-                                                        <Eye size={18} />
-                                                    </button>
+                                                <td className="px-6 py-2.5">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <button onClick={() => setDetailCase(c)} title="Case Details"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#0A66C2] hover:bg-blue-50 transition-all">
+                                                            <FileText size={15} />
+                                                        </button>
+                                                        <button onClick={() => setMovementCase(c)} title="Movement Register"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                                                            <ClipboardList size={15} />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
@@ -570,6 +629,14 @@ const CasesPage = () => {
                     </div>
                 </div>
             )}
+            </>
+            )}
+
+            {/* Case Details Modal */}
+            {detailCase && <CaseDetailsModal caseItem={detailCase} onClose={() => setDetailCase(null)} />}
+
+            {/* Movement Register Modal */}
+            {movementCase && <MovementRegisterModal caseItem={movementCase} onClose={() => setMovementCase(null)} />}
         </div>
     );
 };

@@ -236,8 +236,9 @@ public class UserController {
             @PathVariable String loginName,
             @RequestBody Map<String, Object> request) {
         String newPassword = (String) request.get("password");
+        String adminUser = (String) request.get("adminUser");
         try {
-            Map<String, Object> result = userService.updateUserPassword(loginName, newPassword);
+            Map<String, Object> result = userService.updateUserPassword(loginName, newPassword, adminUser);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
@@ -254,8 +255,9 @@ public class UserController {
             @PathVariable String loginName,
             @RequestBody Map<String, Object> request) {
         String newPassword = (String) request.get("password");
+        String adminUser = (String) request.get("adminUser");
         try {
-            Map<String, Object> result = userService.updateInlineUserPassword(loginName, newPassword);
+            Map<String, Object> result = userService.updateInlineUserPassword(loginName, newPassword, adminUser);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
