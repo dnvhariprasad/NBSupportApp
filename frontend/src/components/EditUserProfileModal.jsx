@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { X, Save, Loader2, User, Building2, MapPin, Tag, GraduationCap, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
-import { USER_GRADES, getDepartments, getLocations, RO_LOCATIONS, TE_LOCATIONS } from '../data/nabardMetadata.js';
+import { USER_GRADES, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS } from '../data/nabardMetadata.js';
 
 const USER_GRADE_OPTIONS = [
     { value: '', label: '— Select grade —', level: '' },
@@ -51,6 +51,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [delegateSelectedUser, setDelegateSelectedUser] = useState('');
     const [delegatingCaseId,     setDelegatingCaseId]     = useState(null);
     const [delegateError,        setDelegateError]        = useState(null);
+    const [deptOptions,          setDeptOptions]          = useState([]);
 
     useEffect(() => {
         if (!isOpen || !user) return;
@@ -62,7 +63,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             .catch(() => initForm(user));
     }, [isOpen, user]);
 
-    const initForm = (profile) => {
+    const initForm = async (profile) => {
         const officeType = profile.office_type || '';
         const location   = profile.location   || '';
         const deptName   = profile.department_name || '';
@@ -71,7 +72,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         const locObj      = locs.find(l => l.location === location);
         const roShortCode = locObj ? locObj.shortCode : (profile.ro_short_code || '');
 
-        const depts  = getDepartments(officeType, location);
+        const depts  = officeType ? await fetchDepartments(officeType, location) : [];
+        setDeptOptions(depts);
         const isROTE = ['RO', 'TE'].includes(officeType);
 
         let deptShortCode      = '';
@@ -215,7 +217,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     };
 
-    const handleOfficeTypeChange = (v) => {
+    const handleOfficeTypeChange = async (v) => {
         set('office_type',               v);
         set('location',                  v === 'HO' ? 'Mumbai' : '');
         set('ro_short_code',             '');
@@ -223,9 +225,14 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         set('department_short_code',     '');
         set('department_names',          []);
         set('department_short_code_multi', []);
+        if (v === 'HO') {
+            setDeptOptions(await fetchDepartments('HO'));
+        } else {
+            setDeptOptions([]);
+        }
     };
 
-    const handleLocationChange = (v) => {
+    const handleLocationChange = async (v) => {
         set('location', v);
         const locs = getLocations(form.office_type);
         const loc  = locs.find(l => l.location === v);
@@ -234,12 +241,16 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         set('department_short_code',     '');
         set('department_names',          []);
         set('department_short_code_multi', []);
+        if (v && form.office_type) {
+            setDeptOptions(await fetchDepartments(form.office_type, v));
+        } else {
+            setDeptOptions([]);
+        }
     };
 
     const handleDepartmentChange = (v) => {
         set('department_name', v);
-        const depts = getDepartments(form.office_type, form.location);
-        const dept  = depts.find(d => d.name === v);
+        const dept = deptOptions.find(d => d.name === v);
         set('department_short_code', dept ? dept.shortCode : '');
     };
 
@@ -317,7 +328,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const adminRole   = storedUser.properties?.admin_role || storedUser.admin_role || null;
     const isSuperAdmin = adminRole === 'Super Admin';
 
-    const depts     = getDepartments(form.office_type, form.location);
+    const depts     = deptOptions;
     const needsLoc  = ['RO', 'TE'].includes(form.office_type) && !form.location;
     const locations = getLocations(form.office_type);
     const isHO      = form.office_type === 'HO';

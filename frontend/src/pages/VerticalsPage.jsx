@@ -5,7 +5,7 @@ import {
     CheckCircle2, AlertCircle, ChevronDown, Building2, MapPin,
     UserCheck, UsersRound, Star, ClipboardList, ArrowRightLeft,
 } from 'lucide-react';
-import { HO_DEPARTMENTS, RO_LOCATIONS, TE_LOCATIONS, getDepartments, getLocations } from '../data/nabardMetadata.js';
+import { RO_LOCATIONS, TE_LOCATIONS, getLocations, fetchDepartments } from '../data/nabardMetadata.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -89,8 +89,11 @@ const VerticalCreationTab = ({ setToast }) => {
     const [verticalFullName,   setVerticalFullName]   = useState('');
     const [verticalShortcode,  setVerticalShortcode]  = useState('');
     const [creating,           setCreating]           = useState(false);
+    const [hoDepts,            setHoDepts]            = useState([]);
 
-    const deptObj         = HO_DEPARTMENTS.find(d => d.name === dept);
+    useEffect(() => { fetchDepartments('HO').then(setHoDepts); }, []);
+
+    const deptObj         = hoDepts.find(d => d.name === dept);
     const prefix          = deptObj ? `ecm_ho_${deptObj.shortCode.toLowerCase()}_` : 'ecm_ho_';
     const cleanSuffix     = normalizeSuffix(suffix);
     const groupName       = cleanSuffix ? `${prefix}${cleanSuffix}` : '';
@@ -140,7 +143,7 @@ const VerticalCreationTab = ({ setToast }) => {
                 <Select
                     value={dept} onChange={v => { setDept(v); setSuffix(''); }}
                     placeholder="— Select department —"
-                    options={HO_DEPARTMENTS.map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))}
+                    options={hoDepts.map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))}
                 />
             </div>
 
@@ -214,8 +217,15 @@ const AddMembersTab = ({ setToast }) => {
     const [loadingUserGroups, setLoadingUserGroups] = useState(false);
     const [adding,            setAdding]            = useState(false);
     const [creatingVH,        setCreatingVH]        = useState(false);
+    const [deptOptions,       setDeptOptions]       = useState([]);
 
     const isROTE = ['RO', 'TE'].includes(officeType);
+
+    // Load departments dynamically when officeType or location changes
+    useEffect(() => {
+        if (!officeType || (isROTE && !location)) { setDeptOptions([]); return; }
+        fetchDepartments(officeType, location).then(setDeptOptions);
+    }, [officeType, location]);
 
     const resetBelow = (level) => {
         if (level === 'location') { setLocation(''); setRoShortCode(''); }
@@ -264,8 +274,7 @@ const AddMembersTab = ({ setToast }) => {
         setVerticalMembers({ users: [], groups: [] });
         setUserGroups([]); setVhGroupName(''); setVhExists(false); setVhMembers([]);
         if (!v) return;
-        const depts = getDepartments(officeType, location);
-        const d = depts.find(d => d.name === v);
+        const d = deptOptions.find(d => d.name === v);
         if (!d) return;
 
         const prefix = officeType === 'HO'
@@ -475,7 +484,7 @@ const AddMembersTab = ({ setToast }) => {
                         <Select value={dept} onChange={handleDeptChange}
                             disabled={!officeType || (isROTE && !location)}
                             placeholder={!officeType ? '— Select office type first —' : (isROTE && !location) ? '— Select location first —' : '— Select dept —'}
-                            options={getDepartments(officeType, location).map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
+                            options={deptOptions.map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
                     </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -670,6 +679,7 @@ const RemoveMembersTab = ({ setToast }) => {
     const [loadingDelegateUsers,  setLoadingDelegateUsers]  = useState(false);
     const [delegateSelectedUser,  setDelegateSelectedUser]  = useState('');
     const [delegatingCaseId,      setDelegatingCaseId]      = useState(null);
+    const [deptOptions,           setDeptOptions]           = useState([]);
 
     const pfield = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
 
@@ -729,6 +739,12 @@ const RemoveMembersTab = ({ setToast }) => {
 
     const isROTE = ['RO', 'TE'].includes(officeType);
 
+    // Load departments dynamically when officeType or location changes
+    useEffect(() => {
+        if (!officeType || (isROTE && !location)) { setDeptOptions([]); return; }
+        fetchDepartments(officeType, location).then(setDeptOptions);
+    }, [officeType, location]);
+
     const resetBelow = (level) => {
         if (level === 'officeType') { setLocation(''); setRoShortCode(''); }
         setDept(''); setSelectedGroup(''); setVerticals([]); setMembers({ users: [], groups: [] });
@@ -761,8 +777,7 @@ const RemoveMembersTab = ({ setToast }) => {
     const handleDeptChange = async (v) => {
         setDept(v); setSelectedGroup(''); setVerticals([]); setMembers({ users: [], groups: [] });
         if (!v) return;
-        const depts = getDepartments(officeType, location);
-        const d = depts.find(d => d.name === v);
+        const d = deptOptions.find(d => d.name === v);
         if (!d) return;
         const prefix = officeType === 'HO'
             ? `ecm_ho_${d.shortCode.toLowerCase()}`
@@ -797,8 +812,7 @@ const RemoveMembersTab = ({ setToast }) => {
      * RO/TE → NB-<OFFICETYPE>-<ROSHORTCODE>-<DEPTSC>-  e.g. NB-RO-TN-DIT-
      */
     const computeCasePrefix = () => {
-        const depts   = getDepartments(officeType, location);
-        const deptObj = depts.find(d => d.name === dept);
+        const deptObj = deptOptions.find(d => d.name === dept);
         const deptSC  = (deptObj?.shortCode || '').toUpperCase();
 
         if (officeType === 'HO') {
@@ -995,7 +1009,7 @@ const RemoveMembersTab = ({ setToast }) => {
                         <Select value={dept} onChange={handleDeptChange}
                             disabled={!officeType || (isROTE && !location)}
                             placeholder={!officeType ? '— Select office type first —' : (isROTE && !location) ? '— Select location first —' : '— Select dept —'}
-                            options={getDepartments(officeType, location).map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
+                            options={deptOptions.map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
                     </div>
                 </div>
                 <div>

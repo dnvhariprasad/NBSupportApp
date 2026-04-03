@@ -3,7 +3,7 @@ import api from '../api/axios';
 import {
     Building2, ChevronDown, Loader2, CheckCircle2, AlertCircle, X, MapPin,
 } from 'lucide-react';
-import { RO_LOCATIONS, TE_LOCATIONS } from '../data/nabardMetadata.js';
+import { RO_LOCATIONS, TE_LOCATIONS, invalidateDeptCache } from '../data/nabardMetadata.js';
 
 // ─── Shared UI primitives ────────────────────────────────────────────────────
 
@@ -100,6 +100,7 @@ export default function DepartmentPage() {
             const { data } = await api.post('/departments', payload);
             setResult(data);
             if (data.success) {
+                invalidateDeptCache(officeType, location || undefined);
                 setDepartmentName('');
                 setDmdSelection('');
                 setLocation('');

@@ -1,3 +1,5 @@
+import api from '../api/axios';
+
 // Nabard metadata: departments, locations, and grades for cascading dropdowns
 
 export const HO_DEPARTMENTS = [
@@ -927,6 +929,7 @@ export const USER_GRADES = [
 
 /**
  * Returns the department list for the given office_type + location combination.
+ * Uses the hardcoded fallback lists.
  * @param {string} officeType - 'HO' | 'RO' | 'TE'
  * @param {string} location   - location string (only used for RO/TE)
  * @returns {Array<{name: string, shortCode: string}>}
@@ -947,4 +950,55 @@ export function getLocations(officeType) {
   if (officeType === 'RO') return RO_LOCATIONS;
   if (officeType === 'TE') return TE_LOCATIONS;
   return [];
+}
+
+// ─── Dynamic department fetching from Documentum ────────────────────────────
+
+const _deptCache = {};
+
+function cacheKey(officeType, location) {
+  return officeType + '|' + (location || '');
+}
+
+/**
+ * Fetches departments dynamically from Documentum via GET /api/departments.
+ * Results are cached per (officeType, location) pair for the session.
+ * Falls back to the hardcoded lists on error.
+ *
+ * @param {string} officeType - 'HO' | 'RO' | 'TE'
+ * @param {string} [location] - location string (required for RO/TE)
+ * @returns {Promise<Array<{name: string, shortCode: string}>>}
+ */
+export async function fetchDepartments(officeType, location) {
+  if (!officeType) return [];
+  const key = cacheKey(officeType, location);
+  if (_deptCache[key]) return _deptCache[key];
+
+  try {
+    const params = { officeType };
+    if (location) params.location = location;
+    const { data } = await api.get('/departments', { params });
+    if (Array.isArray(data) && data.length > 0) {
+      _deptCache[key] = data;
+      return data;
+    }
+  } catch (e) {
+    console.warn('[fetchDepartments] API failed, using fallback:', e?.message);
+  }
+  // Fallback to hardcoded
+  const fallback = getDepartments(officeType, location);
+  _deptCache[key] = fallback;
+  return fallback;
+}
+
+/**
+ * Invalidates the cached departments for a given key (or all if no args).
+ * Call after creating a new department so dropdowns refresh.
+ */
+export function invalidateDeptCache(officeType, location) {
+  if (officeType) {
+    delete _deptCache[cacheKey(officeType, location)];
+  } else {
+    Object.keys(_deptCache).forEach(k => delete _deptCache[k]);
+  }
 }

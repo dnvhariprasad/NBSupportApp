@@ -4,7 +4,7 @@ import {
     FolderOpen, FileText, Layers, Building2, MapPin, Tag,
     CheckCircle2, AlertCircle, X, Loader2, Plus, Hash, RefreshCw, Trash2, Pencil
 } from 'lucide-react';
-import { getDepartments, getLocations } from '../data/nabardMetadata.js';
+import { getLocations, fetchDepartments } from '../data/nabardMetadata.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 const Toast = ({ toast, onDismiss }) => {
@@ -301,8 +301,14 @@ const FileNumberTab = ({ onToast }) => {
     const isHO            = form.officeType === 'HO';
     const locationOptions = getLocations(form.officeType);
 
+    // Dynamic department fetching
+    const [allDeptOptions, setAllDeptOptions] = useState([]);
+    useEffect(() => {
+        if (!form.officeType || (!isHO && !form.location)) { setAllDeptOptions([]); return; }
+        fetchDepartments(form.officeType, form.location).then(setAllDeptOptions);
+    }, [form.officeType, form.location]);
+
     // For Local Admin: filter departments to only those in their profile
-    const allDeptOptions  = getDepartments(form.officeType, form.location);
     const deptOptions     = isLocalAdmin && profileCtx
         ? (() => {
             const raw = profileCtx.department_short_code_multi;
