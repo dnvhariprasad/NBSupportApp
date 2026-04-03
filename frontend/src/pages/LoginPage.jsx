@@ -88,9 +88,6 @@ const LoginPage = () => {
                     <form onSubmit={handleSubmit} className="space-y-5">
                         
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2" htmlFor="username">
-                                Username
-                            </label>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                                     <Mail size={18} className="text-gray-400" />
@@ -101,21 +98,16 @@ const LoginPage = () => {
                                     name="username"
                                     value={formData.username}
                                     onChange={handleChange}
-                                    className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg 
-                                             text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] 
+                                    className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg
+                                             text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2]
                                              transition-all text-sm"
-                                    placeholder="name@company.com"
+                                    placeholder="Username"
                                     required
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <div className="flex items-center justify-between mb-2">
-                                <label className="block text-sm font-semibold text-gray-700" htmlFor="password">
-                                    Password
-                                </label>
-                            </div>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                                     <Lock size={18} className="text-gray-400" />
@@ -126,10 +118,10 @@ const LoginPage = () => {
                                     name="password"
                                     value={formData.password}
                                     onChange={handleChange}
-                                    className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg 
-                                             text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] 
+                                    className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg
+                                             text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2]
                                              transition-all text-sm"
-                                    placeholder="••••••••"
+                                    placeholder="Password"
                                     required
                                 />
                             </div>
@@ -175,11 +167,6 @@ const LoginPage = () => {
 
                 </motion.div>
 
-                <div className="mt-8 flex gap-6 text-xs text-gray-500 font-medium">
-                    <a href="#" className="hover:text-gray-800">Contact Support</a>
-                    <a href="#" className="hover:text-gray-800">Terms of Service</a>
-                    <a href="#" className="hover:text-gray-800">Privacy Policy</a>
-                </div>
             </div>
         </div>
     );
