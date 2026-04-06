@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NSP-19 — Department Rename &amp; Merge Implementation Plan</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad: true, theme: 'default', securityLevel: 'loose'});</script>
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #f8fafc; color: #334155; line-height: 1.7; font-size: 15px; }
+
+        .header { position: fixed; top: 0; left: 0; right: 0; height: 64px; background: #0f172a; color: #fff; display: flex; align-items: center; padding: 0 24px; z-index: 1000; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+        .header-logo { display: flex; align-items: center; gap: 12px; }
+        .header-logo-icon { width: 36px; height: 36px; background: #0A66C2; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; }
+        .header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+        .header h1 span { color: #94a3b8; font-weight: 400; }
+        .hamburger { display: none; background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; margin-right: 16px; padding: 4px 8px; border-radius: 4px; }
+
+        .sidebar { position: fixed; top: 64px; left: 0; bottom: 0; width: 280px; background: #1e293b; overflow-y: auto; z-index: 900; transition: transform 0.3s; scrollbar-width: thin; scrollbar-color: #475569 transparent; }
+        .sidebar-nav { padding: 16px 0; }
+        .sidebar-section { margin-bottom: 4px; }
+        .sidebar-section-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; color: #94a3b8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; cursor: pointer; user-select: none; }
+        .sidebar-section-header:hover { color: #cbd5e1; }
+        .sidebar-section-header .chevron { font-size: 10px; transition: transform 0.2s; }
+        .sidebar-section-header.collapsed .chevron { transform: rotate(-90deg); }
+        .sidebar-section-items { overflow: hidden; transition: max-height 0.3s; }
+        .sidebar-section-items.collapsed { max-height: 0 !important; }
+        .sidebar-link { display: block; padding: 8px 20px 8px 28px; color: #cbd5e1; text-decoration: none; font-size: 13px; border-left: 3px solid transparent; transition: all 0.15s; }
+        .sidebar-link:hover { color: #fff; background: rgba(255,255,255,0.05); }
+        .sidebar-link.active { color: #fff; background: rgba(10,102,194,0.15); border-left-color: #0A66C2; font-weight: 500; }
+        .sidebar-divider { height: 1px; background: #334155; margin: 8px 20px; }
+
+        .content { margin-left: 280px; margin-top: 64px; padding: 40px 48px 80px; max-width: 1100px; }
+        .content section { margin-bottom: 56px; }
+        .content h2 { font-size: 26px; font-weight: 800; color: #0f172a; margin-bottom: 8px; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0; }
+        .content h2 .sn { color: #0A66C2; margin-right: 8px; }
+        .content h3 { font-size: 19px; font-weight: 700; color: #1e293b; margin-top: 28px; margin-bottom: 12px; }
+        .content h4 { font-size: 15px; font-weight: 600; color: #334155; margin-top: 20px; margin-bottom: 8px; }
+        .content p { margin-bottom: 14px; color: #475569; }
+        .content ul, .content ol { margin-bottom: 14px; padding-left: 24px; }
+        .content li { margin-bottom: 6px; color: #475569; }
+
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-green { background: #dcfce7; color: #166534; }
+        .badge-amber { background: #fef3c7; color: #92400e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-purple { background: #f3e8ff; color: #6b21a8; }
+        .badge-gray { background: #f1f5f9; color: #475569; }
+
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .card-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .card-icon-blue { background: #dbeafe; }
+        .card-icon-green { background: #dcfce7; }
+        .card-icon-amber { background: #fef3c7; }
+        .card-icon-red { background: #fee2e2; }
+        .card-icon-purple { background: #f3e8ff; }
+        .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        .ic { background: #f1f5f9; color: #0f172a; padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono','Fira Code',monospace; font-size: 13px; border: 1px solid #e2e8f0; }
+        .code-block { background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 20px 24px; font-family: monospace; font-size: 12.5px; line-height: 1.8; overflow-x: auto; margin-bottom: 20px; }
+
+        .table-wrapper { overflow-x: auto; margin-bottom: 20px; border-radius: 10px; border: 1px solid #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+        thead { background: #f8fafc; }
+        th { text-align: left; padding: 12px 16px; font-weight: 600; color: #1e293b; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+        td { padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569; vertical-align: top; }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover { background: #f8fafc; }
+
+        .diagram-wrapper { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px 24px; margin: 20px 0; overflow-x: auto; }
+        .diagram-wrapper .diagram-title { font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 16px; text-align: center; }
+        .mermaid { text-align: center; }
+
+        .callout { border-radius: 10px; padding: 16px 20px; margin: 16px 0; display: flex; gap: 12px; align-items: flex-start; }
+        .callout-icon { font-size: 18px; flex-shrink: 0; }
+        .callout p { margin: 0; font-size: 13.5px; color: inherit; }
+        .callout-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+        .callout-warning { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+        .callout-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+        .callout-danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+        .step-wizard { counter-reset: wizard; margin: 20px 0; }
+        .step-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; position: relative; padding-left: 72px; }
+        .step-card::before { counter-increment: wizard; content: "Step " counter(wizard); position: absolute; left: 20px; top: 20px; background: #0A66C2; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; }
+        .step-card h4 { margin-top: 0; color: #0f172a; }
+        .step-card p { margin-bottom: 8px; font-size: 14px; }
+        .step-card .step-status { display: inline-block; padding: 2px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+        .step-pausable { border-left: 4px solid #f59e0b; }
+        .step-auto { border-left: 4px solid #22c55e; }
+        .step-manual { border-left: 4px solid #0A66C2; }
+
+        .wireframe { background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 24px; margin: 20px 0; }
+        .wireframe-title { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+        .wireframe-box { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; font-size: 13px; color: #475569; }
+        .wireframe-box.active { border-color: #0A66C2; background: #eff6ff; }
+        .wireframe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .wireframe-btn { display: inline-block; padding: 6px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; margin-right: 8px; margin-top: 8px; }
+        .wireframe-btn-primary { background: #0A66C2; color: #fff; }
+        .wireframe-btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+        .wireframe-btn-danger { background: #fee2e2; color: #991b1b; }
+
+        .decision-box { background: #fefce8; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+        .decision-box h4 { color: #854d0e; margin-bottom: 8px; }
+
+        @media (max-width: 900px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.3); }
+            .content { margin-left: 0; padding: 24px 20px 60px; }
+            .hamburger { display: block; }
+            .card-grid, .wireframe-grid { grid-template-columns: 1fr; }
+        }
+        @media print { .header, .sidebar { display: none !important; } .content { margin: 0; padding: 20px; max-width: 100%; } }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">&#9776;</button>
+    <div class="header-logo">
+        <div class="header-logo-icon">NB</div>
+        <h1>NSP-19 <span>&mdash; Department Rename &amp; Merge Plan</span></h1>
+    </div>
+</header>
+
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-nav">
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">Overview <span class="chevron">&#9660;</span></div>
+            <div class="sidebar-section-items">
+                <a href="#context" class="sidebar-link">Context &amp; Scope</a>
+                <a href="#decisions" class="sidebar-link">Key Decisions</a>
+                <a href="#object-model" class="sidebar-link">Object Model</a>
+            </div>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">Rename Workflow <span class="chevron">&#9660;</span></div>
+            <div class="sidebar-section-items">
+                <a href="#rename-overview" class="sidebar-link">Rename Overview</a>
+                <a href="#rename-wizard" class="sidebar-link">Wizard Steps (6)</a>
+                <a href="#rename-ux" class="sidebar-link">UX Wireframes</a>
+            </div>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">Merge Workflow <span class="chevron">&#9660;</span></div>
+            <div class="sidebar-section-items">
+                <a href="#merge-overview" class="sidebar-link">Merge Overview</a>
+                <a href="#merge-wizard" class="sidebar-link">Wizard Steps (7)</a>
+                <a href="#merge-ux" class="sidebar-link">UX Wireframes</a>
+            </div>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">Technical <span class="chevron">&#9660;</span></div>
+            <div class="sidebar-section-items">
+                <a href="#api" class="sidebar-link">API Endpoints</a>
+                <a href="#backend" class="sidebar-link">Backend Service</a>
+                <a href="#frontend" class="sidebar-link">Frontend Page</a>
+                <a href="#files" class="sidebar-link">Files to Create</a>
+            </div>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" onclick="toggleSection(this)">Safety <span class="chevron">&#9660;</span></div>
+            <div class="sidebar-section-items">
+                <a href="#safety" class="sidebar-link">Safety &amp; Rollback</a>
+                <a href="#verification" class="sidebar-link">Verification</a>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="content">
+
+<!-- ═══════ 1. CONTEXT ═══════ -->
+<section id="context">
+    <h2><span class="sn">01</span> Context &amp; Scope</h2>
+    <p><strong>Jira:</strong> NSP-19 &mdash; Super Admin can rename and merge departments/verticals at HO, with linked cases and letters arranged for access.</p>
+
+    <div class="callout callout-info">
+        <span class="callout-icon">&#8505;</span>
+        <p><strong>Scope:</strong> HO departments and verticals only. RO/TE support deferred to a follow-up ticket.</p>
+    </div>
+
+    <h3>Requirements</h3>
+    <ul>
+        <li><strong>Rename</strong> &mdash; Change department/vertical name and short code at HO</li>
+        <li><strong>Merge</strong> &mdash; Combine two HO departments/verticals into one, reassigning users</li>
+        <li><strong>Access</strong> &mdash; Linked cases and letters remain accessible after the operation</li>
+        <li><strong>Multi-session</strong> &mdash; Each step can be performed independently; user can pause and resume later</li>
+        <li><strong>User-driven</strong> &mdash; Every action shows affected artifacts and lets the user trigger the action</li>
+    </ul>
+</section>
+
+<!-- ═══════ 2. DECISIONS ═══════ -->
+<section id="decisions">
+    <h2><span class="sn">02</span> Key Decisions</h2>
+
+    <div class="card-grid">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon card-icon-blue">&#128196;</div>
+                <div><h4 style="margin:0">Historical Data</h4></div>
+            </div>
+            <p>Existing cases and letters <strong>keep the old department name</strong>. Only new items use the renamed department. Preserves audit trail.</p>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon card-icon-amber">&#128101;</div>
+                <div><h4 style="margin:0">Group Handling</h4></div>
+            </div>
+            <p>After moving members, old groups are <strong>kept empty</strong> (not deleted). ACLs on existing cases remain valid. Safe rollback option.</p>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon card-icon-green">&#9989;</div>
+                <div><h4 style="margin:0">User Control</h4></div>
+            </div>
+            <p>Every step shows a <strong>grid of affected artifacts</strong> with action buttons. User decides when to execute each step. Multi-session capable.</p>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon card-icon-purple">&#127968;</div>
+                <div><h4 style="margin:0">Scope</h4></div>
+            </div>
+            <p><strong>HO departments/verticals first.</strong> RO/TE deferred to follow-up ticket.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════ 3. OBJECT MODEL ═══════ -->
+<section id="object-model">
+    <h2><span class="sn">03</span> Object Model &amp; Impact Map</h2>
+
+    <div class="diagram-wrapper">
+        <div class="diagram-title">Department &harr; Artifacts Relationship</div>
+        <pre class="mermaid">
+graph TD
+    DEPT["HO Department<br/><i>e.g. FSDD (short: fsdd)</i>"]
+
+    subgraph Folders["Documentum Folders"]
+        F1["/ECM CONFIG/Office Type/HO/FSDD"]
+    end
+
+    subgraph Groups["dm_group (5+ per dept)"]
+        G1["ecm_ho_fsdd"]
+        G2["ecm_ho_fsdd_casecreator"]
+        G3["ecm_ho_fsdd_{vertical}"]
+        G4["ecm_ho_vertical_head_fsdd_{vertical}"]
+        G5["ecm_digidak_ho_fsdd_cgm"]
+    end
+
+    subgraph Users["cms_user_profile"]
+        U1["department_name = 'FSDD'"]
+        U2["department_short_code_multi contains 'fsdd'"]
+    end
+
+    subgraph Cases["cms_case_folder"]
+        C1["department_name = 'FSDD'"]
+        C2["department_short_code = 'fsdd'"]
+    end
+
+    subgraph Letters["cms_digidak_folder"]
+        L1["vertical = 'ecm_ho_fsdd_*'"]
+        L2["workflow_groups[] contains group names"]
+    end
+
+    subgraph Meta["cms_digidak_metadata"]
+        M1["region / short_codes referencing fsdd"]
+    end
+
+    DEPT --> F1
+    DEPT --> G1 & G2 & G3 & G4 & G5
+    G1 --> U1
+    G2 --> U2
+    G3 --> L1
+    G5 --> L2
+    DEPT --> C1 & C2
+    DEPT --> M1
+
+    style DEPT fill:#dbeafe,stroke:#0A66C2,color:#1e40af,stroke-width:3px
+    style Folders fill:#f0fdf4,stroke:#22c55e
+    style Groups fill:#fef3c7,stroke:#f59e0b
+    style Users fill:#ede9fe,stroke:#8b5cf6
+    style Cases fill:#fee2e2,stroke:#ef4444
+    style Letters fill:#dbeafe,stroke:#3b82f6
+    style Meta fill:#f1f5f9,stroke:#94a3b8
+        </pre>
+    </div>
+
+    <h3>Group Naming Convention</h3>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Pattern</th><th>Purpose</th><th>Example (dept=fsdd)</th></tr></thead>
+            <tbody>
+                <tr><td><span class="ic">ecm_ho_{dept}</span></td><td>Main department access group</td><td>ecm_ho_fsdd</td></tr>
+                <tr><td><span class="ic">ecm_ho_{dept}_casecreator</span></td><td>Case creation permission</td><td>ecm_ho_fsdd_casecreator</td></tr>
+                <tr><td><span class="ic">ecm_ho_{dept}_{vertical}</span></td><td>Vertical-specific sub-group</td><td>ecm_ho_fsdd_bpe</td></tr>
+                <tr><td><span class="ic">ecm_ho_vertical_head_{dept}_{vertical}</span></td><td>Vertical head group</td><td>ecm_ho_vertical_head_fsdd_bpe</td></tr>
+                <tr><td><span class="ic">ecm_digidak_ho_{dept}_cgm</span></td><td>Digidak CGM group for letters</td><td>ecm_digidak_ho_fsdd_cgm</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ═══════ 4. RENAME OVERVIEW ═══════ -->
+<section id="rename-overview">
+    <h2><span class="sn">04</span> Rename Workflow</h2>
+
+    <div class="diagram-wrapper">
+        <div class="diagram-title">Rename &mdash; End-to-end flow</div>
+        <pre class="mermaid">
+sequenceDiagram
+    actor Admin as Super Admin
+    participant UI as Dept Admin Page
+    participant API as Spring Boot API
+    participant DCTM as Documentum
+
+    Admin->>UI: Select department to rename
+    UI->>API: GET /api/admin/departments/groups?prefix=ecm_ho_{old}
+    API->>DCTM: DQL: SELECT group_name FROM dm_group WHERE group_name LIKE 'ecm_ho_{old}%'
+    DCTM-->>API: List of groups
+    API-->>UI: Display groups in grid
+
+    Note over Admin,UI: Step 1: Review affected groups (pausable)
+
+    Admin->>UI: Enter new name + short code
+    UI->>API: GET /api/admin/departments/users?deptShortCode={old}
+    API->>DCTM: DQL: SELECT ... FROM cms_user_profile WHERE department_short_code_multi
+    DCTM-->>API: List of users
+    API-->>UI: Display users in grid
+
+    Note over Admin,UI: Step 2: Review affected users (pausable)
+
+    Admin->>UI: Click "Create New Groups"
+    loop For each old group
+        UI->>API: POST /api/admin/departments/groups/create
+        API->>DCTM: POST /groups (create ecm_ho_{new}*)
+    end
+
+    Note over Admin,UI: Step 3: Create new groups (pausable)
+
+    Admin->>UI: Click "Move Members" per group row
+    loop For each member in group
+        UI->>API: POST /api/admin/departments/groups/{target}/members
+        API->>DCTM: POST /groups/{target}/users
+        UI->>API: DELETE /api/admin/departments/groups/{source}/members/{member}
+        API->>DCTM: DELETE /groups/{source}/users/{member}
+    end
+
+    Note over Admin,UI: Step 4: Move members (per-group action buttons)
+
+    Admin->>UI: Click "Update User Profiles"
+    loop For each user
+        UI->>API: PATCH /api/admin/departments/users/{objectId}
+        API->>DCTM: POST /objects/{objectId} (X-Method-Override: PATCH)
+    end
+
+    Note over Admin,UI: Step 5: Update user profiles (pausable)
+
+    Admin->>UI: Click "Rename Folder"
+    UI->>API: PATCH /api/admin/departments/folder/{folderId}
+    API->>DCTM: POST /objects/{folderId} (rename object_name)
+
+    Note over Admin,UI: Step 6: Rename folder (final step)
+        </pre>
+    </div>
+</section>
+
+<!-- ═══════ 5. RENAME WIZARD ═══════ -->
+<section id="rename-wizard">
+    <h2><span class="sn">05</span> Rename &mdash; Wizard Steps</h2>
+
+    <div class="callout callout-warning">
+        <span class="callout-icon">&#9888;</span>
+        <p><strong>Multi-session:</strong> Each step is independent. The user can complete Step 1 today, Step 2 tomorrow, etc. The UI tracks completion status via API queries (checking if new groups exist, if members are moved, etc.).</p>
+    </div>
+
+    <div class="step-wizard">
+        <div class="step-card step-manual">
+            <h4>Select Department &amp; Enter New Name</h4>
+            <p>User selects the HO department to rename from a dropdown. Enters the new department name and new short code.</p>
+            <p><span class="step-status badge-blue badge">User Input</span></p>
+            <p><strong>UI:</strong> Dropdown + text inputs. Validates short code uniqueness.</p>
+        </div>
+
+        <div class="step-card step-pausable">
+            <h4>Review Affected Groups</h4>
+            <p>System queries all groups matching <span class="ic">ecm_ho_{oldShortCode}%</span> and displays them in a data grid.</p>
+            <p><strong>Grid columns:</strong> Group Name | Members Count | New Group Name (auto-generated) | Status</p>
+            <p><span class="step-status badge-amber badge">Pausable &mdash; Review only</span></p>
+            <p><strong>API:</strong> <span class="ic">GET /api/admin/departments/groups?prefix=ecm_ho_{old}</span></p>
+        </div>
+
+        <div class="step-card step-manual">
+            <h4>Create New Groups</h4>
+            <p>For each old group, the system shows the proposed new group name. User clicks <strong>"Create All"</strong> or creates individually via row action buttons.</p>
+            <p><strong>Grid columns:</strong> Old Group | New Group | Action [Create] | Status [Pending/Created/Failed]</p>
+            <p><span class="step-status badge-blue badge">User Action &mdash; per row or bulk</span></p>
+            <p><strong>API:</strong> <span class="ic">POST /api/admin/departments/groups/create</span> body: <span class="ic">{groupName}</span></p>
+        </div>
+
+        <div class="step-card step-manual">
+            <h4>Move Members (Group by Group)</h4>
+            <p>For each group pair (old &rarr; new), display members in a grid. User clicks <strong>"Move All"</strong> per group or selects individual members.</p>
+            <p><strong>Grid columns:</strong> Member Name | Type (User/Group) | Source Group | Target Group | Action [Move] | Status</p>
+            <p>Each row has a <strong>"Move"</strong> button. Bulk <strong>"Move All Members"</strong> button per group.</p>
+            <p><span class="step-status badge-blue badge">User Action &mdash; per member or per group</span></p>
+            <p><strong>API:</strong> <span class="ic">POST /api/admin/departments/members/move</span> body: <span class="ic">{sourceGroup, targetGroup, memberName, memberType}</span></p>
+        </div>
+
+        <div class="step-card step-pausable">
+            <h4>Update User Profiles</h4>
+            <p>Display all users whose <span class="ic">department_short_code_multi</span> contains the old code. Grid shows current vs new values.</p>
+            <p><strong>Grid columns:</strong> User Name | Login | Current Dept | New Dept | Action [Update] | Status</p>
+            <p>User clicks <strong>"Update All"</strong> or updates individually.</p>
+            <p><span class="step-status badge-blue badge">User Action &mdash; per user or bulk</span></p>
+            <p><strong>API:</strong> <span class="ic">PATCH /api/admin/departments/users/{objectId}</span> body: <span class="ic">{department_name, department_short_code_multi}</span></p>
+        </div>
+
+        <div class="step-card step-manual">
+            <h4>Rename Department Folder</h4>
+            <p>Rename the folder <span class="ic">/ECM CONFIG/Office Type/HO/{oldName}</span> to the new name.</p>
+            <p><strong>Display:</strong> Current folder name &rarr; New folder name. Single action button.</p>
+            <p><span class="step-status badge-green badge">Final Step</span></p>
+            <p><strong>API:</strong> <span class="ic">PATCH /api/admin/departments/folder/{folderId}</span> body: <span class="ic">{object_name: newName}</span></p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════ 6. RENAME UX ═══════ -->
+<section id="rename-ux">
+    <h2><span class="sn">06</span> Rename &mdash; UX Wireframes</h2>
+
+    <div class="wireframe">
+        <div class="wireframe-title">Step 4: Move Members &mdash; Group Grid with Action Buttons</div>
+        <div class="wireframe-box active" style="font-weight:600;">
+            Group: ecm_ho_fsdd &rarr; ecm_ho_newdept
+            <span class="wireframe-btn wireframe-btn-primary">Move All (12 members)</span>
+        </div>
+        <div class="table-wrapper" style="margin-top:8px;">
+            <table>
+                <thead><tr><th>#</th><th>Member</th><th>Type</th><th>Source</th><th>Target</th><th style="text-align:center">Action</th><th>Status</th></tr></thead>
+                <tbody>
+                    <tr><td>1</td><td>ranjan.kumar</td><td><span class="badge badge-blue">User</span></td><td>ecm_ho_fsdd</td><td>ecm_ho_newdept</td><td style="text-align:center"><span class="wireframe-btn wireframe-btn-primary" style="margin:0;font-size:11px">Move</span></td><td><span class="badge badge-gray">Pending</span></td></tr>
+                    <tr><td>2</td><td>amit.sharma</td><td><span class="badge badge-blue">User</span></td><td>ecm_ho_fsdd</td><td>ecm_ho_newdept</td><td style="text-align:center"><span class="wireframe-btn wireframe-btn-primary" style="margin:0;font-size:11px">Move</span></td><td><span class="badge badge-green">Moved</span></td></tr>
+                    <tr><td>3</td><td>ecm_ho_fsdd_bpe</td><td><span class="badge badge-purple">Group</span></td><td>ecm_ho_fsdd</td><td>ecm_ho_newdept</td><td style="text-align:center"><span class="wireframe-btn wireframe-btn-primary" style="margin:0;font-size:11px">Move</span></td><td><span class="badge badge-gray">Pending</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="wireframe-box" style="margin-top:12px;">
+            Group: ecm_ho_fsdd_casecreator &rarr; ecm_ho_newdept_casecreator
+            <span class="wireframe-btn wireframe-btn-primary">Move All (8 members)</span>
+        </div>
+
+        <div class="wireframe-box" style="margin-top:8px;">
+            Group: ecm_digidak_ho_fsdd_cgm &rarr; ecm_digidak_ho_newdept_cgm
+            <span class="wireframe-btn wireframe-btn-primary">Move All (5 members)</span>
+        </div>
+
+        <div style="margin-top:16px;">
+            <span class="wireframe-btn wireframe-btn-secondary">&#8592; Back</span>
+            <span class="wireframe-btn wireframe-btn-primary">Next Step &#8594;</span>
+            <span class="wireframe-btn wireframe-btn-secondary">Save Progress &amp; Exit</span>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════ 7. MERGE OVERVIEW ═══════ -->
+<section id="merge-overview">
+    <h2><span class="sn">07</span> Merge Workflow</h2>
+
+    <div class="diagram-wrapper">
+        <div class="diagram-title">Merge &mdash; End-to-end flow (Dept A &rarr; Dept B)</div>
+        <pre class="mermaid">
+sequenceDiagram
+    actor Admin as Super Admin
+    participant UI as Dept Admin Page
+    participant API as Spring Boot API
+    participant DCTM as Documentum
+
+    Admin->>UI: Select Source dept (A) and Target dept (B)
+
+    UI->>API: GET /api/admin/departments/groups?prefix=ecm_ho_{A}
+    API-->>UI: Source groups list
+    UI->>API: GET /api/admin/departments/groups?prefix=ecm_ho_{B}
+    API-->>UI: Target groups list
+
+    Note over Admin,UI: Step 1: Review group mapping (A→B)
+
+    UI->>API: GET /api/admin/departments/users?deptShortCode={A}
+    API-->>UI: Users in source dept
+    UI->>API: GET /api/admin/departments/users?deptShortCode={B}
+    API-->>UI: Users in target dept
+
+    Note over Admin,UI: Step 2: Review user impact
+
+    Admin->>UI: Review group mapping grid
+    Note over Admin,UI: Step 3: Confirm group mapping (auto-mapped by suffix)
+
+    Admin->>UI: Click "Create Missing Groups" if any
+    loop For unmapped groups
+        UI->>API: POST /api/admin/departments/groups/create
+    end
+
+    Note over Admin,UI: Step 4: Create missing target groups
+
+    Admin->>UI: Click "Move Members" per group pair
+    loop For each group pair (source→target)
+        loop For each member
+            UI->>API: POST (add to target) + DELETE (remove from source)
+        end
+    end
+
+    Note over Admin,UI: Step 5: Move members (per-group, per-member buttons)
+
+    Admin->>UI: Click "Update User Profiles"
+    loop For each source user
+        UI->>API: PATCH user profile (dept A → dept B)
+    end
+
+    Note over Admin,UI: Step 6: Update user profiles
+
+    Admin->>UI: Review completion summary
+    Note over Admin,UI: Step 7: Verify & mark complete
+        </pre>
+    </div>
+</section>
+
+<!-- ═══════ 8. MERGE WIZARD ═══════ -->
+<section id="merge-wizard">
+    <h2><span class="sn">08</span> Merge &mdash; Wizard Steps</h2>
+
+    <div class="step-wizard">
+        <div class="step-card step-manual">
+            <h4>Select Source &amp; Target Departments</h4>
+            <p>User selects the department to merge FROM (source) and the department to merge INTO (target).</p>
+            <p><strong>UI:</strong> Two dropdowns side-by-side. Validation: source &ne; target.</p>
+            <p><span class="step-status badge-blue badge">User Input</span></p>
+        </div>
+
+        <div class="step-card step-pausable">
+            <h4>Review Group Mapping</h4>
+            <p>System auto-maps source groups to target groups by suffix pattern. Displays mapping grid.</p>
+            <p><strong>Grid columns:</strong> Source Group | Members | Target Group | Target Exists? | Action</p>
+            <p><span class="step-status badge-amber badge">Pausable &mdash; Review mapping</span></p>
+            <div class="callout callout-info" style="margin-top:8px;">
+                <span class="callout-icon">&#8505;</span>
+                <p><strong>Auto-mapping rule:</strong> <span class="ic">ecm_ho_{sourceCode}_{suffix}</span> maps to <span class="ic">ecm_ho_{targetCode}_{suffix}</span>. If target doesn't exist, flagged for creation in Step 4.</p>
+            </div>
+        </div>
+
+        <div class="step-card step-pausable">
+            <h4>Review User Impact</h4>
+            <p>Shows all users in source department with current and proposed values.</p>
+            <p><strong>Grid columns:</strong> User Name | Login | Current Dept | New Dept | Groups Changing | Status</p>
+            <p><span class="step-status badge-amber badge">Pausable &mdash; Review only</span></p>
+        </div>
+
+        <div class="step-card step-manual">
+            <h4>Create Missing Target Groups</h4>
+            <p>If any source groups don't have a matching target, create them. Grid shows which need creation.</p>
+            <p><strong>Grid columns:</strong> Group to Create | Based on Source | Action [Create] | Status</p>
+            <p><span class="step-status badge-blue badge">User Action &mdash; per row or bulk</span></p>
+        </div>
+
+        <div class="step-card step-manual">
+            <h4>Move Members (Group by Group)</h4>
+            <p>Same UX as Rename Step 4. For each source&rarr;target group pair, show members grid with individual and bulk move buttons.</p>
+            <p><strong>Grid columns:</strong> Member | Type | Source | Target | Action [Move] | Status</p>
+            <p><span class="step-status badge-blue badge">User Action &mdash; per member or per group</span></p>
+        </div>
+
+        <div class="step-card step-manual">
+            <h4>Update User Profiles</h4>
+            <p>Update <span class="ic">department_name</span> and <span class="ic">department_short_code_multi</span> for all source users.</p>
+            <p><strong>Grid columns:</strong> User | Current Dept | New Dept | Action [Update] | Status</p>
+            <p><span class="step-status badge-blue badge">User Action &mdash; per user or bulk</span></p>
+        </div>
+
+        <div class="step-card step-auto">
+            <h4>Verify &amp; Summary</h4>
+            <p>System verifies: source groups empty, all users updated, target groups have correct members.</p>
+            <p><strong>Display:</strong> Summary card with counts &mdash; groups processed, members moved, users updated, any failures.</p>
+            <p><span class="step-status badge-green badge">Verification</span></p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════ 9. MERGE UX ═══════ -->
+<section id="merge-ux">
+    <h2><span class="sn">09</span> Merge &mdash; UX Wireframes</h2>
+
+    <div class="wireframe">
+        <div class="wireframe-title">Step 2: Group Mapping Grid</div>
+        <div class="table-wrapper">
+            <table>
+                <thead><tr><th>Source Group</th><th>Members</th><th>Target Group</th><th>Exists?</th><th>Action</th></tr></thead>
+                <tbody>
+                    <tr><td>ecm_ho_fsdd</td><td>12</td><td>ecm_ho_hrmd</td><td><span class="badge badge-green">Yes</span></td><td><span class="badge badge-gray">Ready</span></td></tr>
+                    <tr><td>ecm_ho_fsdd_casecreator</td><td>8</td><td>ecm_ho_hrmd_casecreator</td><td><span class="badge badge-green">Yes</span></td><td><span class="badge badge-gray">Ready</span></td></tr>
+                    <tr><td>ecm_ho_fsdd_bpe</td><td>5</td><td>ecm_ho_hrmd_bpe</td><td><span class="badge badge-red">No</span></td><td><span class="wireframe-btn wireframe-btn-primary" style="margin:0;font-size:11px">Create</span></td></tr>
+                    <tr><td>ecm_digidak_ho_fsdd_cgm</td><td>3</td><td>ecm_digidak_ho_hrmd_cgm</td><td><span class="badge badge-green">Yes</span></td><td><span class="badge badge-gray">Ready</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="wireframe">
+        <div class="wireframe-title">Step 7: Verification Summary</div>
+        <div class="wireframe-grid">
+            <div class="wireframe-box" style="text-align:center;">
+                <div style="font-size:28px;font-weight:800;color:#0A66C2;">4</div>
+                <div style="font-size:12px;color:#64748b;">Groups Processed</div>
+            </div>
+            <div class="wireframe-box" style="text-align:center;">
+                <div style="font-size:28px;font-weight:800;color:#22c55e;">28</div>
+                <div style="font-size:12px;color:#64748b;">Members Moved</div>
+            </div>
+            <div class="wireframe-box" style="text-align:center;">
+                <div style="font-size:28px;font-weight:800;color:#8b5cf6;">12</div>
+                <div style="font-size:12px;color:#64748b;">Users Updated</div>
+            </div>
+            <div class="wireframe-box" style="text-align:center;">
+                <div style="font-size:28px;font-weight:800;color:#ef4444;">0</div>
+                <div style="font-size:12px;color:#64748b;">Failures</div>
+            </div>
+        </div>
+        <div class="callout callout-success" style="margin-top:12px;">
+            <span class="callout-icon">&#10003;</span>
+            <p>Merge of <strong>FSDD</strong> into <strong>HRMD</strong> completed successfully. Old groups preserved (empty). All users reassigned.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════ 10. API ═══════ -->
+<section id="api">
+    <h2><span class="sn">10</span> API Endpoints</h2>
+
+    <h3>DepartmentAdminController</h3>
+    <p>Base path: <span class="ic">/api/admin/departments</span></p>
+
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Purpose</th><th>Used In</th></tr></thead>
+            <tbody>
+                <tr><td><span class="badge badge-blue">GET</span></td><td>/groups</td><td>List groups by prefix (e.g., <span class="ic">?prefix=ecm_ho_fsdd</span>)</td><td>Steps 2, 3, 4</td></tr>
+                <tr><td><span class="badge badge-blue">GET</span></td><td>/groups/{name}/members</td><td>List members of a specific group</td><td>Step 4, 5</td></tr>
+                <tr><td><span class="badge badge-green">POST</span></td><td>/groups/create</td><td>Create a new group (<span class="ic">{groupName}</span>)</td><td>Step 3</td></tr>
+                <tr><td><span class="badge badge-green">POST</span></td><td>/members/move</td><td>Move member from source to target group</td><td>Step 4, 5</td></tr>
+                <tr><td><span class="badge badge-blue">GET</span></td><td>/users</td><td>List users by dept short code (<span class="ic">?deptShortCode=fsdd</span>)</td><td>Step 5, 6</td></tr>
+                <tr><td><span class="badge badge-amber">PATCH</span></td><td>/users/{objectId}</td><td>Update user profile (dept name, short codes)</td><td>Step 5, 6</td></tr>
+                <tr><td><span class="badge badge-blue">GET</span></td><td>/folder</td><td>Get dept folder info (<span class="ic">?path=/ECM CONFIG/Office Type/HO/{name}</span>)</td><td>Step 6</td></tr>
+                <tr><td><span class="badge badge-amber">PATCH</span></td><td>/folder/{folderId}</td><td>Rename folder object_name</td><td>Step 6</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ═══════ 11. BACKEND ═══════ -->
+<section id="backend">
+    <h2><span class="sn">11</span> Backend Service</h2>
+
+    <h3>DepartmentAdminService.java</h3>
+    <p>New service providing granular operations (not bulk). Each API call is atomic &mdash; supports multi-session by design.</p>
+
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Method</th><th>DQL / REST Call</th></tr></thead>
+            <tbody>
+                <tr><td><span class="ic">findGroupsByPrefix(prefix)</span></td><td>DQL: <span class="ic">SELECT group_name, description FROM dm_group WHERE group_name LIKE '{prefix}%'</span> + count members per group</td></tr>
+                <tr><td><span class="ic">getGroupMembers(groupName)</span></td><td>REST: <span class="ic">GET /groups/{name}</span> &rarr; extract users_names, groups_names</td></tr>
+                <tr><td><span class="ic">createGroup(groupName)</span></td><td>REST: <span class="ic">POST /repositories/{repo}/groups</span> with <span class="ic">{properties: {group_name}}</span></td></tr>
+                <tr><td><span class="ic">moveMember(source, target, member, type)</span></td><td>REST: <span class="ic">POST /groups/{target}/users</span> then <span class="ic">DELETE /groups/{source}/users/{member}</span></td></tr>
+                <tr><td><span class="ic">findUsersInDept(deptShortCode)</span></td><td>DQL: <span class="ic">SELECT ... FROM cms_user_profile WHERE ANY department_short_code_multi = '{code}'</span></td></tr>
+                <tr><td><span class="ic">updateUserDept(objectId, newDept, newCode)</span></td><td>REST: <span class="ic">POST /objects/{id}</span> with <span class="ic">X-Method-Override: PATCH</span></td></tr>
+                <tr><td><span class="ic">getDeptFolder(path)</span></td><td>DQL: <span class="ic">SELECT r_object_id, object_name FROM dm_folder WHERE ANY r_folder_path = '{path}'</span></td></tr>
+                <tr><td><span class="ic">renameFolder(folderId, newName)</span></td><td>REST: <span class="ic">POST /objects/{id}</span> with <span class="ic">X-Method-Override: PATCH, {object_name: newName}</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ═══════ 12. FRONTEND ═══════ -->
+<section id="frontend">
+    <h2><span class="sn">12</span> Frontend Page</h2>
+
+    <h3>DepartmentAdminPage.jsx</h3>
+    <p>Route: <span class="ic">/dashboard/dept-admin</span> &mdash; Two top-level tabs: <strong>Rename</strong> | <strong>Merge</strong></p>
+
+    <h4>Wizard Component Pattern</h4>
+    <ul>
+        <li><strong>Step indicator</strong> at top (numbered circles with labels, current step highlighted)</li>
+        <li><strong>Content area</strong> with data grid for current step</li>
+        <li><strong>Action buttons</strong> per row (Move, Create, Update) + bulk action button</li>
+        <li><strong>Status column</strong> per row: <span class="badge badge-gray">Pending</span> <span class="badge badge-blue">Processing</span> <span class="badge badge-green">Done</span> <span class="badge badge-red">Failed</span></li>
+        <li><strong>Navigation</strong>: Back | Next Step | Save Progress &amp; Exit</li>
+        <li><strong>"Save Progress &amp; Exit"</strong> allows leaving mid-wizard. On return, system detects completed steps by querying current state (do new groups exist? are members moved?)</li>
+    </ul>
+
+    <h4>Multi-Session State Detection</h4>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Step</th><th>How to Detect Completion</th></tr></thead>
+            <tbody>
+                <tr><td>Groups Created</td><td>Query <span class="ic">GET /groups?prefix=ecm_ho_{newCode}</span> &mdash; if groups exist, step done</td></tr>
+                <tr><td>Members Moved</td><td>Query old group members count &mdash; if 0, step done for that group</td></tr>
+                <tr><td>Users Updated</td><td>Query <span class="ic">GET /users?deptShortCode={oldCode}</span> &mdash; if 0 users, step done</td></tr>
+                <tr><td>Folder Renamed</td><td>Query folder by new path &mdash; if exists, step done</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ═══════ 13. FILES ═══════ -->
+<section id="files">
+    <h2><span class="sn">13</span> Files to Create / Modify</h2>
+
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>File</th><th>Action</th><th>Description</th></tr></thead>
+            <tbody>
+                <tr><td><span class="ic">backend/.../service/DepartmentAdminService.java</span></td><td><span class="badge badge-green">CREATE</span></td><td>Granular operations: group CRUD, member move, user update, folder rename</td></tr>
+                <tr><td><span class="ic">backend/.../controller/DepartmentAdminController.java</span></td><td><span class="badge badge-green">CREATE</span></td><td>8 REST endpoints under /api/admin/departments</td></tr>
+                <tr><td><span class="ic">frontend/src/pages/DepartmentAdminPage.jsx</span></td><td><span class="badge badge-green">CREATE</span></td><td>Two-tab wizard (Rename + Merge) with data grids and action buttons</td></tr>
+                <tr><td><span class="ic">frontend/src/App.jsx</span></td><td><span class="badge badge-amber">MODIFY</span></td><td>Add route /dashboard/dept-admin</td></tr>
+                <tr><td><span class="ic">frontend/src/components/layout/Sidebar.jsx</span></td><td><span class="badge badge-amber">MODIFY</span></td><td>Add "Dept Admin" nav item (Super Admin only)</td></tr>
+                <tr><td><span class="ic">backend/.../test/.../DepartmentAdminServiceTest.java</span></td><td><span class="badge badge-green">CREATE</span></td><td>Unit tests for service methods</td></tr>
+                <tr><td><span class="ic">backend/.../test/.../DepartmentAdminControllerTest.java</span></td><td><span class="badge badge-green">CREATE</span></td><td>MockMvc tests for all endpoints</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ═══════ 14. SAFETY ═══════ -->
+<section id="safety">
+    <h2><span class="sn">14</span> Safety &amp; Rollback</h2>
+
+    <div class="card-grid">
+        <div class="card">
+            <div class="card-header"><div class="card-icon card-icon-green">&#128274;</div><div><h4 style="margin:0">Old Groups Preserved</h4></div></div>
+            <p>Source groups are emptied but <strong>never deleted</strong>. ACLs on existing cases/letters referencing old groups remain valid. Rollback: move members back.</p>
+        </div>
+        <div class="card">
+            <div class="card-header"><div class="card-icon card-icon-blue">&#128196;</div><div><h4 style="margin:0">Historical Data Untouched</h4></div></div>
+            <p>Existing <span class="ic">cms_case_folder</span> and <span class="ic">cms_digidak_folder</span> objects are <strong>not modified</strong>. Only user profiles and groups are changed.</p>
+        </div>
+        <div class="card">
+            <div class="card-header"><div class="card-icon card-icon-amber">&#128065;</div><div><h4 style="margin:0">User-Driven Execution</h4></div></div>
+            <p>Every operation requires explicit user action. No automatic bulk operations without review. Each row visible before action.</p>
+        </div>
+        <div class="card">
+            <div class="card-header"><div class="card-icon card-icon-purple">&#128221;</div><div><h4 style="margin:0">Audit Logging</h4></div></div>
+            <p>Every group create, member move, and user update is logged via SLF4J with <span class="ic">[DeptAdmin]</span> prefix. Full traceability.</p>
+        </div>
+    </div>
+
+    <h3>Rollback Procedure</h3>
+    <ol>
+        <li>Move members from new groups back to old groups (same UI, reverse direction)</li>
+        <li>Update user profiles back to old department name/code</li>
+        <li>Rename folder back to old name</li>
+        <li>Delete the new (now empty) groups if desired</li>
+    </ol>
+</section>
+
+<!-- ═══════ 15. VERIFICATION ═══════ -->
+<section id="verification">
+    <h2><span class="sn">15</span> Verification Checklist</h2>
+
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>#</th><th>Check</th><th>How</th></tr></thead>
+            <tbody>
+                <tr><td>1</td><td>Unit tests pass</td><td><span class="ic">mvn test</span></td></tr>
+                <tr><td>2</td><td>Rename wizard loads affected groups</td><td>Select a dept &rarr; verify group grid populates</td></tr>
+                <tr><td>3</td><td>New groups created correctly</td><td>Query <span class="ic">dm_group</span> for new prefix</td></tr>
+                <tr><td>4</td><td>Members moved correctly</td><td>Verify old groups empty, new groups have members</td></tr>
+                <tr><td>5</td><td>User profiles updated</td><td>Query <span class="ic">cms_user_profile</span> for new department</td></tr>
+                <tr><td>6</td><td>Existing cases still accessible</td><td>Login as moved user &rarr; verify old cases visible</td></tr>
+                <tr><td>7</td><td>Merge group mapping correct</td><td>Verify suffix-based auto-mapping</td></tr>
+                <tr><td>8</td><td>Multi-session works</td><td>Complete Step 3, exit, return &rarr; verify Step 3 shows "Done"</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+</div>
+
+<script>
+(function() {
+    window.toggleSidebar = function() {
+        document.getElementById('sidebar').classList.toggle('open');
+        var overlay = document.getElementById('overlay');
+        if (overlay) overlay.classList.toggle('active');
+    };
+    window.toggleSection = function(header) {
+        header.classList.toggle('collapsed');
+        header.nextElementSibling.classList.toggle('collapsed');
+    };
+    var sections = document.querySelectorAll('section[id]');
+    var sidebarLinks = document.querySelectorAll('.sidebar-link');
+    function setActiveLink() {
+        var currentId = '';
+        var scrollPos = window.scrollY + 120;
+        sections.forEach(function(s) { if (s.offsetTop <= scrollPos) currentId = s.getAttribute('id'); });
+        sidebarLinks.forEach(function(l) { l.classList.remove('active'); if (l.getAttribute('href') === '#' + currentId) l.classList.add('active'); });
+    }
+    window.addEventListener('scroll', setActiveLink);
+    window.addEventListener('load', setActiveLink);
+    sidebarLinks.forEach(function(l) { l.addEventListener('click', function() { if (window.innerWidth <= 900) toggleSidebar(); }); });
+    document.querySelectorAll('.sidebar-section-items').forEach(function(i) { i.style.maxHeight = i.scrollHeight + 200 + 'px'; });
+})();
+</script>
+</body>
+</html>

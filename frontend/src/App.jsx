@@ -7,13 +7,14 @@ import WorkflowsPage from './pages/WorkflowsPage';
 import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
 import QueryPage from './pages/QueryPage';
+import DepartmentAdminPage from './pages/DepartmentAdminPage';
 
 function App() {
   return (
     <Router>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        
+
         {/* Protected Dashboard Routes */}
         <Route path="/dashboard" element={<MainLayout />}>
             <Route index element={<Navigate to="/dashboard/cases" replace />} />
@@ -22,6 +23,7 @@ function App() {
             <Route path="groups" element={<GroupsPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="query" element={<QueryPage />} />
+            <Route path="dept-admin" element={<DepartmentAdminPage />} />
         </Route>
         
         <Route path="/" element={<Navigate to="/login" replace />} />
