@@ -7,16 +7,18 @@ import WorkflowsPage from './pages/WorkflowsPage';
 import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
 import QueryPage from './pages/QueryPage';
+import DashboardPage from './pages/DashboardPage';
 
 function App() {
   return (
     <Router>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        
+
         {/* Protected Dashboard Routes */}
         <Route path="/dashboard" element={<MainLayout />}>
-            <Route index element={<Navigate to="/dashboard/cases" replace />} />
+            <Route index element={<Navigate to="/dashboard/overview" replace />} />
+            <Route path="overview" element={<DashboardPage />} />
             <Route path="cases" element={<CasesPage />} />
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="groups" element={<GroupsPage />} />
