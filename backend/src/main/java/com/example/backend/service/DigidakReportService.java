@@ -7,6 +7,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
@@ -102,13 +104,39 @@ public class DigidakReportService {
     }
 
     // ─── Letters Trend (monthly) ─────────────────────────────────────────────
+    // DATETOSTRING not supported in this Documentum version.
+    // Uses per-month COUNT queries with date-range WHERE clauses.
 
     public List<Map<String, Object>> getTrend(Map<String, String> filters) {
-        String where = buildWhereClause(filters);
-        String dql = "SELECT DATETOSTRING(entry_date,'yyyy-mm') as month, COUNT(*) as cnt"
-                + " FROM cms_digidak_folder" + where
-                + " GROUP BY DATETOSTRING(entry_date,'yyyy-mm') ORDER BY 1";
-        return executeGroupQuery(dql, "month", "cnt");
+        String baseWhere = buildWhereClause(filters);
+        List<Map<String, Object>> results = new ArrayList<>();
+        LocalDate now = LocalDate.now();
+
+        for (int i = 11; i >= 0; i--) {
+            LocalDate monthStart = now.minusMonths(i).withDayOfMonth(1);
+            LocalDate monthEnd = monthStart.plusMonths(1);
+            String from = monthStart.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            String to = monthEnd.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            String label = monthStart.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+
+            String dateCondition = "entry_date >= DATE('" + from + "','yyyy-mm-dd')"
+                    + " AND entry_date < DATE('" + to + "','yyyy-mm-dd')";
+
+            String dql;
+            if (baseWhere.isEmpty()) {
+                dql = "SELECT COUNT(*) as cnt FROM cms_digidak_folder WHERE " + dateCondition;
+            } else {
+                dql = "SELECT COUNT(*) as cnt FROM cms_digidak_folder" + baseWhere + " AND " + dateCondition;
+            }
+
+            long count = executeCount(dql);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("category", label);
+            row.put("value", count);
+            results.add(row);
+        }
+
+        return results;
     }
 
     // ─── Letters by Decision (Inward/Outward) ────────────────────────────────
