@@ -20,18 +20,20 @@ public class DelegateController {
     }
 
     /**
-     * Search cms_case_folder objects with optional office-type and department filters.
-     * GET /api/delegate/cases?query=&hoRo=HO&deptName=Finance&page=1&size=20
+     * Search cms_case_folder objects with optional office-type, department, and location filters.
+     * GET /api/delegate/cases?query=&hoRo=HO&deptName=Finance&roShortCode=tn&page=1&size=20
      */
     @GetMapping("/cases")
     public ResponseEntity<Map<String, Object>> searchCases(
             @RequestParam(defaultValue = "") String query,
             @RequestParam(defaultValue = "") String hoRo,
             @RequestParam(defaultValue = "") String deptName,
+            @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String roShortCode,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         try {
-            return ResponseEntity.ok(delegateService.searchCases(query, hoRo, deptName, page, size));
+            return ResponseEntity.ok(delegateService.searchCases(query, hoRo, deptName, deptNames, roShortCode, page, size));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage()));

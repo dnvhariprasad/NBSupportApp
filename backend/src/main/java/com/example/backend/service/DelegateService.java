@@ -48,14 +48,17 @@ public class DelegateService {
     // ─── Case Search ─────────────────────────────────────────────────────────────
 
     /**
-     * Search cms_case_folder objects with optional office-type and department filters.
+     * Search cms_case_folder objects with optional office-type, department, and location filters.
      *
-     * @param query     case number search term (blank = recent cases)
-     * @param hoRo      office type filter: "HO" | "RO" | "TE" (blank = all)
-     * @param deptName  department_name filter (blank = all)
+     * @param query         case number search term (blank = recent cases)
+     * @param hoRo          office type filter: "HO" | "RO" | "TE" (blank = all)
+     * @param deptName      single department_name filter (blank = all)
+     * @param deptNames     comma-separated department names for multi-dept filter (blank = all)
+     * @param roShortCode   location short code filter — matches against object_name pattern (blank = all)
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> searchCases(String query, String hoRo, String deptName,
+                                            String deptNames, String roShortCode,
                                             int page, int itemsPerPage) {
         try {
             // Build WHERE clauses
@@ -82,6 +85,25 @@ public class DelegateService {
                 where.append(" AND department_name = '").append(deptName.trim().replace("'", "''")).append("'");
             }
 
+            // Multi-department filter (comma-separated list of department names)
+            boolean hasDeptNames = !hasDept && deptNames != null && !deptNames.isBlank();
+            if (hasDeptNames) {
+                String[] names = deptNames.split(",");
+                StringBuilder inClause = new StringBuilder(" AND department_name IN (");
+                for (int i = 0; i < names.length; i++) {
+                    if (i > 0) inClause.append(", ");
+                    inClause.append("'").append(names[i].trim().replace("'", "''")).append("'");
+                }
+                inClause.append(")");
+                where.append(inClause);
+            }
+
+            boolean hasRoShortCode = roShortCode != null && !roShortCode.isBlank();
+            if (hasRoShortCode) {
+                String sc = roShortCode.trim().replace("'", "''").toUpperCase();
+                where.append(" AND UPPER(object_name) LIKE '%-").append(sc).append("-%'");
+            }
+
             String dql = String.format(
                     "SELECT r_object_id, object_name, subject, ho_ro, description, " +
                     "department_name, r_creation_date, functions, task_priority, status, " +
@@ -92,7 +114,7 @@ public class DelegateService {
                     "ENABLE(RETURN_TOP %d)",
                     where, page * itemsPerPage);
 
-            log.info("Case search DQL filters — hoRo: {}, dept: {}, query: {}", hoRo, deptName, query);
+            log.info("Case search DQL filters — hoRo: {}, dept: {}, roShortCode: {}, query: {}", hoRo, deptName, roShortCode, query);
 
             Map<String, Object> response = restClient.get()
                     .uri(getRepoUrl() + "?dql={dql}&items-per-page={size}&page={page}&inline=true",
