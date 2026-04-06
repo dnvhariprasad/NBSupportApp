@@ -8,7 +8,7 @@ import {
     Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers, Save
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
-import { USER_GRADES, fetchDepartments } from '../data/nabardMetadata.js';
+import { USER_GRADES, fetchDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
 async function fetchAllUsers(officeTypeFilter, locationFilter, deptNames) {
@@ -2217,6 +2217,25 @@ const UserAccessTab = ({ onToast }) => {
     const [profileLocation, setProfileLocation] = useState('');
     const [allDepartments, setAllDepartments]   = useState([]);
 
+    // ─── Super Admin filters (location + department) ─────────────────────────
+    const [filterLocation,   setFilterLocation]   = useState('');
+    const [filterDeptName,   setFilterDeptName]    = useState('');
+    const [filterDepartments, setFilterDepartments] = useState([]);
+
+    // Locations list based on chosen office type
+    const filterLocations = useMemo(() => getLocations(officeType), [officeType]);
+    const isRoTe = officeType === 'RO' || officeType === 'TE';
+
+    // Fetch departments when office type or location changes (for Super Admin filter)
+    useEffect(() => {
+        if (isLocalAdmin) return;
+        if (!officeType) { setFilterDepartments([]); return; }
+        if (isRoTe && !filterLocation) { setFilterDepartments([]); return; }
+        const loc = isRoTe ? filterLocation : '';
+        fetchDepartments(officeType, loc).then(setFilterDepartments);
+    }, [isLocalAdmin, officeType, filterLocation]);
+    // ─── End Super Admin filters ─────────────────────────────────────────────
+
     useEffect(() => {
         if (!isLocalAdmin || !loginUsername) return;
         api.get('/users/profile-context', { params: { username: loginUsername } })
@@ -2230,8 +2249,6 @@ const UserAccessTab = ({ onToast }) => {
             })
             .catch(() => setProfileCtx({}));
     }, [isLocalAdmin, loginUsername]);
-
-    const isRoTe = officeType === 'RO' || officeType === 'TE';
 
     useEffect(() => {
         if (!isLocalAdmin || !officeType) return;
@@ -2304,8 +2321,29 @@ const UserAccessTab = ({ onToast }) => {
 
     const handleOfficeTypeChange = (ot) => {
         setOfficeType(ot);
+        setFilterLocation('');
+        setFilterDeptName('');
+        setFilterDepartments([]);
         if (ot) fetchUsersByOfficeType(ot, '', '');
         else { setUsers([]); setSearchQuery(''); setCurrentPage(1); }
+    };
+
+    const handleLocationChange = (loc) => {
+        setFilterLocation(loc);
+        setFilterDeptName('');
+        if (officeType && loc) {
+            fetchUsersByOfficeType(officeType, loc, '');
+        } else if (officeType) {
+            fetchUsersByOfficeType(officeType, '', '');
+        }
+    };
+
+    const handleDeptChange = (deptName) => {
+        setFilterDeptName(deptName);
+        const loc = isRoTe ? filterLocation : '';
+        if (officeType) {
+            fetchUsersByOfficeType(officeType, loc, deptName || '');
+        }
     };
 
     const handleMarkLocalAdmin = async (user) => {
@@ -2345,7 +2383,9 @@ const UserAccessTab = ({ onToast }) => {
         const q = searchQuery.toLowerCase();
         return (u.object_name || '').toLowerCase().includes(q)
             || (u.user_login_name || '').toLowerCase().includes(q)
-            || (u.designation || '').toLowerCase().includes(q);
+            || (u.designation || '').toLowerCase().includes(q)
+            || (u.department_name || '').toLowerCase().includes(q)
+            || (u.location || '').toLowerCase().includes(q);
     });
 
     const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -2357,7 +2397,7 @@ const UserAccessTab = ({ onToast }) => {
         <div className="flex-1 flex flex-col overflow-hidden gap-4">
             {/* Filters */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-end gap-4 flex-wrap">
-                <div className="min-w-[200px]">
+                <div className="min-w-[180px]">
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
                         Office Type
                     </label>
@@ -2376,6 +2416,52 @@ const UserAccessTab = ({ onToast }) => {
                         <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     </div>
                 </div>
+
+                {/* Location filter — visible for RO/TE (Super Admin only) */}
+                {!isLocalAdmin && isRoTe && (
+                    <div className="min-w-[200px]">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                            <MapPin size={11} className="inline -mt-0.5 mr-0.5" />
+                            Location
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={filterLocation}
+                                onChange={e => handleLocationChange(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2]"
+                            >
+                                <option value="">— All locations —</option>
+                                {filterLocations.map(l => (
+                                    <option key={l.shortCode} value={l.location}>{l.location}</option>
+                                ))}
+                            </select>
+                            <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                    </div>
+                )}
+
+                {/* Department filter — visible for HO always, for RO/TE once location is chosen (Super Admin only) */}
+                {!isLocalAdmin && officeType && (officeType === 'HO' || filterLocation) && filterDepartments.length > 0 && (
+                    <div className="min-w-[180px]">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                            <Building2 size={11} className="inline -mt-0.5 mr-0.5" />
+                            Department
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={filterDeptName}
+                                onChange={e => handleDeptChange(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2]"
+                            >
+                                <option value="">— All departments —</option>
+                                {filterDepartments.map(d => (
+                                    <option key={d.shortCode} value={d.name}>{d.name}</option>
+                                ))}
+                            </select>
+                            <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                    </div>
+                )}
 
                 {users.length > 0 && (
                     <div className="flex-1 min-w-[220px]">
@@ -2441,6 +2527,7 @@ const UserAccessTab = ({ onToast }) => {
                                         <th className="px-4 py-3 font-semibold text-slate-600">Login</th>
                                         <th className="px-4 py-3 font-semibold text-slate-600">Designation</th>
                                         <th className="px-4 py-3 font-semibold text-slate-600">Department</th>
+                                        {isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Location</th>}
                                         <th className="px-4 py-3 font-semibold text-slate-600 text-center">Local Admin</th>
                                     </tr>
                                 </thead>
@@ -2466,6 +2553,7 @@ const UserAccessTab = ({ onToast }) => {
                                             <td className="px-4 py-3 text-slate-500 font-mono text-xs">{u.user_login_name || '—'}</td>
                                             <td className="px-4 py-3 text-slate-600">{u.designation || '—'}</td>
                                             <td className="px-4 py-3 text-slate-600">{u.department_name || '—'}</td>
+                                            {isRoTe && <td className="px-4 py-3 text-slate-600">{u.location || '—'}</td>}
                                             <td className="px-4 py-3 text-center">
                                                 {isAdmin ? (
                                                     <button
