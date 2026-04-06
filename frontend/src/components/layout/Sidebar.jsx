@@ -1,28 +1,5 @@
 import { NavLink } from 'react-router-dom';
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-import { Users, Compass, Settings, Database, Network, FolderCog, ArrowRightLeft } from 'lucide-react';
-
-const Sidebar = () => {
-    const navItems = [
-        { name: 'Users', path: '/dashboard/users', icon: Users },
-        { name: 'Verticals', path: '/dashboard/verticals', icon: Network },
-        { name: 'Metadata', path: '/dashboard/metadata', icon: FolderCog },
-        { name: 'Delegate Case', path: '/dashboard/delegate', icon: ArrowRightLeft },
-        { name: 'Query', path: '/dashboard/query', icon: Database },
-=======
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft } from 'lucide-react';
-=======
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft, Inbox } from 'lucide-react';
->>>>>>> 7dd3a7a60971f60fc1ca104b79be6c3773b37526
-=======
-import { GitBranch, Users, Compass, Settings, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, ArrowRightLeft, Inbox, Building2 } from 'lucide-react';
->>>>>>> eeab23cb8252329829b72b5e82901187a3f1ea06
-=======
 import { GitBranch, Users, Compass, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, Building2 } from 'lucide-react';
->>>>>>> 6d19c10d54d1242794f9e5e9afbdb832960dc455
 
 const Sidebar = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -37,7 +14,6 @@ const Sidebar = () => {
         { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null },
         { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null },
->>>>>>> d35b9a4c6d05f0ec0cdb9679db6b9447bf1a31c4
     ];
 
     const navItems = allNavItems.filter(item => !item.roles || item.roles.includes(adminRole));
