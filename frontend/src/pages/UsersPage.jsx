@@ -8,16 +8,18 @@ import {
     Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers, Save
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
-import { USER_GRADES } from '../data/nabardMetadata.js';
+import { USER_GRADES, fetchDepartments } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
-async function fetchAllUsers(officeTypeFilter) {
+async function fetchAllUsers(officeTypeFilter, locationFilter, deptNames) {
     const PAGE_SIZE = 2000;
     let page = 1;
     let all = [];
     while (true) {
         const params = { page, size: PAGE_SIZE };
         if (officeTypeFilter) params.officeTypeFilter = officeTypeFilter;
+        if (locationFilter)   params.locationFilter   = locationFilter;
+        if (deptNames)        params.deptNames         = deptNames;
         const res = await api.get('/users/profiles', { params });
         const users = res.data.users || [];
         all = all.concat(users);
@@ -470,26 +472,62 @@ const CmsProfileTab = ({ onToast }) => {
     const isLocalAdmin = adminRole === 'Local Admin';
     const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
 
+    const [profileCtx, setProfileCtx]           = useState(null);
+    const [profileOfficeType, setProfileOfficeType] = useState('');
+    const [profileLocation, setProfileLocation] = useState('');
+    const [allDepts, setAllDepts]               = useState([]);
+
     useEffect(() => {
         if (!isLocalAdmin || !loginUsername) {
-            // Super Admin — fetch without filter
             fetchUsers(null);
             return;
         }
-        // Local Admin — fetch profile context first to get office_type
         api.get('/users/profile-context', { params: { username: loginUsername } })
             .then(res => {
-                const officeType = res.data?.office_type || '';
-                const filter = officeType === 'HO' ? 'HO' : 'RO';
-                fetchUsers(filter);
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                setProfileOfficeType(ctx.office_type || '');
+                setProfileLocation(ctx.location || '');
             })
-            .catch(() => fetchUsers(null));
+            .catch(() => { setProfileCtx({}); fetchUsers(null); });
     }, [isLocalAdmin, loginUsername]);
 
-    const fetchUsers = async (officeTypeFilter) => {
+    // Fetch departments for HO Local Admin
+    useEffect(() => {
+        if (!isLocalAdmin || !profileOfficeType) return;
+        if ((profileOfficeType === 'RO' || profileOfficeType === 'TE') && !profileLocation) return;
+        fetchDepartments(profileOfficeType, profileLocation).then(setAllDepts);
+    }, [isLocalAdmin, profileOfficeType, profileLocation]);
+
+    const filteredDepts = isLocalAdmin && profileCtx
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return allDepts.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : allDepts;
+
+    const localAdminDeptNames = isLocalAdmin && profileOfficeType === 'HO' && filteredDepts.length > 0
+        ? filteredDepts.map(d => d.name).join(',')
+        : '';
+
+    // Auto-fetch once Local Admin context is ready
+    useEffect(() => {
+        if (!isLocalAdmin || !profileCtx || !profileOfficeType) return;
+        if (profileOfficeType === 'HO') {
+            if (!localAdminDeptNames) return;
+            fetchUsers(profileOfficeType, '', localAdminDeptNames);
+        } else {
+            if (!profileLocation) return;
+            fetchUsers(profileOfficeType, profileLocation, '');
+        }
+    }, [isLocalAdmin, profileCtx, profileOfficeType, profileLocation, localAdminDeptNames]);
+
+    const fetchUsers = async (officeTypeFilter, locationFilter, deptNames) => {
         setLoading(true);
         try {
-            const users = await fetchAllUsers(officeTypeFilter);
+            const users = await fetchAllUsers(officeTypeFilter, locationFilter, deptNames);
             setAllUsers(users);
         } catch (error) {
             console.error('Error fetching users', error);
@@ -2146,6 +2184,52 @@ const UserAccessTab = ({ onToast }) => {
     const [localAdmins,   setLocalAdmins]   = useState(new Set()); // set of object_names in ecm_local_admin
     const PAGE_SIZE = 15;
 
+    // ─── Local Admin role & profile context ──────────────────────────────────
+    const storedUser    = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole     = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin  = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const [profileCtx, setProfileCtx]           = useState(null);
+    const [profileLocation, setProfileLocation] = useState('');
+    const [allDepartments, setAllDepartments]   = useState([]);
+
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                const ot  = ctx.office_type || '';
+                const loc = ctx.location    || '';
+                if (ot) setOfficeType(ot);
+                if (loc) setProfileLocation(loc);
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
+    const isRoTe = officeType === 'RO' || officeType === 'TE';
+
+    useEffect(() => {
+        if (!isLocalAdmin || !officeType) return;
+        if (isRoTe && !profileLocation) return;
+        fetchDepartments(officeType, profileLocation).then(setAllDepartments);
+    }, [isLocalAdmin, officeType, profileLocation]);
+
+    const departments = isLocalAdmin && profileCtx
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return allDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : allDepartments;
+
+    const localAdminDeptNames = isLocalAdmin && officeType === 'HO' && departments.length > 0
+        ? departments.map(d => d.name).join(',')
+        : '';
+    // ─── End Local Admin ─────────────────────────────────────────────────────
+
     // Fetch ecm_local_admin group members on mount
     useEffect(() => {
         api.get('/groups/ecm_local_admin/members')
@@ -2156,7 +2240,7 @@ const UserAccessTab = ({ onToast }) => {
             .catch(() => {}); // non-fatal — just won't show badge
     }, []);
 
-    const fetchUsersByOfficeType = async (ot) => {
+    const fetchUsersByOfficeType = async (ot, loc, deptNamesParam) => {
         setLoading(true);
         setUsers([]);
         setSearchQuery('');
@@ -2166,9 +2250,10 @@ const UserAccessTab = ({ onToast }) => {
             let page = 1;
             let all  = [];
             while (true) {
-                const res = await api.get('/users/profiles', {
-                    params: { page, size: PAGE, officeTypeFilter: ot },
-                });
+                const params = { page, size: PAGE, officeTypeFilter: ot };
+                if (loc)            params.locationFilter = loc;
+                if (deptNamesParam) params.deptNames      = deptNamesParam;
+                const res = await api.get('/users/profiles', { params });
                 all = all.concat(res.data.users || []);
                 if (!res.data.hasNext) break;
                 page++;
@@ -2181,9 +2266,22 @@ const UserAccessTab = ({ onToast }) => {
         }
     };
 
+    // Auto-fetch for Local Admin once profile context is ready
+    useEffect(() => {
+        if (!isLocalAdmin) return;
+        if (!profileCtx || !officeType) return;
+        if (officeType === 'HO') {
+            if (!localAdminDeptNames) return;
+            fetchUsersByOfficeType(officeType, '', localAdminDeptNames);
+        } else {
+            if (!profileLocation) return;
+            fetchUsersByOfficeType(officeType, profileLocation, '');
+        }
+    }, [isLocalAdmin, profileCtx, officeType, profileLocation, localAdminDeptNames]);
+
     const handleOfficeTypeChange = (ot) => {
         setOfficeType(ot);
-        if (ot) fetchUsersByOfficeType(ot);
+        if (ot) fetchUsersByOfficeType(ot, '', '');
         else { setUsers([]); setSearchQuery(''); setCurrentPage(1); }
     };
 
@@ -2244,7 +2342,8 @@ const UserAccessTab = ({ onToast }) => {
                         <select
                             value={officeType}
                             onChange={e => handleOfficeTypeChange(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white"
+                            disabled={isLocalAdmin}
+                            className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] ${isLocalAdmin ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : 'bg-white'}`}
                         >
                             <option value="">— Select office type —</option>
                             <option value="HO">HO — Head Office</option>
