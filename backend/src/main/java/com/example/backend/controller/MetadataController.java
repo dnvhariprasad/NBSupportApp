@@ -176,4 +176,36 @@ public class MetadataController {
                     .body(Map.of("success", false, "message", e.getMessage()));
         }
     }
+
+    // ─── Hindi Comments ──────────────────────────────────────────────────────
+
+    /**
+     * Create a hindi comment dm_folder under /ECM CONFIG/Hindi Comments.
+     * POST /api/metadata/hindi-comments
+     * Body: { "object_name": "comment text" }
+     */
+    @PostMapping("/hindi-comments")
+    public ResponseEntity<Map<String, Object>> createHindiComment(@RequestBody Map<String, Object> request) {
+        try {
+            String objectName = (String) request.get("object_name");
+            return ResponseEntity.ok(metadataService.createHindiComment(objectName));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * List existing hindi comment folders under /ECM CONFIG/Hindi Comments.
+     * GET /api/metadata/hindi-comments
+     */
+    @GetMapping("/hindi-comments")
+    public ResponseEntity<?> listHindiComments() {
+        try {
+            return ResponseEntity.ok(metadataService.listHindiComments());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
 }

@@ -40,52 +40,65 @@ public class CaseService {
      * Search cases (cms_case_folder) by case number or load recent cases using DQL.
      * Uses a single DQL query to fetch all required fields, eliminating N+1 query problem.
      * If caseNumber is null/empty, loads cases from last N months (configured in properties).
+     *
+     * @param hoRo          office type filter: "HO" | "RO" | "TE" (blank = all)
+     * @param roShortCode   location short code filter — matches against object_name pattern (blank = all)
+     * @param deptNames     comma-separated department names for multi-dept filter (blank = all)
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> searchCases(String caseNumber, int page, int itemsPerPage) {
+    public Map<String, Object> searchCases(String caseNumber, String hoRo, String roShortCode,
+                                            String deptNames, int page, int itemsPerPage) {
         try {
-            String dql;
+            StringBuilder where = new StringBuilder();
 
             if (caseNumber == null || caseNumber.isBlank()) {
-                // Build DQL for recent cases (last N months)
                 int months = appConfig.getCases().getDefaultLoadMonths();
                 LocalDate startDate = LocalDate.now().minusMonths(months);
                 String dateStr = startDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
-
-                dql = String.format(
-                    "SELECT r_object_id, object_name, subject, ho_ro, description, " +
-                    "department_name, functions, r_creation_date, r_creator_name, " +
-                    "task_priority, status, case_nature, disposal_level, " +
-                    "file_number, types, language_type " +
-                    "FROM cms_case_folder " +
-                    "WHERE r_creation_date >= DATE('%s', 'yyyy-mm-dd') " +
-                    "ORDER BY r_creation_date DESC " +
-                    "ENABLE(RETURN_TOP %d)",
-                    dateStr,
-                    page * itemsPerPage
-                );
-
+                where.append("r_creation_date >= DATE('").append(dateStr).append("', 'yyyy-mm-dd')");
                 log.info("Loading recent cases (last {} months) from {}", months, dateStr);
             } else {
-                // Build DQL for search by case number
-                // Escape single quotes for SQL injection protection
                 String searchTerm = caseNumber.trim().replace("'", "''");
-
-                dql = String.format(
-                    "SELECT r_object_id, object_name, subject, ho_ro, description, " +
-                    "department_name, functions, r_creation_date, r_creator_name, " +
-                    "task_priority, status, case_nature, disposal_level, " +
-                    "file_number, types, language_type " +
-                    "FROM cms_case_folder " +
-                    "WHERE object_name LIKE '%%%s%%' " +
-                    "ORDER BY r_creation_date DESC " +
-                    "ENABLE(RETURN_TOP %d)",
-                    searchTerm,
-                    page * itemsPerPage
-                );
-
+                where.append("object_name LIKE '%").append(searchTerm).append("%'");
                 log.info("Searching cases for: {}", searchTerm);
             }
+
+            // Office type filter
+            if (hoRo != null && !hoRo.isBlank()) {
+                where.append(" AND ho_ro = '").append(hoRo.trim().replace("'", "''")).append("'");
+            }
+
+            // Location short code filter (matches pattern in case number e.g. NB-RO-TN-...)
+            if (roShortCode != null && !roShortCode.isBlank()) {
+                String sc = roShortCode.trim().replace("'", "''").toUpperCase();
+                where.append(" AND UPPER(object_name) LIKE '%-").append(sc).append("-%'");
+            }
+
+            // Multi-department filter
+            if (deptNames != null && !deptNames.isBlank()) {
+                String[] names = deptNames.split(",");
+                StringBuilder inClause = new StringBuilder(" AND department_name IN (");
+                for (int i = 0; i < names.length; i++) {
+                    if (i > 0) inClause.append(", ");
+                    inClause.append("'").append(names[i].trim().replace("'", "''")).append("'");
+                }
+                inClause.append(")");
+                where.append(inClause);
+            }
+
+            String dql = String.format(
+                "SELECT r_object_id, object_name, subject, ho_ro, description, " +
+                "department_name, functions, r_creation_date, r_creator_name, " +
+                "task_priority, status, case_nature, disposal_level, " +
+                "file_number, types, language_type " +
+                "FROM cms_case_folder " +
+                "WHERE %s " +
+                "ORDER BY r_creation_date DESC " +
+                "ENABLE(RETURN_TOP %d)",
+                where, page * itemsPerPage
+            );
+
+            log.info("Case search DQL filters — hoRo: {}, roShortCode: {}, deptNames: {}", hoRo, roShortCode, deptNames);
 
             return executeCaseDQL(dql, page, itemsPerPage);
 

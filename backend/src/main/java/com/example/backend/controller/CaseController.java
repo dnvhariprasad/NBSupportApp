@@ -17,13 +17,16 @@ public class CaseController {
     }
 
     /**
-     * Search cases with optional case number filter
+     * Search cases with optional case number, office-type, location, and department filters.
      */
     @GetMapping("/search")
     public Map<String, Object> searchCases(
             @RequestParam(required = false) String caseNumber,
+            @RequestParam(defaultValue = "") String hoRo,
+            @RequestParam(defaultValue = "") String roShortCode,
+            @RequestParam(defaultValue = "") String deptNames,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return caseService.searchCases(caseNumber, page, size);
+        return caseService.searchCases(caseNumber, hoRo, roShortCode, deptNames, page, size);
     }
 }

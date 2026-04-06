@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { CaseInboxContent } from './CaseInbox2Page';
 import { DelegateContent, CaseDetailsModal, MovementRegisterModal } from './DelegatePage';
+import { getLocations, fetchDepartments } from '../data/nabardMetadata';
 
 const CasesPage = () => {
     const [activeTab, setActiveTab] = useState('cases');
@@ -40,18 +41,80 @@ const CasesPage = () => {
     const [detailCase, setDetailCase] = useState(null);
     const [movementCase, setMovementCase] = useState(null);
 
+    // ─── Local Admin role & profile context ──────────────────────────────────────
+    const storedUser    = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole     = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin  = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const [profileCtx, setProfileCtx] = useState(null);
+    const [officeType, setOfficeType] = useState('');
+    const [location, setLocation]     = useState('');
+    const [allDepartments, setAllDepartments] = useState([]);
+
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+        axios.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                const ot  = ctx.office_type || '';
+                const loc = ctx.location    || '';
+                if (ot) { setOfficeType(ot); if (loc) setLocation(loc); }
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
+    const locations = getLocations(officeType);
+    const isRoTe    = officeType === 'RO' || officeType === 'TE';
+
+    const locationShortCode = isLocalAdmin && location
+        ? (locations.find(l => l.location === location)?.shortCode || '')
+        : '';
+
+    useEffect(() => {
+        if (!isLocalAdmin) return;
+        if (!officeType || (isRoTe && !location)) { setAllDepartments([]); return; }
+        fetchDepartments(officeType, location).then(setAllDepartments);
+    }, [isLocalAdmin, officeType, location]);
+
+    const departments = isLocalAdmin && profileCtx
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return allDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : allDepartments;
+
+    const localAdminDeptNames = isLocalAdmin && officeType === 'HO' && departments.length > 0
+        ? departments.map(d => d.name).join(',')
+        : '';
+
+    // ─── End Local Admin ─────────────────────────────────────────────────────────
+
     const fetchCases = useCallback(async (searchTerm, pageNum) => {
         setLoading(true);
         setHasSearched(true);
 
         try {
-            const response = await axios.get('/cases/search', {
-                params: {
-                    caseNumber: searchTerm && searchTerm.trim() !== '' ? searchTerm.trim() : undefined,
-                    page: pageNum,
-                    size: pageSize
+            const params = {
+                page: pageNum,
+                size: pageSize
+            };
+            if (searchTerm && searchTerm.trim() !== '') params.caseNumber = searchTerm.trim();
+
+            // Local Admin filters
+            if (isLocalAdmin) {
+                if (officeType) params.hoRo = officeType;
+                if (officeType === 'HO') {
+                    if (localAdminDeptNames) params.deptNames = localAdminDeptNames;
+                } else if (locationShortCode) {
+                    params.roShortCode = locationShortCode;
                 }
-            });
+            }
+
+            const response = await axios.get('/cases/search', { params });
 
             const data = response.data;
             setCases(data.cases || []);
@@ -67,7 +130,7 @@ const CasesPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [pageSize]);
+    }, [pageSize, isLocalAdmin, officeType, locationShortCode, localAdminDeptNames]);
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -84,8 +147,16 @@ const CasesPage = () => {
     }, []);
 
     useEffect(() => {
+        if (isLocalAdmin) {
+            if (!profileCtx) return; // wait for profile context
+            if (officeType === 'HO') {
+                if (!localAdminDeptNames) return; // wait for departments
+            } else {
+                if (!locationShortCode) return; // wait for location
+            }
+        }
         fetchCases('', 1);
-    }, []);
+    }, [fetchCases, isLocalAdmin, profileCtx, officeType, locationShortCode, localAdminDeptNames]);
 
     const handleSearch = (e) => {
         e.preventDefault();
@@ -222,6 +293,7 @@ const CasesPage = () => {
                     <Briefcase size={16} />
                     Cases
                 </button>
+                {!isLocalAdmin && (
                 <button
                     onClick={() => setActiveTab('inbox')}
                     className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
@@ -233,6 +305,7 @@ const CasesPage = () => {
                     <Inbox size={16} />
                     Case Inbox
                 </button>
+                )}
                 <button
                     onClick={() => setActiveTab('delegate')}
                     className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
@@ -247,7 +320,7 @@ const CasesPage = () => {
             </div>
 
             {/* Case Inbox Tab */}
-            {activeTab === 'inbox' && <CaseInboxContent />}
+            {!isLocalAdmin && activeTab === 'inbox' && <CaseInboxContent />}
 
             {/* Delegate Case Tab */}
             {activeTab === 'delegate' && <DelegateContent />}

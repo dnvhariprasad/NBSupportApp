@@ -1,25 +1,31 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import api from '../api/axios';
+import { getLocations, fetchDepartments } from '../data/nabardMetadata';
 import {
-    Inbox, Loader2, X, User,
-    FileText, Info, ClipboardList, ChevronLeft, ChevronRight, ChevronsLeft
+    Inbox, Loader2, X, User, Building2, MapPin, FolderOpen,
+    FileText, Info, ClipboardList, ChevronLeft, ChevronRight, ChevronsLeft, ChevronDown
 } from 'lucide-react';
 
-const USERS_PAGE_SIZE = 2000;
 const PAGE_SIZE = 20;
 
-async function fetchAllUsers() {
-    let page = 1;
-    let all = [];
-    while (true) {
-        const res = await api.get('/users/profiles', { params: { page, size: USERS_PAGE_SIZE } });
-        const users = res.data?.users || [];
-        all = all.concat(users);
-        if (!res.data?.hasNext) break;
-        page++;
-    }
-    return all;
-}
+const selectCls         = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer pr-8';
+const disabledSelectCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-8';
+
+const SelectWrapper = ({ children }) => (
+    <div className="relative">
+        {children}
+        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+            <ChevronDown size={14} className="text-slate-400" />
+        </div>
+    </div>
+);
+
+const FieldLabel = ({ icon: Icon, label }) => (
+    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 mb-1">
+        <Icon size={13} className="text-slate-400" />
+        {label}
+    </label>
+);
 
 // ─── Case Details Modal ────────────────────────────────────────────────────────
 const CaseDetailsModal = ({ caseItem, onClose }) => {
@@ -191,13 +197,18 @@ const MovementRegisterModal = ({ caseItem, onClose }) => {
 
 // ─── CaseInbox2Page ────────────────────────────────────────────────────────────
 const CaseInbox2Page = () => {
-    const [allUsers,     setAllUsers]     = useState([]);
-    const [loadingUsers, setLoadingUsers] = useState(false);
-    const [searchQuery,  setSearchQuery]  = useState('');
-    const [showDropdown, setShowDropdown] = useState(false);
-    const [selectedUser, setSelectedUser] = useState(null);
-    const dropdownRef = useRef(null);
+    // Filter state
+    const [officeType,  setOfficeType]  = useState('');
+    const [location,    setLocation]    = useState('');
+    const [department,  setDepartment]  = useState(null);
+    const [allDepartments, setAllDepartments] = useState([]);
 
+    // Users state
+    const [users,        setUsers]        = useState([]);
+    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [selectedUser, setSelectedUser] = useState(null);
+
+    // Cases state
     const [cases,        setCases]        = useState([]);
     const [total,        setTotal]        = useState(0);
     const [loadingCases, setLoadingCases] = useState(false);
@@ -207,34 +218,64 @@ const CaseInbox2Page = () => {
     const [detailCase,   setDetailCase]   = useState(null);
     const [movementCase, setMovementCase] = useState(null);
 
-    // Load all users on mount
+    const locations = getLocations(officeType);
+    const isRoTe    = officeType === 'RO' || officeType === 'TE';
+
+    // Fetch departments when office type / location changes
     useEffect(() => {
-        setLoadingUsers(true);
-        fetchAllUsers()
-            .then(setAllUsers)
-            .catch(() => setAllUsers([]))
-            .finally(() => setLoadingUsers(false));
-    }, []);
+        if (!officeType || (isRoTe && !location)) { setAllDepartments([]); return; }
+        fetchDepartments(officeType, location).then(setAllDepartments);
+    }, [officeType, location]);
 
-    // Close dropdown on outside click
-    useEffect(() => {
-        const handler = (e) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target))
-                setShowDropdown(false);
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
+    // Fetch users by location
+    const fetchUsersByLocation = async (loc) => {
+        setLoadingUsers(true); setUsers([]);
+        try {
+            const res = await api.get('/users/by-location', { params: { location: loc } });
+            setUsers(res.data?.users || res.data || []);
+        } catch { setUsers([]); }
+        finally { setLoadingUsers(false); }
+    };
 
-    const filteredUsers = useMemo(() =>
-        allUsers.filter(u => {
-            const q = searchQuery.toLowerCase();
-            return (u.object_name || '').toLowerCase().includes(q)
-                || (u.user_login_name || '').toLowerCase().includes(q);
-        }),
-        [allUsers, searchQuery]
-    );
+    // Fetch users by department
+    const fetchUsersByDept = async (shortCode) => {
+        setLoadingUsers(true); setUsers([]);
+        try {
+            const res = await api.get('/users/by-dept', { params: { shortCode } });
+            setUsers(res.data?.users || res.data || []);
+        } catch { setUsers([]); }
+        finally { setLoadingUsers(false); }
+    };
 
+    // Office type change handler
+    const handleOfficeTypeChange = (val) => {
+        setOfficeType(val); setLocation(''); setDepartment(null);
+        setUsers([]); setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
+    };
+
+    // Location change handler
+    const handleLocationChange = (val) => {
+        setLocation(val); setDepartment(null); setSelectedUser(null);
+        setCases([]); setTotal(0); setPage(1);
+        if (val) fetchUsersByLocation(val);
+        else setUsers([]);
+    };
+
+    // Department change handler
+    const handleDepartmentChange = (shortCode) => {
+        setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
+        if (!shortCode) {
+            setDepartment(null);
+            if (isRoTe && location) fetchUsersByLocation(location);
+            else setUsers([]);
+            return;
+        }
+        const dept = allDepartments.find(d => d.shortCode === shortCode) || null;
+        setDepartment(dept);
+        if (dept) fetchUsersByDept(dept.shortCode);
+    };
+
+    // Fetch cases for selected user
     const fetchCases = useCallback(async (userName, pg) => {
         if (!userName) { setCases([]); setTotal(0); return; }
         setLoadingCases(true);
@@ -254,7 +295,7 @@ const CaseInbox2Page = () => {
             } else if (Array.isArray(data.tasks)) {
                 items = data.tasks;
             }
-setCases(items);
+            setCases(items);
             setTotal(data.total || data.count || items.length);
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Failed to load inbox');
@@ -265,17 +306,15 @@ setCases(items);
         }
     }, []);
 
-    const handleSelectUser = (user) => {
-        setSelectedUser(user);
-        setSearchQuery('');
-        setShowDropdown(false);
+    const handleSelectUser = (userName) => {
+        setSelectedUser(userName);
         setPage(1);
-        fetchCases(user.object_name, 1);
+        fetchCases(userName, 1);
     };
 
     const handlePageChange = (newPage) => {
         setPage(newPage);
-        fetchCases(selectedUser?.object_name, newPage);
+        fetchCases(selectedUser, newPage);
     };
 
     const rangeStart = cases.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
@@ -292,47 +331,64 @@ setCases(items);
     const getCaseHoRo     = (c) => p(c, 'ho_ro') || '—';
     const getCaseId       = (c) => p(c, 'id') || c.id || '';
 
-    const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
-
     return (
         <div className="max-w-7xl mx-auto h-full flex flex-col">
             {detailCase   && <CaseDetailsModal     caseItem={detailCase}   onClose={() => setDetailCase(null)} />}
             {movementCase && <MovementRegisterModal caseItem={movementCase} onClose={() => setMovementCase(null)} />}
 
-            {/* User selector */}
+            {/* Filter Panel */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-5">
-                <h2 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                    <User size={15} className="text-[#0A66C2]" />
-                    Select User
-                </h2>
-                <div className="relative max-w-md" ref={dropdownRef}>
-                    <input
-                        type="text"
-                        className={inputCls}
-                        placeholder={loadingUsers ? 'Loading users…' : 'Search by name or login…'}
-                        value={selectedUser ? selectedUser.object_name : searchQuery}
-                        disabled={loadingUsers}
-                        onFocus={() => { if (selectedUser) setSelectedUser(null); setShowDropdown(true); }}
-                        onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true); setSelectedUser(null); }}
-                    />
-                    {loadingUsers && (
-                        <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400" />
-                    )}
-                    {showDropdown && filteredUsers.length > 0 && (
-                        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                            {filteredUsers.slice(0, 100).map(u => (
-                                <button
-                                    key={u.r_object_id || u.user_login_name}
-                                    type="button"
-                                    className="w-full text-left px-3 py-2 text-sm hover:bg-[#0A66C2]/5 flex items-center justify-between"
-                                    onClick={() => handleSelectUser(u)}
-                                >
-                                    <span className="font-medium text-slate-800">{u.object_name}</span>
-                                    <span className="text-xs text-slate-400 font-mono">{u.user_login_name}</span>
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                        <FieldLabel icon={Building2} label="Office Type" />
+                        <SelectWrapper>
+                            <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)}
+                                className={selectCls}>
+                                <option value="">— Select office type —</option>
+                                <option value="HO">HO — Head Office</option>
+                                <option value="RO">RO — Regional Office</option>
+                                <option value="TE">TE — Training Establishment</option>
+                            </select>
+                        </SelectWrapper>
+                    </div>
+                    <div>
+                        <FieldLabel icon={MapPin} label="Location" />
+                        {isRoTe ? (
+                            <SelectWrapper>
+                                <select value={location} onChange={e => handleLocationChange(e.target.value)}
+                                    className={selectCls}>
+                                    <option value="">— Select location —</option>
+                                    {locations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
+                                </select>
+                            </SelectWrapper>
+                        ) : officeType === 'HO' ? (
+                            <input readOnly value="Mumbai (Head Office)" className={disabledSelectCls} />
+                        ) : (
+                            <input readOnly value="" placeholder="— Select office first —" className={disabledSelectCls} />
+                        )}
+                    </div>
+                    <div>
+                        <FieldLabel icon={FolderOpen} label="Department" />
+                        <SelectWrapper>
+                            <select value={department?.shortCode || ''} onChange={e => handleDepartmentChange(e.target.value)}
+                                disabled={!officeType || (isRoTe && !location)}
+                                className={!officeType || (isRoTe && !location) ? disabledSelectCls : selectCls}>
+                                <option value="">{!officeType ? '— Select office first —' : (isRoTe && !location) ? '— Select location first —' : '— All departments —'}</option>
+                                {allDepartments.map(d => <option key={d.shortCode} value={d.shortCode}>{d.name}</option>)}
+                            </select>
+                        </SelectWrapper>
+                    </div>
+                    <div>
+                        <FieldLabel icon={User} label="User Name" />
+                        <SelectWrapper>
+                            <select value={selectedUser || ''} onChange={e => handleSelectUser(e.target.value)}
+                                disabled={loadingUsers || users.length === 0}
+                                className={loadingUsers || users.length === 0 ? disabledSelectCls : selectCls}>
+                                <option value="">{loadingUsers ? 'Loading users…' : users.length === 0 ? '— Select dept/location first —' : '— Select user —'}</option>
+                                {users.map(u => <option key={u.r_object_id || u.user_login_name} value={u.object_name}>{u.object_name}</option>)}
+                            </select>
+                        </SelectWrapper>
+                    </div>
                 </div>
             </div>
 
@@ -343,7 +399,7 @@ setCases(items);
                 <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3">
                     <ClipboardList size={15} className="text-[#0A66C2]" />
                     <span className="text-sm font-semibold text-slate-700">
-                        {selectedUser ? `Inbox — ${selectedUser.object_name}` : 'Inbox Tasks'}
+                        {selectedUser ? `Inbox — ${selectedUser}` : 'Inbox Tasks'}
                     </span>
                     {selectedUser && !loadingCases && total > 0 && (
                         <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded-full">
@@ -444,7 +500,7 @@ setCases(items);
                 </div>
 
                 {/* Pagination footer */}
-                {selectedUser && !loadingCases && (hasPrev || hasNext) && (
+                {selectedUser && !loadingCases && cases.length > 0 && (hasPrev || hasNext) && (
                     <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-white">
                         <span className="text-xs text-slate-500">
                             {rangeStart > 0 ? `Showing ${rangeStart}–${rangeEnd}${total > rangeEnd ? ` of ${total}` : ''}` : ''}

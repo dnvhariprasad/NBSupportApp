@@ -236,21 +236,62 @@ const DelegatePage = () => {
     const [detailCase,   setDetailCase]   = useState(null); // Case Details modal
     const [movementCase, setMovementCase] = useState(null); // Movement Register modal
 
-    const locations   = getLocations(officeType);
-    const [departments, setDepartments] = useState([]);
-    const isRoTe      = officeType === 'RO' || officeType === 'TE';
+    // Role & profile context for Local Admin
+    const storedUser    = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole     = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin  = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const [profileCtx, setProfileCtx] = useState(null);
 
     useEffect(() => {
-        if (!officeType || (isRoTe && !location)) { setDepartments([]); return; }
-        fetchDepartments(officeType, location).then(setDepartments);
+        if (!isLocalAdmin || !loginUsername) return;
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                const ot  = ctx.office_type || '';
+                const loc = ctx.location    || '';
+                if (ot) {
+                    setOfficeType(ot);
+                    if (loc) setLocation(loc);
+                }
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
+    const locations   = getLocations(officeType);
+    const [allDepartments, setAllDepartments] = useState([]);
+    const isRoTe      = officeType === 'RO' || officeType === 'TE';
+
+    // Derive location short code for case filtering
+    const locationShortCode = isLocalAdmin && location
+        ? (locations.find(l => l.location === location)?.shortCode || '')
+        : '';
+
+    useEffect(() => {
+        if (!officeType || (isRoTe && !location)) { setAllDepartments([]); return; }
+        fetchDepartments(officeType, location).then(setAllDepartments);
     }, [officeType, location]);
 
-    const fetchCases = useCallback(async (query, hoRo, deptName, pg) => {
+    // For Local Admin: filter departments to only those in their profile
+    const departments = isLocalAdmin && profileCtx
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return allDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : allDepartments;
+
+    const fetchCases = useCallback(async (query, hoRo, deptName, pg, roShortCode, deptNames) => {
         setLoadingCases(true);
         try {
             const params = { query: query || '', page: pg, size: pageSize };
-            if (hoRo)     params.hoRo     = hoRo;
-            if (deptName) params.deptName = deptName;
+            if (hoRo)         params.hoRo         = hoRo;
+            if (deptName)     params.deptName     = deptName;
+            if (!deptName && deptNames) params.deptNames = deptNames;
+            if (roShortCode)  params.roShortCode  = roShortCode;
             const res = await api.get('/delegate/cases', { params });
             setCases(res.data?.cases || []);
             setHasNext(res.data?.hasNext || false);
@@ -262,7 +303,28 @@ const DelegatePage = () => {
         }
     }, [pageSize]);
 
-    useEffect(() => { fetchCases('', '', '', 1); }, [fetchCases]);
+    // For Local Admin, wait until profile context and departments are loaded,
+    // then fetch cases filtered by location (RO/TE) or departments (HO)
+    const localAdminDeptNames = isLocalAdmin && officeType === 'HO' && departments.length > 0
+        ? departments.map(d => d.name).join(',')
+        : '';
+
+    useEffect(() => {
+        if (isLocalAdmin) {
+            if (!profileCtx) return; // wait for profile context
+            if (officeType === 'HO') {
+                // HO Local Admin: wait for departments to load, then filter by their departments
+                if (!localAdminDeptNames) return;
+                fetchCases('', officeType, '', 1, '', localAdminDeptNames);
+            } else {
+                // RO/TE Local Admin: filter by location short code
+                fetchCases('', officeType, '', 1, locationShortCode);
+                if (location) fetchUsersByLocation(location);
+            }
+        } else {
+            fetchCases('', '', '', 1);
+        }
+    }, [fetchCases, isLocalAdmin, profileCtx, officeType, location, locationShortCode, localAdminDeptNames]);
 
     const fetchUsersByDept = async (shortCode) => {
         setLoadingUsers(true); setUsers([]);
@@ -292,7 +354,8 @@ const DelegatePage = () => {
 
     const handleLocationChange = (val) => {
         setLocation(val); setDepartment(null); setSelectedUser(''); setPage(1);
-        if (val) { fetchUsersByLocation(val); fetchCases(activeQuery, officeType, '', 1); }
+        const sc = locations.find(l => l.location === val)?.shortCode || '';
+        if (val) { fetchUsersByLocation(val); fetchCases(activeQuery, officeType, '', 1, sc); }
         else { setUsers([]); fetchCases(activeQuery, officeType, '', 1); }
     };
 
@@ -300,28 +363,28 @@ const DelegatePage = () => {
         if (!shortCode) {
             setDepartment(null); setSelectedUser('');
             if (isRoTe && location) fetchUsersByLocation(location); else setUsers([]);
-            fetchCases(activeQuery, officeType, '', 1); setPage(1); return;
+            fetchCases(activeQuery, officeType, '', 1, locationShortCode, localAdminDeptNames); setPage(1); return;
         }
         const dept = departments.find(d => d.shortCode === shortCode) || null;
         setDepartment(dept); setSelectedUser(''); setPage(1);
-        if (dept) { fetchUsersByDept(dept.shortCode); fetchCases(activeQuery, officeType, dept.name, 1); }
+        if (dept) { fetchUsersByDept(dept.shortCode); fetchCases(activeQuery, officeType, dept.name, 1, locationShortCode); }
     };
 
     const handleSearch = (e) => {
         e.preventDefault();
         const q = searchQuery.trim();
         setActiveQuery(q); setPage(1);
-        fetchCases(q, officeType, department?.name || '', 1);
+        fetchCases(q, officeType, department?.name || '', 1, locationShortCode, !department ? localAdminDeptNames : '');
     };
 
     const clearSearch = () => {
         setSearchQuery(''); setActiveQuery(''); setPage(1);
-        fetchCases('', officeType, department?.name || '', 1);
+        fetchCases('', officeType, department?.name || '', 1, locationShortCode, !department ? localAdminDeptNames : '');
     };
 
     const handlePageChange = (newPage) => {
         setPage(newPage);
-        fetchCases(activeQuery, officeType, department?.name || '', newPage);
+        fetchCases(activeQuery, officeType, department?.name || '', newPage, locationShortCode, !department ? localAdminDeptNames : '');
     };
 
     const handleDelegate = async (caseItem) => {
@@ -353,7 +416,9 @@ const DelegatePage = () => {
                     <div>
                         <FieldLabel icon={Building2} label="Office Type" />
                         <SelectWrapper>
-                            <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)} className={selectCls}>
+                            <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)}
+                                disabled={isLocalAdmin}
+                                className={isLocalAdmin ? disabledSelectCls : selectCls}>
                                 <option value="">— All offices —</option>
                                 <option value="HO">HO — Head Office</option>
                                 <option value="RO">RO — Regional Office</option>
@@ -365,7 +430,9 @@ const DelegatePage = () => {
                         <FieldLabel icon={MapPin} label="Location" />
                         {isRoTe ? (
                             <SelectWrapper>
-                                <select value={location} onChange={e => handleLocationChange(e.target.value)} className={selectCls}>
+                                <select value={location} onChange={e => handleLocationChange(e.target.value)}
+                                    disabled={isLocalAdmin}
+                                    className={isLocalAdmin ? disabledSelectCls : selectCls}>
                                     <option value="">— Select location —</option>
                                     {locations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
                                 </select>

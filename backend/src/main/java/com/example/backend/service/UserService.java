@@ -34,7 +34,9 @@ public class UserService {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> searchUserProfiles(String query, int page, int itemsPerPage, String officeTypeFilter) {
+    public Map<String, Object> searchUserProfiles(String query, int page, int itemsPerPage,
+                                                    String officeTypeFilter, String locationFilter,
+                                                    String deptNames) {
         StringBuilder dqlBuilder = new StringBuilder();
         dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, department_short_code, user_grade, designation, ");
         dqlBuilder.append("user_email_address, user_login_name, primary_mobile_number, location, office_type, ");
@@ -48,6 +50,22 @@ public class UserService {
             dqlBuilder.append("AND office_type != 'HO' ");
         }
 
+        // Location filter (for RO/TE Local Admin)
+        if (locationFilter != null && !locationFilter.isBlank()) {
+            dqlBuilder.append("AND location = '").append(locationFilter.trim().replace("'", "''")).append("' ");
+        }
+
+        // Multi-department filter (for HO Local Admin)
+        if (deptNames != null && !deptNames.isBlank()) {
+            String[] names = deptNames.split(",");
+            dqlBuilder.append("AND department_name IN (");
+            for (int i = 0; i < names.length; i++) {
+                if (i > 0) dqlBuilder.append(", ");
+                dqlBuilder.append("'").append(names[i].trim().replace("'", "''")).append("'");
+            }
+            dqlBuilder.append(") ");
+        }
+
         if (query != null && !query.trim().isEmpty()) {
             String q = query.trim();
             dqlBuilder.append("AND (object_name LIKE '%").append(q).append("%' ");
@@ -59,7 +77,30 @@ public class UserService {
 
         dqlBuilder.append("ORDER BY object_name");
 
+        log.info("User profile search — officeType: {}, location: {}, deptNames: {}", officeTypeFilter, locationFilter, deptNames);
+
         return executeDql(dqlBuilder.toString(), page, itemsPerPage);
+    }
+
+    /**
+     * Check if a UIN already exists in cms_user_profile.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> checkUinExists(String uin) {
+        String safe = uin.trim().replace("'", "''");
+        String dql = "SELECT r_object_id, object_name FROM cms_user_profile WHERE uin = '" + safe + "'";
+        log.info("Checking UIN existence: {}", uin);
+
+        Map<String, Object> response = executeDql(dql, 1, 1);
+        List<Map<String, Object>> users = (List<Map<String, Object>>) response.get("users");
+        boolean exists = users != null && !users.isEmpty();
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("exists", exists);
+        if (exists) {
+            result.put("userName", users.get(0).get("object_name"));
+        }
+        return result;
     }
 
     @SuppressWarnings("unchecked")

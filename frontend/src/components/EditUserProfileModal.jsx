@@ -728,7 +728,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                         Cancel
                     </button>
-                    <button type="submit" form="editProfileForm" disabled={loading || (isSuperAdmin && showPendingBlock)}
+                    <button type="submit" form="editProfileForm" disabled={loading || checkingInbox || (isSuperAdmin && showPendingBlock)}
                         className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] disabled:opacity-50 flex items-center gap-2 transition-colors">
                         {loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                         Save Changes

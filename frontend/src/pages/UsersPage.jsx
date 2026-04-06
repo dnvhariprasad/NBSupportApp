@@ -8,16 +8,18 @@ import {
     Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers, Save
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
-import { USER_GRADES } from '../data/nabardMetadata.js';
+import { USER_GRADES, fetchDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
-async function fetchAllUsers(officeTypeFilter) {
+async function fetchAllUsers(officeTypeFilter, locationFilter, deptNames) {
     const PAGE_SIZE = 2000;
     let page = 1;
     let all = [];
     while (true) {
         const params = { page, size: PAGE_SIZE };
         if (officeTypeFilter) params.officeTypeFilter = officeTypeFilter;
+        if (locationFilter)   params.locationFilter   = locationFilter;
+        if (deptNames)        params.deptNames         = deptNames;
         const res = await api.get('/users/profiles', { params });
         const users = res.data.users || [];
         all = all.concat(users);
@@ -470,26 +472,62 @@ const CmsProfileTab = ({ onToast }) => {
     const isLocalAdmin = adminRole === 'Local Admin';
     const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
 
+    const [profileCtx, setProfileCtx]           = useState(null);
+    const [profileOfficeType, setProfileOfficeType] = useState('');
+    const [profileLocation, setProfileLocation] = useState('');
+    const [allDepts, setAllDepts]               = useState([]);
+
     useEffect(() => {
         if (!isLocalAdmin || !loginUsername) {
-            // Super Admin — fetch without filter
             fetchUsers(null);
             return;
         }
-        // Local Admin — fetch profile context first to get office_type
         api.get('/users/profile-context', { params: { username: loginUsername } })
             .then(res => {
-                const officeType = res.data?.office_type || '';
-                const filter = officeType === 'HO' ? 'HO' : 'RO';
-                fetchUsers(filter);
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                setProfileOfficeType(ctx.office_type || '');
+                setProfileLocation(ctx.location || '');
             })
-            .catch(() => fetchUsers(null));
+            .catch(() => { setProfileCtx({}); fetchUsers(null); });
     }, [isLocalAdmin, loginUsername]);
 
-    const fetchUsers = async (officeTypeFilter) => {
+    // Fetch departments for HO Local Admin
+    useEffect(() => {
+        if (!isLocalAdmin || !profileOfficeType) return;
+        if ((profileOfficeType === 'RO' || profileOfficeType === 'TE') && !profileLocation) return;
+        fetchDepartments(profileOfficeType, profileLocation).then(setAllDepts);
+    }, [isLocalAdmin, profileOfficeType, profileLocation]);
+
+    const filteredDepts = isLocalAdmin && profileCtx
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return allDepts.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : allDepts;
+
+    const localAdminDeptNames = isLocalAdmin && profileOfficeType === 'HO' && filteredDepts.length > 0
+        ? filteredDepts.map(d => d.name).join(',')
+        : '';
+
+    // Auto-fetch once Local Admin context is ready
+    useEffect(() => {
+        if (!isLocalAdmin || !profileCtx || !profileOfficeType) return;
+        if (profileOfficeType === 'HO') {
+            if (!localAdminDeptNames) return;
+            fetchUsers(profileOfficeType, '', localAdminDeptNames);
+        } else {
+            if (!profileLocation) return;
+            fetchUsers(profileOfficeType, profileLocation, '');
+        }
+    }, [isLocalAdmin, profileCtx, profileOfficeType, profileLocation, localAdminDeptNames]);
+
+    const fetchUsers = async (officeTypeFilter, locationFilter, deptNames) => {
         setLoading(true);
         try {
-            const users = await fetchAllUsers(officeTypeFilter);
+            const users = await fetchAllUsers(officeTypeFilter, locationFilter, deptNames);
             setAllUsers(users);
         } catch (error) {
             console.error('Error fetching users', error);
@@ -873,12 +911,11 @@ const SourcePasswordBlock = ({ form, handleChange, showPassword, setShowPassword
                     </div>
                     {/* Partition */}
                     <div>
-                        <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 bg-white focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-[#0A66C2] transition-all">
+                        <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 transition-all">
                             <Database size={13} className="text-slate-400 shrink-0" />
                             <input type="text" value={form.otds_partition}
-                                onChange={e => handleChange('otds_partition', e.target.value)}
-                                placeholder="OTDS Partition name (e.g. DCTMPartitions)"
-                                className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400" />
+                                readOnly
+                                className="flex-1 bg-transparent text-sm outline-none text-slate-500 cursor-not-allowed" />
                         </div>
                         {errors?.otds_partition && <p className="text-xs text-red-500 mt-1">{errors.otds_partition}</p>}
                     </div>
@@ -898,8 +935,32 @@ const UserCreateTab = ({ onToast }) => {
     const [showPassword, setShowPassword]   = useState(false);
     const [showOtdsConfirm, setShowOtdsConfirm] = useState(false);
     const [profileOpen, setProfileOpen]     = useState(false);
+    const [repoName, setRepoName]         = useState('');
     // Track which Hindi fields have been manually edited so auto-fill doesn't overwrite them
     const hindiTouched = useRef({ profile_hindi_user_name: false, profile_hindi_designation: false });
+    const [checkingUin, setCheckingUin] = useState(false);
+
+    const checkUinExists = async (uin) => {
+        const val = uin.trim();
+        if (!val) return;
+        setCheckingUin(true);
+        try {
+            const res = await api.get('/users/check-uin', { params: { uin: val } });
+            if (res.data?.exists) {
+                setErrors(e => ({ ...e, profile_uin: `UIN already exists (${res.data.userName})` }));
+            }
+        } catch { /* ignore */ }
+        finally { setCheckingUin(false); }
+    };
+
+    // Fetch repository name from backend and auto-set home_docbase
+    useEffect(() => {
+        api.get('/auth/current-user').then(res => {
+            const repo = res.data?.repository || '';
+            setRepoName(repo);
+            setForm(f => ({ ...f, home_docbase: repo }));
+        }).catch(() => {});
+    }, []);
 
     const handleChange = (field, value) => {
         if (field === 'profile_hindi_user_name' || field === 'profile_hindi_designation') {
@@ -951,6 +1012,8 @@ const UserCreateTab = ({ onToast }) => {
             if (!form.user_name.trim())       e.user_name       = 'User name is required';
             if (!form.user_login_name.trim()) e.user_login_name = 'Login name is required';
             if (!form.user_address.trim())    e.user_address    = 'User address is required';
+            else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.user_address.trim()))
+                e.user_address = 'Please enter a valid email address';
         }
         if (s === 2) {
             if (!form.home_docbase) e.home_docbase = 'Home Docbase is required';
@@ -972,6 +1035,8 @@ const UserCreateTab = ({ onToast }) => {
             if (!form.profile_hindi_designation.trim())     e.profile_hindi_designation     = 'Hindi designation is required';
             if (!form.profile_hindi_user_name.trim())       e.profile_hindi_user_name       = 'Hindi user name is required';
             if (!form.profile_uin.trim())                   e.profile_uin                   = 'UIN is required';
+            else if (errors.profile_uin && errors.profile_uin.startsWith('UIN already'))
+                                                            e.profile_uin                   = errors.profile_uin;
             if (!form.profile_user_grade)                   e.profile_user_grade            = 'User grade is required';
             if (form.profile_grade_level === '')            e.profile_grade_level           = 'Grade level is required';
         }
@@ -1169,31 +1234,28 @@ const UserCreateTab = ({ onToast }) => {
                                     {/* ── Repository settings ── */}
                                     <div className="border-t border-slate-100 pt-4 space-y-4">
                                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Repository & Permissions</p>
-                                        <FormField label="Home Docbase" icon={Globe} required error={errors.home_docbase}>
-                                            <SelectField value={form.home_docbase}
-                                                onChange={v => handleChange('home_docbase', v)}
-                                                options={[
-                                                    { value: '',         label: '— Select docbase —' },
-                                                    { value: 'EDMS',     label: 'EDMS' },
-                                                    { value: 'NABARDUAT',label: 'NABARDUAT' },
-                                                ]} />
-                                            {errors.home_docbase && <p className="text-xs text-red-500 mt-1">{errors.home_docbase}</p>}
-                                        </FormField>
-                                        {/* User Privileges — fixed at Create Group (4), hidden */}
-                                        {/* User State — always Active (0), shown as disabled */}
-                                        <FormField label="User State" icon={User} hint="User can log in to the repository">
-                                            <div className="relative">
-                                                <select disabled value={0}
-                                                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-10">
-                                                    <option value={0}>Active</option>
-                                                </select>
-                                                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                                                    <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                                    </svg>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField label="Repository Name" icon={Globe} required error={errors.home_docbase}>
+                                                <input type="text" value={repoName}
+                                                    readOnly
+                                                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 text-slate-500 cursor-not-allowed" />
+                                            </FormField>
+                                            {/* User Privileges — fixed at Create Group (4), hidden */}
+                                            {/* User State — always Active (0), shown as disabled */}
+                                            <FormField label="User State" icon={User} required hint="User can log in to the repository">
+                                                <div className="relative">
+                                                    <select disabled value={0}
+                                                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-10">
+                                                        <option value={0}>Active</option>
+                                                    </select>
+                                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                                                        <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                        </svg>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </FormField>
+                                            </FormField>
+                                        </div>
                                     </div>
 
                                     {/* Summary card */}
@@ -1251,10 +1313,16 @@ const UserCreateTab = ({ onToast }) => {
                                                 className={inputCls(errors.profile_hindi_user_name)} />
                                         </FormField>
                                         <FormField label="UIN" icon={Hash} required error={errors.profile_uin}>
-                                            <input type="text" value={form.profile_uin}
-                                                onChange={e => handleChange('profile_uin', e.target.value)}
-                                                placeholder="e.g. 3405"
-                                                className={`${inputCls(errors.profile_uin)} font-mono`} />
+                                            <div className="relative">
+                                                <input type="text" value={form.profile_uin}
+                                                    onChange={e => handleChange('profile_uin', e.target.value)}
+                                                    onBlur={e => checkUinExists(e.target.value)}
+                                                    placeholder="e.g. 3405"
+                                                    className={`${inputCls(errors.profile_uin)} font-mono`} />
+                                                {checkingUin && (
+                                                    <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400" />
+                                                )}
+                                            </div>
                                         </FormField>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1369,10 +1437,11 @@ const UserCreateTab = ({ onToast }) => {
                                         Next <ChevronRight size={15} />
                                     </button>
                                 ) : (
-                                    <button type="button" onClick={handleSubmit} disabled={submitting ||
+                                    <button type="button" onClick={handleSubmit} disabled={submitting || checkingUin ||
                                         !form.profile_designation.trim() || !form.profile_hindi_designation.trim() ||
                                         !form.profile_hindi_user_name.trim() || !form.profile_uin.trim() ||
-                                        !form.profile_user_grade || form.profile_grade_level === ''}
+                                        !form.profile_user_grade || form.profile_grade_level === '' ||
+                                        (errors.profile_uin && errors.profile_uin.startsWith('UIN already'))}
                                         className="flex items-center gap-2 px-6 py-2 bg-[#0A66C2] hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed">
                                         {submitting
                                             ? <><Loader2 size={15} className="animate-spin" /> Creating...</>
@@ -2138,6 +2207,69 @@ const UserAccessTab = ({ onToast }) => {
     const [localAdmins,   setLocalAdmins]   = useState(new Set()); // set of object_names in ecm_local_admin
     const PAGE_SIZE = 15;
 
+    // ─── Local Admin role & profile context ──────────────────────────────────
+    const storedUser    = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole     = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin  = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const [profileCtx, setProfileCtx]           = useState(null);
+    const [profileLocation, setProfileLocation] = useState('');
+    const [allDepartments, setAllDepartments]   = useState([]);
+
+    // ─── Super Admin filters (location + department) ─────────────────────────
+    const [filterLocation,   setFilterLocation]   = useState('');
+    const [filterDeptName,   setFilterDeptName]    = useState('');
+    const [filterDepartments, setFilterDepartments] = useState([]);
+
+    // Locations list based on chosen office type
+    const filterLocations = useMemo(() => getLocations(officeType), [officeType]);
+    const isRoTe = officeType === 'RO' || officeType === 'TE';
+
+    // Fetch departments when office type or location changes (for Super Admin filter)
+    useEffect(() => {
+        if (isLocalAdmin) return;
+        if (!officeType) { setFilterDepartments([]); return; }
+        if (isRoTe && !filterLocation) { setFilterDepartments([]); return; }
+        const loc = isRoTe ? filterLocation : '';
+        fetchDepartments(officeType, loc).then(setFilterDepartments);
+    }, [isLocalAdmin, officeType, filterLocation]);
+    // ─── End Super Admin filters ─────────────────────────────────────────────
+
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                const ot  = ctx.office_type || '';
+                const loc = ctx.location    || '';
+                if (ot) setOfficeType(ot);
+                if (loc) setProfileLocation(loc);
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
+    useEffect(() => {
+        if (!isLocalAdmin || !officeType) return;
+        if (isRoTe && !profileLocation) return;
+        fetchDepartments(officeType, profileLocation).then(setAllDepartments);
+    }, [isLocalAdmin, officeType, profileLocation]);
+
+    const departments = isLocalAdmin && profileCtx
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return allDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : allDepartments;
+
+    const localAdminDeptNames = isLocalAdmin && officeType === 'HO' && departments.length > 0
+        ? departments.map(d => d.name).join(',')
+        : '';
+    // ─── End Local Admin ─────────────────────────────────────────────────────
+
     // Fetch ecm_local_admin group members on mount
     useEffect(() => {
         api.get('/groups/ecm_local_admin/members')
@@ -2148,7 +2280,7 @@ const UserAccessTab = ({ onToast }) => {
             .catch(() => {}); // non-fatal — just won't show badge
     }, []);
 
-    const fetchUsersByOfficeType = async (ot) => {
+    const fetchUsersByOfficeType = async (ot, loc, deptNamesParam) => {
         setLoading(true);
         setUsers([]);
         setSearchQuery('');
@@ -2158,9 +2290,10 @@ const UserAccessTab = ({ onToast }) => {
             let page = 1;
             let all  = [];
             while (true) {
-                const res = await api.get('/users/profiles', {
-                    params: { page, size: PAGE, officeTypeFilter: ot },
-                });
+                const params = { page, size: PAGE, officeTypeFilter: ot };
+                if (loc)            params.locationFilter = loc;
+                if (deptNamesParam) params.deptNames      = deptNamesParam;
+                const res = await api.get('/users/profiles', { params });
                 all = all.concat(res.data.users || []);
                 if (!res.data.hasNext) break;
                 page++;
@@ -2173,10 +2306,44 @@ const UserAccessTab = ({ onToast }) => {
         }
     };
 
+    // Auto-fetch for Local Admin once profile context is ready
+    useEffect(() => {
+        if (!isLocalAdmin) return;
+        if (!profileCtx || !officeType) return;
+        if (officeType === 'HO') {
+            if (!localAdminDeptNames) return;
+            fetchUsersByOfficeType(officeType, '', localAdminDeptNames);
+        } else {
+            if (!profileLocation) return;
+            fetchUsersByOfficeType(officeType, profileLocation, '');
+        }
+    }, [isLocalAdmin, profileCtx, officeType, profileLocation, localAdminDeptNames]);
+
     const handleOfficeTypeChange = (ot) => {
         setOfficeType(ot);
-        if (ot) fetchUsersByOfficeType(ot);
+        setFilterLocation('');
+        setFilterDeptName('');
+        setFilterDepartments([]);
+        if (ot) fetchUsersByOfficeType(ot, '', '');
         else { setUsers([]); setSearchQuery(''); setCurrentPage(1); }
+    };
+
+    const handleLocationChange = (loc) => {
+        setFilterLocation(loc);
+        setFilterDeptName('');
+        if (officeType && loc) {
+            fetchUsersByOfficeType(officeType, loc, '');
+        } else if (officeType) {
+            fetchUsersByOfficeType(officeType, '', '');
+        }
+    };
+
+    const handleDeptChange = (deptName) => {
+        setFilterDeptName(deptName);
+        const loc = isRoTe ? filterLocation : '';
+        if (officeType) {
+            fetchUsersByOfficeType(officeType, loc, deptName || '');
+        }
     };
 
     const handleMarkLocalAdmin = async (user) => {
@@ -2216,7 +2383,9 @@ const UserAccessTab = ({ onToast }) => {
         const q = searchQuery.toLowerCase();
         return (u.object_name || '').toLowerCase().includes(q)
             || (u.user_login_name || '').toLowerCase().includes(q)
-            || (u.designation || '').toLowerCase().includes(q);
+            || (u.designation || '').toLowerCase().includes(q)
+            || (u.department_name || '').toLowerCase().includes(q)
+            || (u.location || '').toLowerCase().includes(q);
     });
 
     const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -2228,7 +2397,7 @@ const UserAccessTab = ({ onToast }) => {
         <div className="flex-1 flex flex-col overflow-hidden gap-4">
             {/* Filters */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-end gap-4 flex-wrap">
-                <div className="min-w-[200px]">
+                <div className="min-w-[180px]">
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
                         Office Type
                     </label>
@@ -2236,7 +2405,8 @@ const UserAccessTab = ({ onToast }) => {
                         <select
                             value={officeType}
                             onChange={e => handleOfficeTypeChange(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white"
+                            disabled={isLocalAdmin}
+                            className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] ${isLocalAdmin ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : 'bg-white'}`}
                         >
                             <option value="">— Select office type —</option>
                             <option value="HO">HO — Head Office</option>
@@ -2246,6 +2416,52 @@ const UserAccessTab = ({ onToast }) => {
                         <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     </div>
                 </div>
+
+                {/* Location filter — visible for RO/TE (Super Admin only) */}
+                {!isLocalAdmin && isRoTe && (
+                    <div className="min-w-[200px]">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                            <MapPin size={11} className="inline -mt-0.5 mr-0.5" />
+                            Location
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={filterLocation}
+                                onChange={e => handleLocationChange(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2]"
+                            >
+                                <option value="">— All locations —</option>
+                                {filterLocations.map(l => (
+                                    <option key={l.shortCode} value={l.location}>{l.location}</option>
+                                ))}
+                            </select>
+                            <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                    </div>
+                )}
+
+                {/* Department filter — visible for HO always, for RO/TE once location is chosen (Super Admin only) */}
+                {!isLocalAdmin && officeType && (officeType === 'HO' || filterLocation) && filterDepartments.length > 0 && (
+                    <div className="min-w-[180px]">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                            <Building2 size={11} className="inline -mt-0.5 mr-0.5" />
+                            Department
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={filterDeptName}
+                                onChange={e => handleDeptChange(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2]"
+                            >
+                                <option value="">— All departments —</option>
+                                {filterDepartments.map(d => (
+                                    <option key={d.shortCode} value={d.name}>{d.name}</option>
+                                ))}
+                            </select>
+                            <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                    </div>
+                )}
 
                 {users.length > 0 && (
                     <div className="flex-1 min-w-[220px]">
@@ -2310,7 +2526,8 @@ const UserAccessTab = ({ onToast }) => {
                                         <th className="px-4 py-3 font-semibold text-slate-600">Name</th>
                                         <th className="px-4 py-3 font-semibold text-slate-600">Login</th>
                                         <th className="px-4 py-3 font-semibold text-slate-600">Designation</th>
-                                        <th className="px-4 py-3 font-semibold text-slate-600">Department</th>
+                                        {!isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Department</th>}
+                                        {isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Location</th>}
                                         <th className="px-4 py-3 font-semibold text-slate-600 text-center">Local Admin</th>
                                     </tr>
                                 </thead>
@@ -2335,7 +2552,8 @@ const UserAccessTab = ({ onToast }) => {
                                             </td>
                                             <td className="px-4 py-3 text-slate-500 font-mono text-xs">{u.user_login_name || '—'}</td>
                                             <td className="px-4 py-3 text-slate-600">{u.designation || '—'}</td>
-                                            <td className="px-4 py-3 text-slate-600">{u.department_name || '—'}</td>
+                                            {!isRoTe && <td className="px-4 py-3 text-slate-600">{u.department_name || '—'}</td>}
+                                            {isRoTe && <td className="px-4 py-3 text-slate-600">{u.location || '—'}</td>}
                                             <td className="px-4 py-3 text-center">
                                                 {isAdmin ? (
                                                     <button

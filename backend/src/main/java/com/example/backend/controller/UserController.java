@@ -170,14 +170,18 @@ public class UserController {
     /**
      * Search user profiles.
      * Optional officeTypeFilter: 'HO' → only HO users; 'RO' → non-HO users (RO/TE).
+     * Optional locationFilter: filter by location field (for RO/TE Local Admin).
+     * Optional deptNames: comma-separated department names (for HO Local Admin).
      */
     @GetMapping("/profiles")
     public Map<String, Object> searchUserProfiles(
             @RequestParam(required = false) String query,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String officeTypeFilter) {
-        return userService.searchUserProfiles(query, page, size, officeTypeFilter);
+            @RequestParam(required = false) String officeTypeFilter,
+            @RequestParam(required = false) String locationFilter,
+            @RequestParam(required = false) String deptNames) {
+        return userService.searchUserProfiles(query, page, size, officeTypeFilter, locationFilter, deptNames);
     }
 
     /**
@@ -263,6 +267,15 @@ public class UserController {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage()));
         }
+    }
+
+    /**
+     * Check if a UIN already exists in cms_user_profile.
+     * GET /api/users/check-uin?uin=3405
+     */
+    @GetMapping("/check-uin")
+    public Map<String, Object> checkUinExists(@RequestParam String uin) {
+        return userService.checkUinExists(uin);
     }
 
     /**
