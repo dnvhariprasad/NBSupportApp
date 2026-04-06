@@ -45,7 +45,7 @@ public class DashboardService {
         summary.put("activeWorkflows", executeCount(
                 "SELECT COUNT(*) as cnt FROM dm_workflow WHERE r_runtime_state = 1"));
         summary.put("activeUsers", executeCount(
-                "SELECT COUNT(*) as cnt FROM cms_user_profile WHERE is_active = 'true'"));
+                "SELECT COUNT(*) as cnt FROM cms_user_profile WHERE is_active = 1"));
 
         return summary;
     }
@@ -75,16 +75,32 @@ public class DashboardService {
     }
 
     // ─── Case Creation Trend (last 12 months) ────────────────────────────────
+    // DATETOSTRING is not supported in this Documentum version,
+    // so we query COUNT per month using date-range WHERE clauses.
 
     public List<Map<String, Object>> getCasesTrend() {
-        String startDate = LocalDate.now().minusMonths(12).withDayOfMonth(1)
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        String dql = "SELECT DATETOSTRING(r_creation_date,'yyyy-mm') as month, COUNT(*) as case_count"
-                + " FROM cms_case_folder"
-                + " WHERE r_creation_date >= DATE('" + startDate + "','yyyy-mm-dd')"
-                + " GROUP BY DATETOSTRING(r_creation_date,'yyyy-mm')"
-                + " ORDER BY 1";
-        return executeGroupQuery(dql, "month", "case_count");
+        List<Map<String, Object>> results = new ArrayList<>();
+        LocalDate now = LocalDate.now();
+
+        for (int i = 11; i >= 0; i--) {
+            LocalDate monthStart = now.minusMonths(i).withDayOfMonth(1);
+            LocalDate monthEnd = monthStart.plusMonths(1);
+            String from = monthStart.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            String to = monthEnd.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            String label = monthStart.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+
+            String dql = "SELECT COUNT(*) as cnt FROM cms_case_folder"
+                    + " WHERE r_creation_date >= DATE('" + from + "','yyyy-mm-dd')"
+                    + " AND r_creation_date < DATE('" + to + "','yyyy-mm-dd')";
+
+            long count = executeCount(dql);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("category", label);
+            row.put("value", count);
+            results.add(row);
+        }
+
+        return results;
     }
 
     // ─── Workflow Status Distribution ────────────────────────────────────────
@@ -118,7 +134,7 @@ public class DashboardService {
 
     public List<Map<String, Object>> getUsersByOffice() {
         String dql = "SELECT office_type, COUNT(*) as user_count FROM cms_user_profile"
-                + " WHERE is_active = 'true' GROUP BY office_type";
+                + " WHERE is_active = 1 GROUP BY office_type";
         return executeGroupQuery(dql, "office_type", "user_count");
     }
 
