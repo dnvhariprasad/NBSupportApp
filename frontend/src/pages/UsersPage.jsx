@@ -2526,7 +2526,7 @@ const UserAccessTab = ({ onToast }) => {
                                         <th className="px-4 py-3 font-semibold text-slate-600">Name</th>
                                         <th className="px-4 py-3 font-semibold text-slate-600">Login</th>
                                         <th className="px-4 py-3 font-semibold text-slate-600">Designation</th>
-                                        <th className="px-4 py-3 font-semibold text-slate-600">Department</th>
+                                        {!isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Department</th>}
                                         {isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Location</th>}
                                         <th className="px-4 py-3 font-semibold text-slate-600 text-center">Local Admin</th>
                                     </tr>
@@ -2552,7 +2552,7 @@ const UserAccessTab = ({ onToast }) => {
                                             </td>
                                             <td className="px-4 py-3 text-slate-500 font-mono text-xs">{u.user_login_name || '—'}</td>
                                             <td className="px-4 py-3 text-slate-600">{u.designation || '—'}</td>
-                                            <td className="px-4 py-3 text-slate-600">{u.department_name || '—'}</td>
+                                            {!isRoTe && <td className="px-4 py-3 text-slate-600">{u.department_name || '—'}</td>}
                                             {isRoTe && <td className="px-4 py-3 text-slate-600">{u.location || '—'}</td>}
                                             <td className="px-4 py-3 text-center">
                                                 {isAdmin ? (
