@@ -483,6 +483,108 @@ public class MetadataService {
         return allResults;
     }
 
+    // ─── Hindi Comments ────────────────────────────────────────────────────────
+
+    /**
+     * Creates a dm_folder with the given object_name under /ECM CONFIG/Hindi Comments.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> createHindiComment(String objectName) {
+        String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+        String folderDql = "SELECT r_object_id, acl_name, acl_domain FROM dm_folder"
+                + " WHERE ANY r_folder_path = '/ECM CONFIG/Hindi Comments'";
+        log.info("[HindiComments] Resolving /ECM CONFIG/Hindi Comments");
+        Map<String, String> folderInfo = resolveFolderInfo(repoUrl, folderDql, "/ECM CONFIG/Hindi Comments");
+        String folderId  = folderInfo.get("r_object_id");
+        String aclName   = folderInfo.get("acl_name");
+        String aclDomain = folderInfo.get("acl_domain");
+        log.info("[HindiComments] folder={} acl={} aclDomain={}", folderId, aclName, aclDomain);
+
+        String createUrl = repoUrl + "/folders/" + folderId + "/folders";
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("object_name", objectName);
+        if (aclName   != null && !aclName.isBlank())   props.put("acl_name",   aclName);
+        if (aclDomain != null && !aclDomain.isBlank()) props.put("acl_domain", aclDomain);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("properties", props);
+
+        log.info("[HindiComments] Creating hindi comment '{}'", objectName);
+        try {
+            Map<String, Object> response = restClient.post()
+                    .uri(createUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Hindi comment '" + objectName + "' created successfully");
+            if (response != null) result.put("data", response);
+            return result;
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[HindiComments] Failed [{}]: {}", e.getStatusCode(), rb);
+            throw new RuntimeException("Hindi comment creation failed [" + e.getStatusCode() + "]: " + rb);
+        }
+    }
+
+    /**
+     * Lists existing hindi comment dm_folder objects under /ECM CONFIG/Hindi Comments.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listHindiComments() {
+        String dql = "SELECT r_object_id, object_name FROM dm_folder"
+                + " WHERE FOLDER('/ECM CONFIG/Hindi Comments') ORDER BY object_name";
+
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+        final int PAGE_SIZE = 100;
+        List<Map<String, Object>> allResults = new ArrayList<>();
+        int page = 1;
+
+        log.info("[HindiComments] Listing hindi comments");
+        try {
+            while (true) {
+                Map<String, Object> resp = restClient.get()
+                        .uri(baseUrl + "?dql={dql}&items-per-page={size}&page={page}&inline=true",
+                                dql, PAGE_SIZE, page)
+                        .header("Authorization", getAuthHeader())
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .retrieve()
+                        .body(Map.class);
+
+                if (resp == null) break;
+
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) resp.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> p = (Map<String, Object>) content.get("properties");
+                            if (p != null) allResults.add(p);
+                        }
+                    }
+                }
+
+                List<Map<String, Object>> links = (List<Map<String, Object>>) resp.get("links");
+                boolean hasNext = links != null && links.stream()
+                        .anyMatch(l -> "next".equals(l.get("rel")));
+                if (!hasNext) break;
+                page++;
+            }
+        } catch (RestClientResponseException e) {
+            String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[HindiComments] List failed [{}]: {}", e.getStatusCode(), rb);
+            throw new RuntimeException("Hindi comments list failed [" + e.getStatusCode() + "]: " + rb);
+        }
+
+        log.info("[HindiComments] Total: {}", allResults.size());
+        return allResults;
+    }
+
     /** Resolves a folder by DQL, returning its r_object_id and acl_name. */
     @SuppressWarnings("unchecked")
     private Map<String, String> resolveFolderInfo(String repoUrl, String dql, String label) {
