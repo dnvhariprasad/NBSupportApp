@@ -385,8 +385,8 @@ flowchart LR
 graph TD
     subgraph FolderTypes["Folder Types (Containers)"]
         DMF["dm_folder"]
-        CCF["cms_case_folder<br/><i>27 attributes</i>"]
-        CDF["cms_digidak_folder<br/><i>38+ attributes</i>"]
+        CCF["cms_case_folder<br/>27 attributes"]
+        CDF["cms_digidak_folder<br/>38+ attributes"]
         DMF --> CCF
         DMF --> CDF
     end
@@ -538,7 +538,7 @@ sequenceDiagram
     LP->>EMAIL: Notify assigned user
     LP-->>User: Task appears in inbox
 
-    User->>LP: Review &amp; add notesheet
+    User->>LP: Review and add notesheet
     LP->>NS: create_notesheet_from_inline_editor
     NS-->>CF: Attach cms_note_document
 
@@ -562,14 +562,14 @@ sequenceDiagram
             <div class="diagram-title">Linear process stages with action flows</div>
             <div class="mermaid">
 flowchart LR
-    INIT["Initiate<br/>Case Created"] --> ROUTE["Routing Stage<br/><i>linear_process_rout</i>"]
-    ROUTE --> REVIEW["Review Stage<br/><i>linear_process_revi</i>"]
-    REVIEW --> EA["EA Stage<br/><i>Executive Assistant</i>"]
+    INIT["Initiate<br/>Case Created"] --> ROUTE["Routing Stage<br/>linear_process_rout"]
+    ROUTE --> REVIEW["Review Stage<br/>linear_process_revi"]
+    REVIEW --> EA["EA Stage<br/>Executive Assistant"]
     EA --> COMPLETE["Complete<br/>Case Resolved"]
 
     REVIEW -->|"Push Back"| ROUTE
     EA -->|"Push Back"| REVIEW
-    ROUTE -->|"Manual Override"| MANUAL["Manual Stage<br/><i>linear_process_manu</i>"]
+    ROUTE -->|"Manual Override"| MANUAL["Manual Stage<br/>linear_process_manu"]
     MANUAL --> REVIEW
 
     subgraph ActionFlows["9 Action Flows"]
