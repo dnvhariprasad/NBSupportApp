@@ -938,6 +938,20 @@ const UserCreateTab = ({ onToast }) => {
     const [repoName, setRepoName]         = useState('');
     // Track which Hindi fields have been manually edited so auto-fill doesn't overwrite them
     const hindiTouched = useRef({ profile_hindi_user_name: false, profile_hindi_designation: false });
+    const [checkingUin, setCheckingUin] = useState(false);
+
+    const checkUinExists = async (uin) => {
+        const val = uin.trim();
+        if (!val) return;
+        setCheckingUin(true);
+        try {
+            const res = await api.get('/users/check-uin', { params: { uin: val } });
+            if (res.data?.exists) {
+                setErrors(e => ({ ...e, profile_uin: `UIN already exists (${res.data.userName})` }));
+            }
+        } catch { /* ignore */ }
+        finally { setCheckingUin(false); }
+    };
 
     // Fetch repository name from backend and auto-set home_docbase
     useEffect(() => {
@@ -1021,6 +1035,8 @@ const UserCreateTab = ({ onToast }) => {
             if (!form.profile_hindi_designation.trim())     e.profile_hindi_designation     = 'Hindi designation is required';
             if (!form.profile_hindi_user_name.trim())       e.profile_hindi_user_name       = 'Hindi user name is required';
             if (!form.profile_uin.trim())                   e.profile_uin                   = 'UIN is required';
+            else if (errors.profile_uin && errors.profile_uin.startsWith('UIN already'))
+                                                            e.profile_uin                   = errors.profile_uin;
             if (!form.profile_user_grade)                   e.profile_user_grade            = 'User grade is required';
             if (form.profile_grade_level === '')            e.profile_grade_level           = 'Grade level is required';
         }
@@ -1297,10 +1313,16 @@ const UserCreateTab = ({ onToast }) => {
                                                 className={inputCls(errors.profile_hindi_user_name)} />
                                         </FormField>
                                         <FormField label="UIN" icon={Hash} required error={errors.profile_uin}>
-                                            <input type="text" value={form.profile_uin}
-                                                onChange={e => handleChange('profile_uin', e.target.value)}
-                                                placeholder="e.g. 3405"
-                                                className={`${inputCls(errors.profile_uin)} font-mono`} />
+                                            <div className="relative">
+                                                <input type="text" value={form.profile_uin}
+                                                    onChange={e => handleChange('profile_uin', e.target.value)}
+                                                    onBlur={e => checkUinExists(e.target.value)}
+                                                    placeholder="e.g. 3405"
+                                                    className={`${inputCls(errors.profile_uin)} font-mono`} />
+                                                {checkingUin && (
+                                                    <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400" />
+                                                )}
+                                            </div>
                                         </FormField>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1415,10 +1437,11 @@ const UserCreateTab = ({ onToast }) => {
                                         Next <ChevronRight size={15} />
                                     </button>
                                 ) : (
-                                    <button type="button" onClick={handleSubmit} disabled={submitting ||
+                                    <button type="button" onClick={handleSubmit} disabled={submitting || checkingUin ||
                                         !form.profile_designation.trim() || !form.profile_hindi_designation.trim() ||
                                         !form.profile_hindi_user_name.trim() || !form.profile_uin.trim() ||
-                                        !form.profile_user_grade || form.profile_grade_level === ''}
+                                        !form.profile_user_grade || form.profile_grade_level === '' ||
+                                        (errors.profile_uin && errors.profile_uin.startsWith('UIN already'))}
                                         className="flex items-center gap-2 px-6 py-2 bg-[#0A66C2] hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed">
                                         {submitting
                                             ? <><Loader2 size={15} className="animate-spin" /> Creating...</>

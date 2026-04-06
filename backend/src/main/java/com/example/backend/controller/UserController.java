@@ -270,6 +270,15 @@ public class UserController {
     }
 
     /**
+     * Check if a UIN already exists in cms_user_profile.
+     * GET /api/users/check-uin?uin=3405
+     */
+    @GetMapping("/check-uin")
+    public Map<String, Object> checkUinExists(@RequestParam String uin) {
+        return userService.checkUinExists(uin);
+    }
+
+    /**
      * Get a single user profile by object ID (returns all properties including repeating attrs).
      * GET /api/users/profiles/{objectId}
      */

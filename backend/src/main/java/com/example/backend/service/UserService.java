@@ -82,6 +82,27 @@ public class UserService {
         return executeDql(dqlBuilder.toString(), page, itemsPerPage);
     }
 
+    /**
+     * Check if a UIN already exists in cms_user_profile.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> checkUinExists(String uin) {
+        String safe = uin.trim().replace("'", "''");
+        String dql = "SELECT r_object_id, object_name FROM cms_user_profile WHERE uin = '" + safe + "'";
+        log.info("Checking UIN existence: {}", uin);
+
+        Map<String, Object> response = executeDql(dql, 1, 1);
+        List<Map<String, Object>> users = (List<Map<String, Object>>) response.get("users");
+        boolean exists = users != null && !users.isEmpty();
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("exists", exists);
+        if (exists) {
+            result.put("userName", users.get(0).get("object_name"));
+        }
+        return result;
+    }
+
     @SuppressWarnings("unchecked")
     public Map<String, Object> createUser(Map<String, Object> request) {
         String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/users";
