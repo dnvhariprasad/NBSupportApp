@@ -938,7 +938,7 @@ export const USER_GRADES = [
   { label: 'Grade C',      value: 'grade_c',        gradeLevel: 3 },
   { label: 'Grade D',      value: 'grade_d',        gradeLevel: 4 },
   { label: 'Grade E',      value: 'grade_e',        gradeLevel: 5 },
-  { label: 'Grade E (OIC)',value: 'grade_e_oic',    gradeLevel: 5 },
+  { label: 'Grade E (OIC)',value: 'grade_e(oic)',   gradeLevel: 5 },
   { label: 'Grade F',      value: 'grade_f',        gradeLevel: 6 },
 ];
 
