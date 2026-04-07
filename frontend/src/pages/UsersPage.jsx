@@ -2232,6 +2232,7 @@ const UserAccessTab = ({ onToast }) => {
     const [filterLocation,   setFilterLocation]   = useState('');
     const [filterDeptName,   setFilterDeptName]    = useState('');
     const [filterDepartments, setFilterDepartments] = useState([]);
+    const [roleFilter,       setRoleFilter]        = useState('');  // '', 'localAdmin', 'cgmSect'
 
     // Locations list based on chosen office type
     const filterLocations = useMemo(() => getLocations(officeType), [officeType]);
@@ -2485,11 +2486,15 @@ const UserAccessTab = ({ onToast }) => {
 
     const filtered = users.filter(u => {
         const q = searchQuery.toLowerCase();
-        return (u.object_name || '').toLowerCase().includes(q)
+        const matchesSearch = (u.object_name || '').toLowerCase().includes(q)
             || (u.user_login_name || '').toLowerCase().includes(q)
             || (u.designation || '').toLowerCase().includes(q)
             || (u.department_name || '').toLowerCase().includes(q)
             || (u.location || '').toLowerCase().includes(q);
+        if (!matchesSearch) return false;
+        if (roleFilter === 'localAdmin') return localAdmins.has(u.object_name);
+        if (roleFilter === 'cgmSect')    return cgmSects.has(u.object_name);
+        return true;
     });
 
     const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -2561,6 +2566,27 @@ const UserAccessTab = ({ onToast }) => {
                                 {filterDepartments.map(d => (
                                     <option key={d.shortCode} value={d.name}>{d.name}</option>
                                 ))}
+                            </select>
+                            <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                    </div>
+                )}
+
+                {users.length > 0 && (
+                    <div className="min-w-[160px]">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                            <Shield size={11} className="inline -mt-0.5 mr-0.5" />
+                            Role
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={roleFilter}
+                                onChange={e => { setRoleFilter(e.target.value); setCurrentPage(1); }}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2]"
+                            >
+                                <option value="">— All users —</option>
+                                <option value="localAdmin">Local Admin</option>
+                                <option value="cgmSect">CGM Sect.</option>
                             </select>
                             <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                         </div>
