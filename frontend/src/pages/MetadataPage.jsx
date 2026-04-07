@@ -184,7 +184,6 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                 {hoRo !== 'HO' && (
                                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Location Code</th>
                                 )}
-                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-500 w-32">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -229,29 +228,6 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                                 </span>
                                             </td>
                                         )}
-                                        <td className="px-4 py-2.5 text-center">
-                                            {isEditing ? (
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button onClick={() => handleSave(item)} disabled={saving}
-                                                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1">
-                                                        {saving ? <Loader2 size={11} className="animate-spin" /> : null}
-                                                        Save
-                                                    </button>
-                                                    <button onClick={cancelEdit} disabled={saving}
-                                                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium rounded-lg transition-all disabled:opacity-50">
-                                                        Cancel
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button onClick={() => startEdit(item)}
-                                                        className="p-1.5 rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
-                                                        title="Edit file number">
-                                                        <Pencil size={14} />
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </td>
                                     </tr>
                                 );
                             })}

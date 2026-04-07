@@ -344,16 +344,36 @@ const AddMembersTab = ({ setToast }) => {
         } catch { setVerticals([]); }
         finally { setLoadingVerticals(false); }
 
-        // HO: also fetch users by dept short code
-        if (officeType === 'HO') {
-            setUsers([]); setSelectedUser(''); setSelectedUserObjectName(''); setSelectedUserProfileId('');
-            setLoadingUsers(true);
-            try {
-                const res = await api.get('/users/by-dept', { params: { shortCode: d.shortCode.toLowerCase() } });
+        // Fetch users by office type and department
+        setUsers([]); setSelectedUser(''); setSelectedUserObjectName(''); setSelectedUserProfileId('');
+        setLoadingUsers(true);
+        try {
+            if (officeType === 'HO') {
+                // HO: fetch users by department and office type
+                const res = await api.get('/users/by-dept', {
+                    params: {
+                        shortCode: d.shortCode.toLowerCase(),
+                        officeType: 'HO'
+                    }
+                });
                 setUsers(res.data || []);
-            } catch { setUsers([]); }
-            finally { setLoadingUsers(false); }
-        }
+            } else {
+                // RO/TE: fetch users by location, then filter by department on frontend
+                const res = await api.get('/users/by-location', { params: { location: location } });
+                const allUsers = res.data || [];
+                // Filter users by department_short_code_multi (array of department codes)
+                const deptShortCodeLower = d.shortCode.toLowerCase();
+                const filteredUsers = allUsers.filter(u => {
+                    const deptMulti = u.department_short_code_multi || [];
+                    // Check if array contains the selected department (case-insensitive)
+                    return Array.isArray(deptMulti)
+                        ? deptMulti.some(dept => dept?.toLowerCase() === deptShortCodeLower)
+                        : (deptMulti?.toLowerCase?.() === deptShortCodeLower);
+                });
+                setUsers(filteredUsers);
+            }
+        } catch { setUsers([]); }
+        finally { setLoadingUsers(false); }
     };
 
     // On vertical change
@@ -769,6 +789,9 @@ const RemoveMembersTab = ({ setToast }) => {
         const roCode    = (parts[2] || '').toLowerCase();
         const deptCode  = (isRoTe ? parts[3] : parts[1] || '').toLowerCase();
 
+        // In RemoveMembersTab context, the current performer is the pendingRemove user
+        const currentPerformer = pendingRemove?.name || '';
+
         setDelegateTask(task);
         setDelegateSelectedUser('');
         setDelegateUsers([]);
@@ -779,10 +802,36 @@ const RemoveMembersTab = ({ setToast }) => {
                 const locObj = allLocations.find(l => l.shortCode === roCode);
                 const location = locObj?.location || roCode;
                 const res = await api.get('/users/by-location', { params: { location } });
-                setDelegateUsers(res.data?.users || res.data || []);
+                // Filter by department and remove current performer
+                const allUsers = res.data?.users || res.data || [];
+                const deptCodeLower = deptCode.toLowerCase();
+                const filteredUsers = allUsers.filter(u => {
+                    // Check department_short_code_multi array
+                    const deptMulti = u.department_short_code_multi || [];
+                    const hasDept = Array.isArray(deptMulti)
+                        ? deptMulti.some(dept => dept?.toLowerCase() === deptCodeLower)
+                        : (deptMulti?.toLowerCase?.() === deptCodeLower);
+
+                    // Check if not current performer
+                    const userName = u.name?.trim().toLowerCase() || '';
+                    const userObjName = u.object_name?.trim().toLowerCase() || '';
+                    const currentName = currentPerformer?.trim().toLowerCase() || '';
+                    const notCurrentPerformer = userName !== currentName && userObjName !== currentName;
+
+                    return hasDept && notCurrentPerformer;
+                });
+                setDelegateUsers(filteredUsers);
             } else {
                 const res = await api.get('/users/by-dept', { params: { shortCode: deptCode } });
-                setDelegateUsers(res.data?.users || res.data || []);
+                // Filter out the current performer - check multiple name fields
+                const allUsers = res.data?.users || res.data || [];
+                const filteredUsers = allUsers.filter(u => {
+                    const userName = u.name?.trim().toLowerCase() || '';
+                    const userObjName = u.object_name?.trim().toLowerCase() || '';
+                    const currentName = currentPerformer?.trim().toLowerCase() || '';
+                    return userName !== currentName && userObjName !== currentName;
+                });
+                setDelegateUsers(filteredUsers);
             }
         } catch {
             setToast({ type: 'error', message: 'Failed to load users.' });

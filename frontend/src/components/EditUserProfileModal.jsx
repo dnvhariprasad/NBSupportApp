@@ -197,6 +197,10 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         const roCode   = (parts[2] || '').toLowerCase();
         const deptCode = (isRoTe ? parts[3] : parts[1] || '').toLowerCase();
 
+        // In EditUserProfileModal context, the current performer is the user being edited
+        // Use form.object_name which is the loaded profile display name
+        const currentPerformer = form.object_name || '';
+
         setDelegateTask(task);
         setDelegateSelectedUser('');
         setDelegateUsers([]);
@@ -208,10 +212,36 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 const locObj  = allLocs.find(l => l.shortCode === roCode);
                 const location = locObj?.location || roCode;
                 const res = await api.get('/users/by-location', { params: { location } });
-                setDelegateUsers(res.data?.users || res.data || []);
+                // Filter by department and remove current performer
+                const allUsers = res.data?.users || res.data || [];
+                const deptCodeLower = deptCode.toLowerCase();
+                const filteredUsers = allUsers.filter(u => {
+                    // Check department_short_code_multi array
+                    const deptMulti = u.department_short_code_multi || [];
+                    const hasDept = Array.isArray(deptMulti)
+                        ? deptMulti.some(dept => dept?.toLowerCase() === deptCodeLower)
+                        : (deptMulti?.toLowerCase?.() === deptCodeLower);
+
+                    // Check if not current performer
+                    const userName = u.name?.trim().toLowerCase() || '';
+                    const userObjName = u.object_name?.trim().toLowerCase() || '';
+                    const currentName = currentPerformer?.trim().toLowerCase() || '';
+                    const notCurrentPerformer = userName !== currentName && userObjName !== currentName;
+
+                    return hasDept && notCurrentPerformer;
+                });
+                setDelegateUsers(filteredUsers);
             } else {
-                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode } });
-                setDelegateUsers(res.data?.users || res.data || []);
+                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode, officeType: offType } });
+                // Filter out the current performer - check multiple name fields
+                const allUsers = res.data?.users || res.data || [];
+                const filteredUsers = allUsers.filter(u => {
+                    const userName = u.name?.trim().toLowerCase() || '';
+                    const userObjName = u.object_name?.trim().toLowerCase() || '';
+                    const currentName = currentPerformer?.trim().toLowerCase() || '';
+                    return userName !== currentName && userObjName !== currentName;
+                });
+                setDelegateUsers(filteredUsers);
             }
         } catch {
             setDelegateError('Failed to load users.');

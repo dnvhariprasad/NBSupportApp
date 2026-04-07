@@ -64,10 +64,13 @@ public class UserController {
     /**
      * List cms_user_profile users belonging to an HO department short code.
      * GET /api/users/by-dept?shortCode=ddsi
+     * Optional: GET /api/users/by-dept?shortCode=ddsi&officeType=HO
      */
     @GetMapping("/by-dept")
-    public List<Map<String, Object>> getUsersByDept(@RequestParam String shortCode) {
-        return userService.getUsersByDeptShortCode(shortCode);
+    public List<Map<String, Object>> getUsersByDept(
+            @RequestParam String shortCode,
+            @RequestParam(required = false) String officeType) {
+        return userService.getUsersByDeptShortCode(shortCode, officeType);
     }
 
     /**
