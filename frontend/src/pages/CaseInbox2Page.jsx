@@ -205,6 +205,7 @@ const CaseInbox2Page = () => {
 
     // Users state
     const [users,        setUsers]        = useState([]);
+    const [filteredUsers, setFilteredUsers] = useState([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
 
@@ -238,10 +239,12 @@ const CaseInbox2Page = () => {
     };
 
     // Fetch users by department
-    const fetchUsersByDept = async (shortCode) => {
+    const fetchUsersByDept = async (shortCode, officeTypeFilter) => {
         setLoadingUsers(true); setUsers([]);
         try {
-            const res = await api.get('/users/by-dept', { params: { shortCode } });
+            const params = { shortCode };
+            if (officeTypeFilter) params.officeType = officeTypeFilter;
+            const res = await api.get('/users/by-dept', { params });
             setUsers(res.data?.users || res.data || []);
         } catch { setUsers([]); }
         finally { setLoadingUsers(false); }
@@ -250,12 +253,12 @@ const CaseInbox2Page = () => {
     // Office type change handler
     const handleOfficeTypeChange = (val) => {
         setOfficeType(val); setLocation(''); setDepartment(null);
-        setUsers([]); setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
+        setUsers([]); setFilteredUsers([]); setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
     };
 
     // Location change handler
     const handleLocationChange = (val) => {
-        setLocation(val); setDepartment(null); setSelectedUser(null);
+        setLocation(val); setDepartment(null); setSelectedUser(null); setFilteredUsers([]);
         setCases([]); setTotal(0); setPage(1);
         if (val) fetchUsersByLocation(val);
         else setUsers([]);
@@ -265,14 +268,31 @@ const CaseInbox2Page = () => {
     const handleDepartmentChange = (shortCode) => {
         setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
         if (!shortCode) {
-            setDepartment(null);
+            setDepartment(null); setFilteredUsers([]);
             if (isRoTe && location) fetchUsersByLocation(location);
             else setUsers([]);
             return;
         }
         const dept = allDepartments.find(d => d.shortCode === shortCode) || null;
         setDepartment(dept);
-        if (dept) fetchUsersByDept(dept.shortCode);
+
+        if (dept) {
+            // For RO/TE, filter previously fetched location-based users by department_short_code_multi
+            if (isRoTe && users.length > 0) {
+                const deptCodeLower = dept.shortCode.toLowerCase();
+                const filtered = users.filter(u => {
+                    const deptMulti = u.department_short_code_multi;
+                    return Array.isArray(deptMulti)
+                        ? deptMulti.some(d => d?.toLowerCase?.() === deptCodeLower)
+                        : deptMulti?.toLowerCase?.() === deptCodeLower;
+                });
+                setFilteredUsers(filtered);
+            } else {
+                // For HO, fetch users by department with officeType filter
+                fetchUsersByDept(dept.shortCode, officeType);
+                setFilteredUsers([]);
+            }
+        }
     };
 
     // Fetch cases for selected user
@@ -381,12 +401,19 @@ const CaseInbox2Page = () => {
                     <div>
                         <FieldLabel icon={User} label="User Name" />
                         <SelectWrapper>
-                            <select value={selectedUser || ''} onChange={e => handleSelectUser(e.target.value)}
-                                disabled={loadingUsers || users.length === 0}
-                                className={loadingUsers || users.length === 0 ? disabledSelectCls : selectCls}>
-                                <option value="">{loadingUsers ? 'Loading users…' : users.length === 0 ? '— Select dept/location first —' : '— Select user —'}</option>
-                                {users.map(u => <option key={u.r_object_id || u.user_login_name} value={u.object_name}>{u.object_name}</option>)}
-                            </select>
+                            {/* Show filtered users if department selected, otherwise show all users */}
+                            {(() => {
+                                const displayUsers = department && isRoTe ? filteredUsers : users;
+                                const isEmpty = displayUsers.length === 0;
+                                return (
+                                    <select value={selectedUser || ''} onChange={e => handleSelectUser(e.target.value)}
+                                        disabled={loadingUsers || isEmpty}
+                                        className={loadingUsers || isEmpty ? disabledSelectCls : selectCls}>
+                                        <option value="">{loadingUsers ? 'Loading users…' : isEmpty ? '— No matching users —' : '— Select user —'}</option>
+                                        {displayUsers.map(u => <option key={u.r_object_id || u.user_login_name} value={u.object_name}>{u.object_name}</option>)}
+                                    </select>
+                                );
+                            })()}
                         </SelectWrapper>
                     </div>
                 </div>

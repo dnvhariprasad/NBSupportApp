@@ -218,6 +218,7 @@ const DelegatePage = () => {
     const [department, setDepartment] = useState(null);
 
     const [users,        setUsers]        = useState([]);
+    const [filteredUsers, setFilteredUsers] = useState([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
     const [selectedUser, setSelectedUser] = useState('');
 
@@ -326,10 +327,12 @@ const DelegatePage = () => {
         }
     }, [fetchCases, isLocalAdmin, profileCtx, officeType, location, locationShortCode, localAdminDeptNames]);
 
-    const fetchUsersByDept = async (shortCode) => {
+    const fetchUsersByDept = async (shortCode, officeTypeFilter) => {
         setLoadingUsers(true); setUsers([]);
         try {
-            const res = await api.get('/users/by-dept', { params: { shortCode } });
+            const params = { shortCode };
+            if (officeTypeFilter) params.officeType = officeTypeFilter;
+            const res = await api.get('/users/by-dept', { params });
             setUsers(res.data?.users || res.data || []);
         } catch (err) {
             setToast({ type: 'error', message: 'Failed to load users: ' + (err.response?.data?.message || err.message) });
@@ -348,12 +351,12 @@ const DelegatePage = () => {
 
     const handleOfficeTypeChange = (val) => {
         setOfficeType(val); setLocation(''); setDepartment(null);
-        setUsers([]); setSelectedUser(''); setPage(1);
+        setUsers([]); setFilteredUsers([]); setSelectedUser(''); setPage(1);
         fetchCases(activeQuery, val, '', 1);
     };
 
     const handleLocationChange = (val) => {
-        setLocation(val); setDepartment(null); setSelectedUser(''); setPage(1);
+        setLocation(val); setDepartment(null); setSelectedUser(''); setFilteredUsers([]); setPage(1);
         const sc = locations.find(l => l.location === val)?.shortCode || '';
         if (val) { fetchUsersByLocation(val); fetchCases(activeQuery, officeType, '', 1, sc); }
         else { setUsers([]); fetchCases(activeQuery, officeType, '', 1); }
@@ -361,24 +364,43 @@ const DelegatePage = () => {
 
     const handleDepartmentChange = (shortCode) => {
         if (!shortCode) {
-            setDepartment(null); setSelectedUser('');
+            setDepartment(null); setSelectedUser(''); setFilteredUsers([]);
             if (isRoTe && location) fetchUsersByLocation(location); else setUsers([]);
             fetchCases(activeQuery, officeType, '', 1, locationShortCode, localAdminDeptNames); setPage(1); return;
         }
         const dept = departments.find(d => d.shortCode === shortCode) || null;
         setDepartment(dept); setSelectedUser(''); setPage(1);
-        if (dept) { fetchUsersByDept(dept.shortCode); fetchCases(activeQuery, officeType, dept.name, 1, locationShortCode); }
+
+        if (dept) {
+            fetchCases(activeQuery, officeType, dept.name, 1, locationShortCode);
+
+            // For RO/TE, filter previously fetched location-based users by department_short_code_multi
+            if (isRoTe && users.length > 0) {
+                const deptCodeLower = dept.shortCode.toLowerCase();
+                const filtered = users.filter(u => {
+                    const deptMulti = u.department_short_code_multi;
+                    return Array.isArray(deptMulti)
+                        ? deptMulti.some(d => d?.toLowerCase?.() === deptCodeLower)
+                        : deptMulti?.toLowerCase?.() === deptCodeLower;
+                });
+                setFilteredUsers(filtered);
+            } else {
+                // For HO, fetch users by department with officeType filter
+                fetchUsersByDept(dept.shortCode, officeType);
+                setFilteredUsers([]);
+            }
+        }
     };
 
     const handleSearch = (e) => {
         e.preventDefault();
         const q = searchQuery.trim();
-        setActiveQuery(q); setPage(1);
+        setActiveQuery(q); setPage(1); setSelectedUser('');
         fetchCases(q, officeType, department?.name || '', 1, locationShortCode, !department ? localAdminDeptNames : '');
     };
 
     const clearSearch = () => {
-        setSearchQuery(''); setActiveQuery(''); setPage(1);
+        setSearchQuery(''); setActiveQuery(''); setPage(1); setSelectedUser('');
         fetchCases('', officeType, department?.name || '', 1, locationShortCode, !department ? localAdminDeptNames : '');
     };
 
@@ -457,12 +479,19 @@ const DelegatePage = () => {
                     <div>
                         <FieldLabel icon={Users} label="Delegate To" />
                         <SelectWrapper>
-                            <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)}
-                                disabled={loadingUsers || users.length === 0}
-                                className={loadingUsers || users.length === 0 ? disabledSelectCls : selectCls}>
-                                <option value="">{loadingUsers ? 'Loading users…' : users.length === 0 ? '— Select dept/location first —' : '— Select user —'}</option>
-                                {users.map(u => <option key={u.r_object_id || u.user_login_name} value={u.object_name}>{u.object_name}</option>)}
-                            </select>
+                            {/* Show filtered users if department selected, otherwise show all users */}
+                            {(() => {
+                                const displayUsers = department && isRoTe ? filteredUsers : users;
+                                const isEmpty = displayUsers.length === 0;
+                                return (
+                                    <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)}
+                                        disabled={loadingUsers || isEmpty}
+                                        className={loadingUsers || isEmpty ? disabledSelectCls : selectCls}>
+                                        <option value="">{loadingUsers ? 'Loading users…' : isEmpty ? '— No matching users —' : '— Select user —'}</option>
+                                        {displayUsers.map(u => <option key={u.r_object_id || u.user_login_name} value={u.object_name}>{u.object_name}</option>)}
+                                    </select>
+                                );
+                            })()}
                         </SelectWrapper>
                     </div>
                 </div>

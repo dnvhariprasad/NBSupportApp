@@ -38,7 +38,7 @@ public class UserService {
                                                     String officeTypeFilter, String locationFilter,
                                                     String deptNames) {
         StringBuilder dqlBuilder = new StringBuilder();
-        dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, department_short_code, user_grade, designation, ");
+        dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, department_short_code, ro_short_code, user_grade, designation, ");
         dqlBuilder.append("user_email_address, user_login_name, primary_mobile_number, location, office_type, ");
         dqlBuilder.append("is_active, hindi_user_name, hindi_designation, user_role ");
         dqlBuilder.append("FROM cms_user_profile WHERE object_name IS NOT NULL AND object_name != ' ' ");
@@ -684,10 +684,22 @@ public class UserService {
      */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getUsersByDeptShortCode(String shortCode) {
+        return getUsersByDeptShortCode(shortCode, null);
+    }
+
+    public List<Map<String, Object>> getUsersByDeptShortCode(String shortCode, String officeType) {
         String safe = shortCode.replace("'", "''");
-        String dql  = "SELECT r_object_id, object_name, user_login_name FROM cms_user_profile"
-                    + " WHERE ANY department_short_code_multi = '" + safe + "'"
-                    + " ORDER BY object_name";
+        String dql  = "SELECT r_object_id, object_name, user_login_name, office_type, department_short_code FROM cms_user_profile"
+                    + " WHERE ANY department_short_code_multi = '" + safe + "'";
+
+        // Filter by office type if provided
+        if (officeType != null && !officeType.isBlank()) {
+            String safeOfficeType = officeType.replace("'", "''");
+            dql += " AND office_type = '" + safeOfficeType + "'";
+        }
+
+        dql += " ORDER BY object_name";
+
         Map<String, Object> result = executeDql(dql, 1, 500);
         List<?> raw = (List<?>) result.get("users");
         if (raw == null) return Collections.emptyList();
@@ -699,7 +711,7 @@ public class UserService {
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getUsersByLocation(String location) {
         String safe = location.replace("'", "''");
-        String dql  = "SELECT r_object_id, object_name, user_login_name FROM cms_user_profile"
+        String dql  = "SELECT r_object_id, object_name, user_login_name, department_short_code_multi, office_type FROM cms_user_profile"
                     + " WHERE location = '" + safe + "'"
                     + " ORDER BY object_name";
         Map<String, Object> result = executeDql(dql, 1, 500);

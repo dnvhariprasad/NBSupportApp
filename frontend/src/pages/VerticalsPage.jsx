@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
 import {
-    Layers, Tag, Users, UserPlus, X, Loader2,
+    Layers, Tag, Users, UserPlus, X, Loader2, Check,
     CheckCircle2, AlertCircle, ChevronDown, Building2, MapPin,
     UserCheck, UsersRound, Star, ClipboardList, ArrowRightLeft,
 } from 'lucide-react';
@@ -344,16 +344,36 @@ const AddMembersTab = ({ setToast }) => {
         } catch { setVerticals([]); }
         finally { setLoadingVerticals(false); }
 
-        // HO: also fetch users by dept short code
-        if (officeType === 'HO') {
-            setUsers([]); setSelectedUser(''); setSelectedUserObjectName(''); setSelectedUserProfileId('');
-            setLoadingUsers(true);
-            try {
-                const res = await api.get('/users/by-dept', { params: { shortCode: d.shortCode.toLowerCase() } });
+        // Fetch users by office type and department
+        setUsers([]); setSelectedUser(''); setSelectedUserObjectName(''); setSelectedUserProfileId('');
+        setLoadingUsers(true);
+        try {
+            if (officeType === 'HO') {
+                // HO: fetch users by department and office type
+                const res = await api.get('/users/by-dept', {
+                    params: {
+                        shortCode: d.shortCode.toLowerCase(),
+                        officeType: 'HO'
+                    }
+                });
                 setUsers(res.data || []);
-            } catch { setUsers([]); }
-            finally { setLoadingUsers(false); }
-        }
+            } else {
+                // RO/TE: fetch users by location, then filter by department on frontend
+                const res = await api.get('/users/by-location', { params: { location: location } });
+                const allUsers = res.data || [];
+                // Filter users by department_short_code_multi (array of department codes)
+                const deptShortCodeLower = d.shortCode.toLowerCase();
+                const filteredUsers = allUsers.filter(u => {
+                    const deptMulti = u.department_short_code_multi || [];
+                    // Check if array contains the selected department (case-insensitive)
+                    return Array.isArray(deptMulti)
+                        ? deptMulti.some(dept => dept?.toLowerCase() === deptShortCodeLower)
+                        : (deptMulti?.toLowerCase?.() === deptShortCodeLower);
+                });
+                setUsers(filteredUsers);
+            }
+        } catch { setUsers([]); }
+        finally { setLoadingUsers(false); }
     };
 
     // On vertical change
@@ -744,6 +764,17 @@ const RemoveMembersTab = ({ setToast }) => {
     const [delegatingCaseId,      setDelegatingCaseId]      = useState(null);
     const [deptOptions,           setDeptOptions]           = useState([]);
 
+    // Vertical head modal state
+    const [showVerticalHeadModal, setShowVerticalHeadModal] = useState(false);
+    const [verticalHeadUser,      setVerticalHeadUser]      = useState(null);
+    const [selectedNewHead,       setSelectedNewHead]       = useState('');
+    const [availableHeads,        setAvailableHeads]        = useState([]);
+    const [loadingHeads,          setLoadingHeads]          = useState(false);
+    const [updatingHead,          setUpdatingHead]          = useState(false);
+
+    // Vertical head members state
+    const [verticalHeadMembers,   setVerticalHeadMembers]   = useState([]);
+
     const pfield = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
 
     const handleDelegateClick = async (task) => {
@@ -758,6 +789,9 @@ const RemoveMembersTab = ({ setToast }) => {
         const roCode    = (parts[2] || '').toLowerCase();
         const deptCode  = (isRoTe ? parts[3] : parts[1] || '').toLowerCase();
 
+        // In RemoveMembersTab context, the current performer is the pendingRemove user
+        const currentPerformer = pendingRemove?.name || '';
+
         setDelegateTask(task);
         setDelegateSelectedUser('');
         setDelegateUsers([]);
@@ -768,10 +802,36 @@ const RemoveMembersTab = ({ setToast }) => {
                 const locObj = allLocations.find(l => l.shortCode === roCode);
                 const location = locObj?.location || roCode;
                 const res = await api.get('/users/by-location', { params: { location } });
-                setDelegateUsers(res.data?.users || res.data || []);
+                // Filter by department and remove current performer
+                const allUsers = res.data?.users || res.data || [];
+                const deptCodeLower = deptCode.toLowerCase();
+                const filteredUsers = allUsers.filter(u => {
+                    // Check department_short_code_multi array
+                    const deptMulti = u.department_short_code_multi || [];
+                    const hasDept = Array.isArray(deptMulti)
+                        ? deptMulti.some(dept => dept?.toLowerCase() === deptCodeLower)
+                        : (deptMulti?.toLowerCase?.() === deptCodeLower);
+
+                    // Check if not current performer
+                    const userName = u.name?.trim().toLowerCase() || '';
+                    const userObjName = u.object_name?.trim().toLowerCase() || '';
+                    const currentName = currentPerformer?.trim().toLowerCase() || '';
+                    const notCurrentPerformer = userName !== currentName && userObjName !== currentName;
+
+                    return hasDept && notCurrentPerformer;
+                });
+                setDelegateUsers(filteredUsers);
             } else {
                 const res = await api.get('/users/by-dept', { params: { shortCode: deptCode } });
-                setDelegateUsers(res.data?.users || res.data || []);
+                // Filter out the current performer - check multiple name fields
+                const allUsers = res.data?.users || res.data || [];
+                const filteredUsers = allUsers.filter(u => {
+                    const userName = u.name?.trim().toLowerCase() || '';
+                    const userObjName = u.object_name?.trim().toLowerCase() || '';
+                    const currentName = currentPerformer?.trim().toLowerCase() || '';
+                    return userName !== currentName && userObjName !== currentName;
+                });
+                setDelegateUsers(filteredUsers);
             }
         } catch {
             setToast({ type: 'error', message: 'Failed to load users.' });
@@ -899,6 +959,7 @@ const RemoveMembersTab = ({ setToast }) => {
     const handleGroupChange = async (v) => {
         setSelectedGroup(v);
         setMembers({ users: [], groups: [] });
+        setVerticalHeadMembers([]);
         setPendingRemove(null);
         setInboxTasks([]);
         setInboxTotal(0);
@@ -907,6 +968,17 @@ const RemoveMembersTab = ({ setToast }) => {
         try {
             const res = await api.get(`/groups/${v}/members`);
             setMembers({ users: res.data.users || [], groups: res.data.groups || [] });
+
+            // Also fetch vertical head members for this vertical
+            const verticalHeadGroup = getVerticalHeadGroupName(v);
+            if (verticalHeadGroup) {
+                try {
+                    const headRes = await api.get(`/groups/${verticalHeadGroup}/members`);
+                    setVerticalHeadMembers(headRes.data?.users || []);
+                } catch {
+                    setVerticalHeadMembers([]);
+                }
+            }
         } catch { setMembers({ users: [], groups: [] }); }
         finally { setLoadingMembers(false); }
     };
@@ -991,6 +1063,96 @@ const RemoveMembersTab = ({ setToast }) => {
 
     const hasPendingCases = inboxTotal > 0;
     const allMembers = [...members.users, ...members.groups];
+
+    // Helper: Derive vertical head group name from vertical group name
+    // e.g., ecm_ho_dit_adm -> ecm_ho_vertical_head_dit_adm
+    // e.g., ecm_tn_adm -> ecm_tn_vertical_head_adm
+    const getVerticalHeadGroupName = (verticalGroup) => {
+        if (!verticalGroup) return '';
+        const parts = verticalGroup.split('_');
+        // Find where to insert 'vertical_head'
+        if (verticalGroup.startsWith('ecm_ho_')) {
+            // HO format: ecm_ho_<dept>_<suffix> -> ecm_ho_vertical_head_<dept>_<suffix>
+            return verticalGroup.replace('ecm_ho_', 'ecm_ho_vertical_head_');
+        } else {
+            // RO/TE format: ecm_<rocode>_<dept>_<suffix> -> ecm_<rocode>_vertical_head_<dept>_<suffix>
+            // e.g., ecm_tn_adm -> ecm_tn_vertical_head_adm
+            const match = verticalGroup.match(/^ecm_([a-z]+)_(.+)$/);
+            if (match) {
+                return `ecm_${match[1]}_vertical_head_${match[2]}`;
+            }
+        }
+        return '';
+    };
+
+    // Check if user is a vertical head and handle head assignment if needed
+    const handleRemoveClickWithHeadCheck = async (member) => {
+        if (pendingRemove?.name === member.name) {
+            setPendingRemove(null);
+            setInboxTasks([]);
+            setInboxTotal(0);
+            return;
+        }
+
+        // Check if this user is a vertical head
+        const verticalHeadGroup = getVerticalHeadGroupName(selectedGroup);
+        if (verticalHeadGroup && member.type === 'user') {
+            try {
+                const res = await api.get(`/groups/${verticalHeadGroup}/members`);
+                const headMembers = res.data?.users || [];
+                const isVerticalHead = headMembers.some(u => u.name === member.name);
+
+                if (isVerticalHead) {
+                    // User is a vertical head - show modal to assign new head
+                    setVerticalHeadUser(member);
+                    setSelectedNewHead('');
+                    setAvailableHeads(members.users.filter(u => u.name !== member.name));
+                    setShowVerticalHeadModal(true);
+                    return;
+                }
+            } catch (err) {
+                console.warn('Failed to check vertical head status:', err);
+            }
+        }
+
+        // Continue with normal remove process
+        await handleRemoveClick(member);
+    };
+
+    // Handle updating vertical head and then removing user
+    const handleConfirmNewHead = async () => {
+        if (!selectedNewHead || !verticalHeadUser) return;
+
+        const verticalHeadGroup = getVerticalHeadGroupName(selectedGroup);
+        if (!verticalHeadGroup) {
+            setToast({ type: 'error', message: 'Failed to determine vertical head group.' });
+            return;
+        }
+
+        setUpdatingHead(true);
+        try {
+            // Remove old head from vertical head group
+            await api.delete(`/groups/${verticalHeadGroup}/members/${verticalHeadUser.name}`, {
+                params: { memberType: 'user' },
+            });
+
+            // Add new head to vertical head group
+            await api.post(`/groups/${verticalHeadGroup}/members`, {
+                memberName: selectedNewHead,
+                memberType: 'user',
+            });
+
+            setToast({ type: 'success', message: 'Vertical head updated successfully.' });
+            setShowVerticalHeadModal(false);
+
+            // Now proceed with removing the user
+            await handleRemoveClick(verticalHeadUser);
+        } catch (err) {
+            setToast({ type: 'error', message: err.response?.data?.message || 'Failed to update vertical head.' });
+        } finally {
+            setUpdatingHead(false);
+        }
+    };
 
     // ── Delegate Case Modal ──────────────────────────────────────────────────
     const DelegateCaseModal = () => {
@@ -1084,9 +1246,84 @@ const RemoveMembersTab = ({ setToast }) => {
         );
     };
 
+    // ── Vertical Head Assignment Modal ──────────────────────────────────────────
+    const VerticalHeadModal = () => {
+        if (!showVerticalHeadModal || !verticalHeadUser) return null;
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+                    {/* Header */}
+                    <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50">
+                        <h2 className="text-lg font-bold text-slate-900">Assign New Vertical Head</h2>
+                        <p className="text-xs text-slate-500 mt-1">
+                            {verticalHeadUser.name} is a vertical head. Assign a new head before removing.
+                        </p>
+                    </div>
+
+                    {/* Content */}
+                    <div className="px-6 py-5 space-y-4">
+                        <div>
+                            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">
+                                Select New Vertical Head <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                                value={selectedNewHead}
+                                onChange={(e) => setSelectedNewHead(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer">
+                                <option value="">— Select new head —</option>
+                                {availableHeads.map((user) => (
+                                    <option key={user.name} value={user.name}>
+                                        {user.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-xs text-blue-700">
+                                <strong>Note:</strong> The selected user will be assigned as the new vertical head before {verticalHeadUser.name} is removed from the vertical.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50">
+                        <button
+                            onClick={() => {
+                                setShowVerticalHeadModal(false);
+                                setVerticalHeadUser(null);
+                                setSelectedNewHead('');
+                            }}
+                            disabled={updatingHead}
+                            className="px-4 py-2 text-slate-600 text-sm font-medium hover:bg-slate-200 rounded-lg transition-all disabled:opacity-40">
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleConfirmNewHead}
+                            disabled={!selectedNewHead || updatingHead}
+                            className="flex items-center gap-2 px-4 py-2 bg-[#0A66C2] hover:bg-[#094d92] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all">
+                            {updatingHead ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" />
+                                    Updating…
+                                </>
+                            ) : (
+                                <>
+                                    <Check size={14} />
+                                    Assign Head
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-5">
             <DelegateCaseModal />
+            <VerticalHeadModal />
             <Card className="space-y-4">
                 <SectionTitle>Select Group</SectionTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1154,8 +1391,13 @@ const RemoveMembersTab = ({ setToast }) => {
                                             <div className="flex items-center gap-2.5">
                                                 <MemberTag type={m.type} />
                                                 <span className="text-sm text-slate-700 font-mono">{m.name}</span>
+                                                {m.type === 'user' && verticalHeadMembers.some(h => h.name === m.name) && (
+                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full whitespace-nowrap">
+                                                        Vertical Head
+                                                    </span>
+                                                )}
                                             </div>
-                                            <button onClick={() => handleRemoveClick(m)}
+                                            <button onClick={() => handleRemoveClickWithHeadCheck(m)}
                                                 className={`p-1.5 rounded-lg transition-colors ${pendingRemove?.name === m.name ? 'text-red-400 bg-red-100' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
                                                 title={pendingRemove?.name === m.name ? 'Cancel' : 'Remove'}>
                                                 <X size={14} />

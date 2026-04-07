@@ -8,7 +8,7 @@ import {
     Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers, Save
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
-import { USER_GRADES, fetchDepartments, getLocations } from '../data/nabardMetadata.js';
+import { USER_GRADES, DESIGNATION_OPTIONS, fetchDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
 async function fetchAllUsers(officeTypeFilter, locationFilter, deptNames) {
@@ -37,21 +37,6 @@ const PRIVILEGE_OPTIONS = [
     { value: 4,  label: 'Create Group',  description: 'Can create new groups' },
     { value: 8,  label: 'Sysadmin',      description: 'System administrator privileges' },
     { value: 16, label: 'Superuser',     description: 'Full superuser access' },
-];
-
-// ─── Designation options (from Nabard metadata) ───────────────────────────────
-const DESIGNATION_OPTIONS = [
-    { value: '',         hindi: '',              label: '— Select designation —' },
-    { value: 'DA',       hindi: 'विस',           label: 'DA' },
-    { value: 'AM',       hindi: 'सप्र',          label: 'AM' },
-    { value: 'MGR',      hindi: 'प्र',           label: 'MGR' },
-    { value: 'AGM',      hindi: 'समप्र',         label: 'AGM' },
-    { value: 'DGM',      hindi: 'उमप्र',         label: 'DGM' },
-    { value: 'GM',       hindi: 'मप्र',          label: 'GM' },
-    { value: 'GM(OIC)',  hindi: 'मप्र(काप्र)',   label: 'GM(OIC)' },
-    { value: 'CGM',      hindi: 'मुमप्र',        label: 'CGM' },
-    { value: 'DMD',      hindi: 'उप्रनि',        label: 'DMD' },
-    { value: 'CHAIRMAN', hindi: 'अध्यक्ष',      label: 'CHAIRMAN' },
 ];
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
@@ -2211,8 +2196,11 @@ const UserAccessTab = ({ onToast }) => {
     const [loading,       setLoading]       = useState(false);
     const [searchQuery,   setSearchQuery]   = useState('');
     const [currentPage,   setCurrentPage]   = useState(1);
-    const [actionInProgress, setActionInProgress] = useState(null); // object_name with pending action
+    const [actionInProgress, setActionInProgress] = useState(null); // {user, action} with pending action
     const [localAdmins,   setLocalAdmins]   = useState(new Set()); // set of object_names in ecm_local_admin
+    const fetchIdRef = useRef(0); // guard against stale fetches
+    const [cgmSects,      setCgmSects]      = useState(new Set()); // set of object_names in cgm_sec groups
+    const [loadingCgm,    setLoadingCgm]    = useState(false);
     const PAGE_SIZE = 15;
 
     // ─── Local Admin role & profile context ──────────────────────────────────
@@ -2229,6 +2217,7 @@ const UserAccessTab = ({ onToast }) => {
     const [filterLocation,   setFilterLocation]   = useState('');
     const [filterDeptName,   setFilterDeptName]    = useState('');
     const [filterDepartments, setFilterDepartments] = useState([]);
+    const [roleFilter,       setRoleFilter]        = useState('');  // '', 'localAdmin', 'cgmSect'
 
     // Locations list based on chosen office type
     const filterLocations = useMemo(() => getLocations(officeType), [officeType]);
@@ -2288,7 +2277,40 @@ const UserAccessTab = ({ onToast }) => {
             .catch(() => {}); // non-fatal — just won't show badge
     }, []);
 
+    // Fetch cgm_sec group members when users load — derive group names from user profiles
+    useEffect(() => {
+        if (users.length === 0) { setCgmSects(new Set()); setLoadingCgm(false); return; }
+        const groupNames = new Set();
+        for (const u of users) {
+            const ot = (u.office_type || '').toUpperCase();
+            if (ot === 'HO') {
+                const dsc = (u.department_short_code || '').toLowerCase();
+                if (dsc) groupNames.add(`ecm_ho_${dsc}_cgm_sec`);
+            } else if (ot === 'RO' || ot === 'TE') {
+                const rsc = (u.ro_short_code || '').toLowerCase();
+                if (rsc) groupNames.add(`ecm_${rsc}_cgm_sec`);
+            }
+        }
+        if (groupNames.size === 0) { setCgmSects(new Set()); setLoadingCgm(false); return; }
+        setLoadingCgm(true);
+        Promise.allSettled(
+            [...groupNames].map(g => api.get(`/groups/${g}/members`))
+        ).then(results => {
+            const allMembers = new Set();
+            for (const r of results) {
+                if (r.status === 'fulfilled') {
+                    for (const m of (r.value.data?.users || [])) {
+                        allMembers.add(m.name);
+                    }
+                }
+            }
+            setCgmSects(allMembers);
+            setLoadingCgm(false);
+        });
+    }, [users]);
+
     const fetchUsersByOfficeType = async (ot, loc, deptNamesParam) => {
+        const myFetchId = ++fetchIdRef.current;
         setLoading(true);
         setUsers([]);
         setSearchQuery('');
@@ -2302,15 +2324,18 @@ const UserAccessTab = ({ onToast }) => {
                 if (loc)            params.locationFilter = loc;
                 if (deptNamesParam) params.deptNames      = deptNamesParam;
                 const res = await api.get('/users/profiles', { params });
+                if (fetchIdRef.current !== myFetchId) return; // stale — discard
                 all = all.concat(res.data.users || []);
                 if (!res.data.hasNext) break;
                 page++;
             }
+            if (fetchIdRef.current !== myFetchId) return;
             setUsers(all);
         } catch {
+            if (fetchIdRef.current !== myFetchId) return;
             onToast({ type: 'error', message: 'Failed to load users.' });
         } finally {
-            setLoading(false);
+            if (fetchIdRef.current === myFetchId) setLoading(false);
         }
     };
 
@@ -2355,7 +2380,7 @@ const UserAccessTab = ({ onToast }) => {
     };
 
     const handleMarkLocalAdmin = async (user) => {
-        setActionInProgress(user.object_name);
+        setActionInProgress({ user: user.object_name, action: 'markAdmin' });
         try {
             await api.post('/groups/ecm_local_admin/members', {
                 memberName: user.object_name,   // Documentum users_names stores object_name
@@ -2372,7 +2397,7 @@ const UserAccessTab = ({ onToast }) => {
     };
 
     const handleRemoveLocalAdmin = async (user) => {
-        setActionInProgress(user.object_name);
+        setActionInProgress({ user: user.object_name, action: 'removeAdmin' });
         try {
             await api.delete(`/groups/ecm_local_admin/members/${encodeURIComponent(user.object_name)}`, {
                 params: { memberType: 'user' },
@@ -2387,13 +2412,74 @@ const UserAccessTab = ({ onToast }) => {
         }
     };
 
+    // CGM Sect. — derive group names based on user's office type
+    const getCgmSecGroups = (user) => {
+        const ot  = (user.office_type || '').toUpperCase();
+        const dsc = (user.department_short_code || '').toLowerCase();
+        const rsc = (user.ro_short_code || '').toLowerCase();
+        if (ot === 'HO' && dsc) {
+            return [`ecm_ho_${dsc}_cgm_sec`, `ecm_digidak_ho_${dsc}_cgm_ps`];
+        } else if ((ot === 'RO' || ot === 'TE') && rsc) {
+            return [`ecm_${rsc}_cgm_sec`, `ecm_digidak_ro_${rsc}_cgm_ps`];
+        }
+        return [];
+    };
+
+    const handleMarkCGMSect = async (user) => {
+        const groups = getCgmSecGroups(user);
+        if (groups.length === 0) {
+            onToast({ type: 'error', message: 'Cannot determine CGM Sect. groups for this user.' });
+            return;
+        }
+        setActionInProgress({ user: user.object_name, action: 'markCgm' });
+        try {
+            await Promise.all(groups.map(g =>
+                api.post(`/groups/${g}/members`, { memberName: user.object_name, memberType: 'user' })
+            ));
+            setCgmSects(prev => new Set([...prev, user.object_name]));
+            onToast({ type: 'success', message: `'${user.object_name}' marked as CGM Sect.` });
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to mark as CGM Sect.';
+            onToast({ type: 'error', message: msg });
+        } finally {
+            setActionInProgress(null);
+        }
+    };
+
+    const handleRemoveCGMSect = async (user) => {
+        const groups = getCgmSecGroups(user);
+        if (groups.length === 0) {
+            onToast({ type: 'error', message: 'Cannot determine CGM Sect. groups for this user.' });
+            return;
+        }
+        setActionInProgress({ user: user.object_name, action: 'removeCgm' });
+        try {
+            await Promise.all(groups.map(g =>
+                api.delete(`/groups/${g}/members/${encodeURIComponent(user.object_name)}`, {
+                    params: { memberType: 'user' },
+                })
+            ));
+            setCgmSects(prev => { const s = new Set(prev); s.delete(user.object_name); return s; });
+            onToast({ type: 'success', message: `CGM Sect. removed from '${user.object_name}'.` });
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to remove CGM Sect.';
+            onToast({ type: 'error', message: msg });
+        } finally {
+            setActionInProgress(null);
+        }
+    };
+
     const filtered = users.filter(u => {
         const q = searchQuery.toLowerCase();
-        return (u.object_name || '').toLowerCase().includes(q)
+        const matchesSearch = (u.object_name || '').toLowerCase().includes(q)
             || (u.user_login_name || '').toLowerCase().includes(q)
             || (u.designation || '').toLowerCase().includes(q)
             || (u.department_name || '').toLowerCase().includes(q)
             || (u.location || '').toLowerCase().includes(q);
+        if (!matchesSearch) return false;
+        if (roleFilter === 'localAdmin') return localAdmins.has(u.object_name);
+        if (roleFilter === 'cgmSect')    return cgmSects.has(u.object_name);
+        return true;
     });
 
     const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -2472,6 +2558,27 @@ const UserAccessTab = ({ onToast }) => {
                 )}
 
                 {users.length > 0 && (
+                    <div className="min-w-[160px]">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                            <Shield size={11} className="inline -mt-0.5 mr-0.5" />
+                            Role
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={roleFilter}
+                                onChange={e => { setRoleFilter(e.target.value); setCurrentPage(1); }}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm appearance-none pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2]"
+                            >
+                                <option value="">— All users —</option>
+                                <option value="localAdmin">Local Admin</option>
+                                <option value="cgmSect">CGM Sect.</option>
+                            </select>
+                            <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                    </div>
+                )}
+
+                {users.length > 0 && (
                     <div className="flex-1 min-w-[220px]">
                         <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
                             Search
@@ -2537,12 +2644,16 @@ const UserAccessTab = ({ onToast }) => {
                                         {!isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Department</th>}
                                         {isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Location</th>}
                                         <th className="px-4 py-3 font-semibold text-slate-600 text-center">Local Admin</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-600 text-center">CGM Sect.</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {paged.map((u, idx) => {
                                         const isAdmin    = localAdmins.has(u.object_name);
-                                        const inProgress = actionInProgress === u.object_name;
+                                        const isCgmSect  = cgmSects.has(u.object_name);
+                                        const adminInProgress = actionInProgress?.user === u.object_name && (actionInProgress?.action === 'markAdmin' || actionInProgress?.action === 'removeAdmin');
+                                        const cgmInProgress   = actionInProgress?.user === u.object_name && (actionInProgress?.action === 'markCgm' || actionInProgress?.action === 'removeCgm');
+                                        const inProgress      = actionInProgress?.user === u.object_name;
                                         return (
                                         <tr key={u.user_login_name || idx} className="hover:bg-slate-50 transition-colors">
                                             <td className="px-4 py-3 text-slate-400 text-center text-xs">
@@ -2554,6 +2665,11 @@ const UserAccessTab = ({ onToast }) => {
                                                     {isAdmin && (
                                                         <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium flex items-center gap-1">
                                                             <Shield size={10} /> Local Admin
+                                                        </span>
+                                                    )}
+                                                    {isCgmSect && (
+                                                        <span className="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded font-medium flex items-center gap-1">
+                                                            <Shield size={10} /> CGM Sect.
                                                         </span>
                                                     )}
                                                 </div>
@@ -2570,7 +2686,7 @@ const UserAccessTab = ({ onToast }) => {
                                                         title="Remove from Local Admin group"
                                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed mx-auto"
                                                     >
-                                                        {inProgress
+                                                        {adminInProgress
                                                             ? <><Loader2 size={12} className="animate-spin" /> Removing…</>
                                                             : <><X size={12} /> Remove Local Admin</>
                                                         }
@@ -2581,9 +2697,39 @@ const UserAccessTab = ({ onToast }) => {
                                                         disabled={inProgress}
                                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0A66C2] hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed mx-auto"
                                                     >
-                                                        {inProgress
+                                                        {adminInProgress
                                                             ? <><Loader2 size={12} className="animate-spin" /> Marking…</>
                                                             : <><Shield size={12} /> Mark as Local Admin</>
+                                                        }
+                                                    </button>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                {loadingCgm ? (
+                                                    <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
+                                                        <Loader2 size={12} className="animate-spin" />
+                                                    </div>
+                                                ) : isCgmSect ? (
+                                                    <button
+                                                        onClick={() => handleRemoveCGMSect(u)}
+                                                        disabled={inProgress}
+                                                        title="Remove CGM Sect. groups"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed mx-auto"
+                                                    >
+                                                        {cgmInProgress
+                                                            ? <><Loader2 size={12} className="animate-spin" /> Removing…</>
+                                                            : <><X size={12} /> Remove CGM Sect.</>
+                                                        }
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleMarkCGMSect(u)}
+                                                        disabled={inProgress}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0A66C2] hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed mx-auto"
+                                                    >
+                                                        {cgmInProgress
+                                                            ? <><Loader2 size={12} className="animate-spin" /> Marking…</>
+                                                            : <><Shield size={12} /> Mark as CGM Sect.</>
                                                         }
                                                     </button>
                                                 )}
