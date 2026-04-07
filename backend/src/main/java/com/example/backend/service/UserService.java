@@ -38,7 +38,7 @@ public class UserService {
                                                     String officeTypeFilter, String locationFilter,
                                                     String deptNames) {
         StringBuilder dqlBuilder = new StringBuilder();
-        dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, department_short_code, user_grade, designation, ");
+        dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, department_short_code, ro_short_code, user_grade, designation, ");
         dqlBuilder.append("user_email_address, user_login_name, primary_mobile_number, location, office_type, ");
         dqlBuilder.append("is_active, hindi_user_name, hindi_designation, user_role ");
         dqlBuilder.append("FROM cms_user_profile WHERE object_name IS NOT NULL AND object_name != ' ' ");
