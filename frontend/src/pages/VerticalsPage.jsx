@@ -191,6 +191,13 @@ const VerticalCreationTab = ({ setToast }) => {
 
 // ─── Add Members Tab ──────────────────────────────────────────────────────────
 const AddMembersTab = ({ setToast }) => {
+    const storedUser   = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole    = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const [profileCtx, setProfileCtx] = useState(null);
+
     const [officeType,        setOfficeType]        = useState('');
     const [location,          setLocation]          = useState('');
     const [roShortCode,       setRoShortCode]       = useState('');
@@ -218,14 +225,62 @@ const AddMembersTab = ({ setToast }) => {
     const [adding,            setAdding]            = useState(false);
     const [creatingVH,        setCreatingVH]        = useState(false);
     const [deptOptions,       setDeptOptions]       = useState([]);
+    const [allDeptOptions,    setAllDeptOptions]    = useState([]);
 
     const isROTE = ['RO', 'TE'].includes(officeType);
 
+    // Local Admin: fetch profile context and auto-set office type & location
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                const ot  = ctx.office_type || '';
+                const loc = ctx.location    || '';
+                if (ot) setOfficeType(ot);
+                if (loc) {
+                    setLocation(loc);
+                    const locs = getLocations(ot);
+                    const locObj = locs.find(l => l.location === loc);
+                    if (locObj) setRoShortCode(locObj.shortCode);
+                }
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
     // Load departments dynamically when officeType or location changes
     useEffect(() => {
-        if (!officeType || (isROTE && !location)) { setDeptOptions([]); return; }
-        fetchDepartments(officeType, location).then(setDeptOptions);
-    }, [officeType, location]);
+        if (!officeType || (isROTE && !location)) { setAllDeptOptions([]); setDeptOptions([]); return; }
+        fetchDepartments(officeType, location).then(all => {
+            setAllDeptOptions(all);
+            if (isLocalAdmin && profileCtx) {
+                const raw = profileCtx.department_short_code_multi;
+                const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                    .map(s => s.toLowerCase());
+                setDeptOptions(all.filter(d => allowed.includes(d.shortCode.toLowerCase())));
+            } else {
+                setDeptOptions(all);
+            }
+        });
+    }, [officeType, location, isLocalAdmin, profileCtx]);
+
+    // Local Admin RO/TE: auto-fetch users + verticals when location is set from profile
+    useEffect(() => {
+        if (!isLocalAdmin || !profileCtx || !isROTE || !location || !roShortCode) return;
+        setLoadingUsers(true); setLoadingVerticals(true);
+        Promise.allSettled([
+            api.get('/users/by-location', { params: { location } }),
+            api.get('/groups/by-prefix',  { params: { prefix: `ecm_${roShortCode.toLowerCase()}` } }),
+        ]).then(([uRes, vRes]) => {
+            if (uRes.status === 'fulfilled') setUsers(uRes.value.data || []);
+            if (vRes.status === 'fulfilled') {
+                const all = vRes.value.data || [];
+                setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('_cgm_sec')));
+            }
+            setLoadingUsers(false); setLoadingVerticals(false);
+        });
+    }, [isLocalAdmin, profileCtx, isROTE, location, roShortCode]);
 
     const resetBelow = (level) => {
         if (level === 'location') { setLocation(''); setRoShortCode(''); }
@@ -461,6 +516,7 @@ const AddMembersTab = ({ setToast }) => {
                     <div>
                         <Label icon={Building2}>Office Type</Label>
                         <Select value={officeType} onChange={handleOfficeTypeChange}
+                            disabled={isLocalAdmin}
                             placeholder="— Select office type —"
                             options={[
                                 { value: 'HO', label: 'HO — Head Office' },
@@ -473,7 +529,7 @@ const AddMembersTab = ({ setToast }) => {
                         <div>
                             <Label icon={MapPin}>Location</Label>
                             <Select value={location} onChange={handleLocationChange}
-                                disabled={!officeType}
+                                disabled={!officeType || isLocalAdmin}
                                 placeholder="— Select location —"
                                 options={getLocations(officeType).map(l => ({ value: l.location, label: l.location }))} />
                         </div>
@@ -658,6 +714,13 @@ const AddMembersTab = ({ setToast }) => {
 
 // ─── Remove Members Tab ───────────────────────────────────────────────────────
 const RemoveMembersTab = ({ setToast }) => {
+    const storedUser   = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole    = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const [profileCtx, setProfileCtx] = useState(null);
+
     const [officeType,     setOfficeType]     = useState('');
     const [location,       setLocation]       = useState('');
     const [roShortCode,    setRoShortCode]    = useState('');
@@ -739,11 +802,53 @@ const RemoveMembersTab = ({ setToast }) => {
 
     const isROTE = ['RO', 'TE'].includes(officeType);
 
+    // Local Admin: fetch profile context and auto-set office type & location
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                const ot  = ctx.office_type || '';
+                const loc = ctx.location    || '';
+                if (ot) setOfficeType(ot);
+                if (loc) {
+                    setLocation(loc);
+                    const locs = getLocations(ot);
+                    const locObj = locs.find(l => l.location === loc);
+                    if (locObj) setRoShortCode(locObj.shortCode);
+                }
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
     // Load departments dynamically when officeType or location changes
     useEffect(() => {
         if (!officeType || (isROTE && !location)) { setDeptOptions([]); return; }
-        fetchDepartments(officeType, location).then(setDeptOptions);
-    }, [officeType, location]);
+        fetchDepartments(officeType, location).then(all => {
+            if (isLocalAdmin && profileCtx) {
+                const raw = profileCtx.department_short_code_multi;
+                const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                    .map(s => s.toLowerCase());
+                setDeptOptions(all.filter(d => allowed.includes(d.shortCode.toLowerCase())));
+            } else {
+                setDeptOptions(all);
+            }
+        });
+    }, [officeType, location, isLocalAdmin, profileCtx]);
+
+    // Local Admin RO/TE: auto-fetch verticals when location is set from profile
+    useEffect(() => {
+        if (!isLocalAdmin || !profileCtx || !isROTE || !location || !roShortCode) return;
+        setLoadingVerts(true);
+        api.get('/groups/by-prefix', { params: { prefix: `ecm_${roShortCode.toLowerCase()}` } })
+            .then(res => {
+                const all = res.data || [];
+                setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('cgm_sec')));
+            })
+            .catch(() => setVerticals([]))
+            .finally(() => setLoadingVerts(false));
+    }, [isLocalAdmin, profileCtx, isROTE, location, roShortCode]);
 
     const resetBelow = (level) => {
         if (level === 'officeType') { setLocation(''); setRoShortCode(''); }
@@ -988,6 +1093,7 @@ const RemoveMembersTab = ({ setToast }) => {
                     <div>
                         <Label icon={Building2}>Office Type</Label>
                         <Select value={officeType} onChange={handleOfficeTypeChange}
+                            disabled={isLocalAdmin}
                             placeholder="— Select office type —"
                             options={[
                                 { value: 'HO', label: 'HO — Head Office' },
@@ -999,7 +1105,7 @@ const RemoveMembersTab = ({ setToast }) => {
                         <div>
                             <Label icon={MapPin}>Location</Label>
                             <Select value={location} onChange={handleLocationChange}
-                                disabled={!officeType}
+                                disabled={!officeType || isLocalAdmin}
                                 placeholder="— Select location —"
                                 options={getLocations(officeType).map(l => ({ value: l.location, label: l.location }))} />
                         </div>
@@ -1160,14 +1266,22 @@ const RemoveMembersTab = ({ setToast }) => {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const VerticalsPage = () => {
-    const [pageTab,  setPageTab]  = useState('creation');
+    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole  = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isSuperAdmin = adminRole === 'Super Admin';
+
+    const [pageTab,  setPageTab]  = useState(isSuperAdmin ? 'creation' : 'members');
     const [innerTab, setInnerTab] = useState('add');
     const [toast,    setToast]    = useState(null);
 
-    const PAGE_TABS = [
-        { key: 'creation', label: 'Vertical Creation' },
-        { key: 'members',  label: 'Manage Members'    },
-    ];
+    const PAGE_TABS = isSuperAdmin
+        ? [
+            { key: 'creation', label: 'Vertical Creation' },
+            { key: 'members',  label: 'Manage Members'    },
+          ]
+        : [
+            { key: 'members',  label: 'Manage Members'    },
+          ];
     const INNER_TABS = [
         { key: 'add',    label: 'Add Members',    icon: UserPlus   },
         { key: 'remove', label: 'Remove Members', icon: UserCheck  },

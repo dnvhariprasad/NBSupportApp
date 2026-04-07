@@ -966,8 +966,17 @@ const UserCreateTab = ({ onToast }) => {
         if (field === 'profile_hindi_user_name' || field === 'profile_hindi_designation') {
             hindiTouched.current[field] = true;
         }
-        setForm(f => ({ ...f, [field]: value }));
+        setForm(f => {
+            const updated = { ...f, [field]: value };
+            // Auto-populate user_address from user_login_name
+            if (field === 'user_login_name') {
+                const login = value.trim();
+                updated.user_address = login ? `${login}@nabard.org` : '';
+            }
+            return updated;
+        });
         if (errors[field]) setErrors(e => ({ ...e, [field]: undefined }));
+        if (field === 'user_login_name' && errors.user_address) setErrors(e => ({ ...e, user_address: undefined }));
     };
 
     // Debounced transliteration: user_name → profile_hindi_user_name
@@ -1204,11 +1213,10 @@ const UserCreateTab = ({ onToast }) => {
                                                 className={`${inputCls(errors.user_login_name)} font-mono`} />
                                         </FormField>
                                     </div>
-                                    <FormField label="User Address" icon={Mail} required error={errors.user_address} hint="Email address or contact">
-                                        <input type="text" value={form.user_address}
-                                            onChange={e => handleChange('user_address', e.target.value)}
+                                    <FormField label="User Address" icon={Mail} required error={errors.user_address} hint="Auto-populated from Login Name">
+                                        <input type="text" readOnly value={form.user_address}
                                             placeholder="e.g. john.doe@nabard.org"
-                                            className={inputCls(errors.user_address)} />
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 cursor-default font-mono" />
                                     </FormField>
                                 </div>
                             </>

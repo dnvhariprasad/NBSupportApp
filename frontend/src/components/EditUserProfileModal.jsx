@@ -44,6 +44,16 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [pendingCases,        setPendingCases]        = useState([]);
     const [showPendingBlock,    setShowPendingBlock]    = useState(false);
 
+    // Office type change — pending cases block
+    const [checkingOfficeInbox,    setCheckingOfficeInbox]    = useState(false);
+    const [officePendingCases,     setOfficePendingCases]     = useState([]);
+    const [showOfficeBlock,        setShowOfficeBlock]        = useState(false);
+
+    // Department change — pending cases block
+    const [checkingDeptInbox,      setCheckingDeptInbox]      = useState(false);
+    const [deptPendingCases,       setDeptPendingCases]       = useState([]);
+    const [showDeptBlock,          setShowDeptBlock]          = useState(false);
+
     // Delegate modal state
     const [delegateTask,         setDelegateTask]         = useState(null);
     const [delegateUsers,        setDelegateUsers]        = useState([]);
@@ -57,6 +67,10 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (!isOpen || !user) return;
         setPendingCases([]);
         setShowPendingBlock(false);
+        setOfficePendingCases([]);
+        setShowOfficeBlock(false);
+        setDeptPendingCases([]);
+        setShowDeptBlock(false);
         setDelegateTask(null);
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
@@ -200,14 +214,25 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setDelegatingCaseId(caseId);
         try {
             await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser });
-            const remaining = pendingCases.filter(t => {
+            const filterOut = (list) => list.filter(t => {
                 const tid = pf(t, 'id') || t.id || t.r_object_id;
                 return tid !== caseId;
             });
+            const remaining = filterOut(pendingCases);
             setPendingCases(remaining);
-            if (remaining.length === 0) {
+            if (remaining.length === 0 && showPendingBlock) {
                 setShowPendingBlock(false);
                 set('is_active', false);
+            }
+            const officeRemaining = filterOut(officePendingCases);
+            setOfficePendingCases(officeRemaining);
+            if (officeRemaining.length === 0) {
+                setShowOfficeBlock(false);
+            }
+            const deptRemaining = filterOut(deptPendingCases);
+            setDeptPendingCases(deptRemaining);
+            if (deptRemaining.length === 0) {
+                setShowDeptBlock(false);
             }
             setDelegateTask(null);
         } catch (err) {
@@ -217,11 +242,58 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     };
 
+    // Check inbox for cases matching specific department codes
+    const checkDeptInbox = async (removedDeptCodes) => {
+        if (!removedDeptCodes.length || !user?.object_name) {
+            setShowDeptBlock(false);
+            setDeptPendingCases([]);
+            return;
+        }
+        setCheckingDeptInbox(true);
+        setShowDeptBlock(false);
+        setDeptPendingCases([]);
+        try {
+            const res = await api.get('/inbox/tasklist', {
+                params: { username: user.object_name, page: 1, start: 0 }
+            });
+            const data = res.data || {};
+            let items = [];
+            if (Array.isArray(data.entries)) {
+                items = data.entries.map(e => {
+                    const props = e?.content?.properties || e?.properties || e;
+                    return { ...props, _raw: e };
+                });
+            } else if (Array.isArray(data.tasks)) {
+                items = data.tasks;
+            }
+            // Filter cases that belong to any of the removed department codes
+            const lowerCodes = removedDeptCodes.map(c => c.toLowerCase());
+            const offType = form.office_type;
+            const matched = items.filter(task => {
+                const caseName = pf(task, 'object_name') || task.caseName || '';
+                const parts = caseName.split('-');
+                // HO: parts[1] is dept code; RO/TE: parts[3] is dept code
+                const caseDept = (offType === 'HO' ? parts[1] : parts[3] || '').toLowerCase();
+                return lowerCodes.includes(caseDept);
+            });
+            if (matched.length > 0) {
+                setDeptPendingCases(matched);
+                setShowDeptBlock(true);
+            }
+        } catch {
+            // Inbox check failed — allow proceeding
+        } finally {
+            setCheckingDeptInbox(false);
+        }
+    };
+
     const handleOfficeTypeChange = async (v) => {
         set('office_type',               v);
         set('location',                  v === 'HO' ? 'Mumbai' : '');
         set('ro_short_code',             '');
         set('department_name',           '');
+        setShowDeptBlock(false);
+        setDeptPendingCases([]);
         set('department_short_code',     '');
         set('department_names',          []);
         set('department_short_code_multi', []);
@@ -229,6 +301,41 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             setDeptOptions(await fetchDepartments('HO'));
         } else {
             setDeptOptions([]);
+        }
+
+        // Check inbox when office type changes from original value
+        const originalOfficeType = originalGroupInfoRef.current.officeType;
+        if (v !== originalOfficeType && user?.object_name) {
+            setCheckingOfficeInbox(true);
+            setShowOfficeBlock(false);
+            setOfficePendingCases([]);
+            try {
+                const res = await api.get('/inbox/tasklist', {
+                    params: { username: user.object_name, page: 1, start: 0 }
+                });
+                const data = res.data || {};
+                let items = [];
+                if (Array.isArray(data.entries)) {
+                    items = data.entries.map(e => {
+                        const props = e?.content?.properties || e?.properties || e;
+                        return { ...props, _raw: e };
+                    });
+                } else if (Array.isArray(data.tasks)) {
+                    items = data.tasks;
+                }
+                if (items.length > 0) {
+                    setOfficePendingCases(items);
+                    setShowOfficeBlock(true);
+                }
+            } catch {
+                // Inbox check failed — allow proceeding
+            } finally {
+                setCheckingOfficeInbox(false);
+            }
+        } else {
+            // Reverted back to original office type — clear block
+            setShowOfficeBlock(false);
+            setOfficePendingCases([]);
         }
     };
 
@@ -251,7 +358,20 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const handleDepartmentChange = (v) => {
         set('department_name', v);
         const dept = deptOptions.find(d => d.name === v);
-        set('department_short_code', dept ? dept.shortCode : '');
+        const newDeptCode = dept ? dept.shortCode : '';
+        set('department_short_code', newDeptCode);
+
+        // HO: check inbox for cases in the original department if it's being changed away
+        if (form.office_type === 'HO') {
+            const originalDeptCodes = originalGroupInfoRef.current.deptCodes;
+            const originalCode = (originalDeptCodes[0] || '').toLowerCase();
+            if (originalCode && newDeptCode.toLowerCase() !== originalCode) {
+                checkDeptInbox(originalDeptCodes);
+            } else {
+                setShowDeptBlock(false);
+                setDeptPendingCases([]);
+            }
+        }
     };
 
     const handleGradeChange = (v) => {
@@ -263,6 +383,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (showPendingBlock) return; // block save if pending cases exist
+        if (showOfficeBlock) return;  // block save if office type changed with pending cases
+        if (showDeptBlock) return;    // block save if department changed with pending cases
         const v = {};
         if (!form.designation?.trim())        v.designation        = 'Designation is required';
         if (!form.uin?.trim())                v.uin                = 'UIN is required';
@@ -522,13 +644,21 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="space-y-1">
                                     <Label>Office Type</Label>
                                     <SelectWrapper>
-                                        <select value={form.office_type} onChange={e => handleOfficeTypeChange(e.target.value)} className={selectCls}>
+                                        <select value={form.office_type}
+                                            onChange={e => handleOfficeTypeChange(e.target.value)}
+                                            disabled={checkingOfficeInbox}
+                                            className={checkingOfficeInbox ? disabledSelectCls : selectCls}>
                                             <option value="">— Select office type —</option>
                                             <option value="HO">HO — Head Office</option>
                                             <option value="RO">RO — Regional Office</option>
                                             <option value="TE">TE — Training Establishment</option>
                                         </select>
                                     </SelectWrapper>
+                                    {checkingOfficeInbox && (
+                                        <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                                            <Loader2 size={12} className="animate-spin" /> Checking case inbox…
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -578,13 +708,24 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                                     checked={(form.department_short_code_multi || []).includes(d.shortCode)}
                                                                     onChange={() => {
                                                                         const currentCodes = form.department_short_code_multi || [];
-                                                                        const newCodes = currentCodes.includes(d.shortCode)
+                                                                        const isRemoving = currentCodes.includes(d.shortCode);
+                                                                        const newCodes = isRemoving
                                                                             ? currentCodes.filter(c => c !== d.shortCode)
                                                                             : [...currentCodes, d.shortCode];
                                                                         const firstDept = depts.find(dept => dept.shortCode === newCodes[0]);
                                                                         set('department_short_code',       newCodes[0] || '');
                                                                         set('department_short_code_multi', newCodes);
                                                                         set('department_name',             firstDept?.name || '');
+
+                                                                        // RO/TE: check inbox for all departments removed vs original
+                                                                        const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
+                                                                        const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
+                                                                        if (removedCodes.length > 0) {
+                                                                            checkDeptInbox(removedCodes);
+                                                                        } else {
+                                                                            setShowDeptBlock(false);
+                                                                            setDeptPendingCases([]);
+                                                                        }
                                                                     }}
                                                                     className="rounded accent-[#0A66C2]"
                                                                 />
@@ -620,8 +761,109 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             className={readonlyCls} />
                                     </div>
                                 </div>
+                                {checkingDeptInbox && (
+                                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                                        <Loader2 size={12} className="animate-spin" /> Checking case inbox for department…
+                                    </div>
+                                )}
                             </div>
                         </div>
+
+                        {/* Office type change — pending cases block */}
+                        {showOfficeBlock && officePendingCases.length > 0 && (
+                            <div className="space-y-2">
+                                <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                                    <span>Cannot change Office Type — this user has pending cases. Delegate or resolve them first.</span>
+                                </div>
+                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                    <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-slate-600">Pending Cases</span>
+                                        <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full font-medium">{officePendingCases.length}</span>
+                                    </div>
+                                    <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                                        {officePendingCases.map((task, idx) => {
+                                            const caseName = pf(task, 'object_name') || task.caseName || '—';
+                                            const desc     = pf(task, 'description') || '';
+                                            const status   = pf(task, 'status') || task.status || '';
+                                            const priority = pf(task, 'task_priority') || task.priority || '';
+                                            return (
+                                                <div key={pf(task, 'id') || task.id || idx} className="px-3 py-2.5 flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-medium text-slate-800 truncate">{caseName}</p>
+                                                        <p className="text-xs text-slate-500 truncate">{desc}</p>
+                                                    </div>
+                                                    <div className="shrink-0 flex items-center gap-1.5">
+                                                        {status && <span className="px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium whitespace-nowrap">{status}</span>}
+                                                        {priority && (
+                                                            <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium whitespace-nowrap ${
+                                                                priority === 'High' ? 'bg-red-100 text-red-700' :
+                                                                priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                                'bg-slate-100 text-slate-600'
+                                                            }`}>{priority}</span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDelegateClick(task)}
+                                                            className="flex items-center gap-1 px-2 py-1 bg-[#0A66C2] hover:bg-[#094d92] text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap">
+                                                            <ArrowRightLeft size={11} /> Delegate
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Department change — pending cases block */}
+                        {showDeptBlock && deptPendingCases.length > 0 && (
+                            <div className="space-y-2">
+                                <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                                    <span>Cannot change department — this user has pending cases in the department. Delegate or resolve them first.</span>
+                                </div>
+                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                    <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-slate-600">Pending Cases</span>
+                                        <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full font-medium">{deptPendingCases.length}</span>
+                                    </div>
+                                    <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                                        {deptPendingCases.map((task, idx) => {
+                                            const caseName = pf(task, 'object_name') || task.caseName || '—';
+                                            const desc     = pf(task, 'description') || '';
+                                            const status   = pf(task, 'status') || task.status || '';
+                                            const priority = pf(task, 'task_priority') || task.priority || '';
+                                            return (
+                                                <div key={pf(task, 'id') || task.id || idx} className="px-3 py-2.5 flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-medium text-slate-800 truncate">{caseName}</p>
+                                                        <p className="text-xs text-slate-500 truncate">{desc}</p>
+                                                    </div>
+                                                    <div className="shrink-0 flex items-center gap-1.5">
+                                                        {status && <span className="px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium whitespace-nowrap">{status}</span>}
+                                                        {priority && (
+                                                            <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium whitespace-nowrap ${
+                                                                priority === 'High' ? 'bg-red-100 text-red-700' :
+                                                                priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                                'bg-slate-100 text-slate-600'
+                                                            }`}>{priority}</span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDelegateClick(task)}
+                                                            className="flex items-center gap-1 px-2 py-1 bg-[#0A66C2] hover:bg-[#094d92] text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap">
+                                                            <ArrowRightLeft size={11} /> Delegate
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* ── Grade ── */}
                         <div>
@@ -728,7 +970,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                         Cancel
                     </button>
-                    <button type="submit" form="editProfileForm" disabled={loading || checkingInbox || (isSuperAdmin && showPendingBlock)}
+                    <button type="submit" form="editProfileForm" disabled={loading || checkingInbox || checkingOfficeInbox || checkingDeptInbox || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock}
                         className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] disabled:opacity-50 flex items-center gap-2 transition-colors">
                         {loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                         Save Changes
