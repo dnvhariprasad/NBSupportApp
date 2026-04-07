@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { X, Save, Loader2, User, Building2, MapPin, Tag, GraduationCap, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
-import { USER_GRADES, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS } from '../data/nabardMetadata.js';
+import { USER_GRADES, DESIGNATION_OPTIONS, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS } from '../data/nabardMetadata.js';
 
 const USER_GRADE_OPTIONS = [
     { value: '', label: '— Select grade —', level: '' },
@@ -35,9 +35,10 @@ const SelectWrapper = ({ children }) => (
 const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [form, setForm] = useState({});
     const [loading, setLoading] = useState(false);
+    const [loadingForm, setLoadingForm] = useState(false);
     const [error, setError] = useState(null);
     const [errors, setErrors] = useState({});
-    const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [] });
+    const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
 
     // Pending cases / delegate state
     const [checkingInbox,       setCheckingInbox]       = useState(false);
@@ -65,6 +66,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
     useEffect(() => {
         if (!isOpen || !user) return;
+        setLoadingForm(true);
         setPendingCases([]);
         setShowPendingBlock(false);
         setOfficePendingCases([]);
@@ -76,6 +78,15 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             .then(res => initForm({ ...user, ...res.data }))
             .catch(() => initForm(user));
     }, [isOpen, user]);
+
+    // Auto-populate hindi_designation when designation changes
+    useEffect(() => {
+        if (!form.designation) return;
+        const designationObj = DESIGNATION_OPTIONS.find(opt => opt.value === form.designation);
+        if (designationObj && designationObj.hindi) {
+            set('hindi_designation', designationObj.hindi);
+        }
+    }, [form.designation]);
 
     const initForm = async (profile) => {
         const officeType = profile.office_type || '';
@@ -99,11 +110,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 : (profile.department_short_code ? [profile.department_short_code] : []);
             deptShortCodeMulti = multiCodes;
             deptShortCode      = multiCodes[0] || '';
-            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: multiCodes };
+            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: multiCodes, designation: profile.designation || '' };
         } else {
             const deptObj = depts.find(d => d.name === deptName);
             deptShortCode = deptObj ? deptObj.shortCode : (profile.department_short_code || '');
-            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: deptShortCode ? [deptShortCode] : [] };
+            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: deptShortCode ? [deptShortCode] : [], designation: profile.designation || '' };
         }
 
         const gradeObj   = USER_GRADES.find(g => g.value === profile.user_grade);
@@ -132,6 +143,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setErrors({});
         setPendingCases([]);
         setShowPendingBlock(false);
+        setLoadingForm(false);
     };
 
     const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
@@ -435,6 +447,36 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                     api.post(`/groups/${g}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
             }
 
+            // ── CGM group management based on designation change ──────────
+            const getCgmGroup = (offType, roCode, deptCodes) => {
+                if (offType === 'HO') {
+                    const dc = (deptCodes[0] || '').toLowerCase();
+                    return dc ? `ecm_digidak_ho_${dc}_cgm` : '';
+                } else if (['RO', 'TE'].includes(offType) && roCode) {
+                    return `ecm_digidak_${offType.toLowerCase()}_${roCode.toLowerCase()}_cgm`;
+                }
+                return '';
+            };
+
+            const oldDesignation = (old.designation || '').toUpperCase();
+            const newDesignation = (form.designation || '').toUpperCase();
+            const wasCGM = oldDesignation === 'CGM';
+            const isCGM  = newDesignation === 'CGM';
+
+            if (isCGM && !wasCGM) {
+                // Designation changed TO CGM — add CGM group
+                const cgmGroup = getCgmGroup(form.office_type, newRoShortCode, newDeptCodes);
+                if (cgmGroup) {
+                    api.post(`/groups/${cgmGroup}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+                }
+            } else if (wasCGM && !isCGM) {
+                // Designation changed FROM CGM — remove old CGM group
+                const cgmGroup = getCgmGroup(old.officeType, old.roShortCode, old.deptCodes);
+                if (cgmGroup) {
+                    api.delete(`/groups/${cgmGroup}/members/${encodeURIComponent(loginName)}`).catch(() => {});
+                }
+            }
+
             onUpdate();
             onClose();
         } catch (err) {
@@ -587,9 +629,20 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 </div>
                                 <div className="space-y-1">
                                     <Label required>Designation</Label>
-                                    <input type="text" value={form.designation}
-                                        onChange={e => { set('designation', e.target.value); setErrors(p => ({ ...p, designation: undefined })); }}
-                                        className={errors.designation ? errorCls : inputCls} />
+                                    <SelectWrapper>
+                                        <select value={form.designation}
+                                            onChange={e => {
+                                                set('designation', e.target.value);
+                                                setErrors(p => ({ ...p, designation: undefined }));
+                                                // Reset hindi_designation touched so it can auto-populate
+                                                hindiTouched.current.hindi_designation = false;
+                                            }}
+                                            className={errors.designation ? errorCls : selectCls} >
+                                            {DESIGNATION_OPTIONS.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                    </SelectWrapper>
                                     {errors.designation && <p className="text-xs text-red-500">{errors.designation}</p>}
                                 </div>
                                 <div className="space-y-1">
@@ -628,9 +681,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="space-y-1">
                                     <Label required>Hindi Designation</Label>
                                     <input type="text" value={form.hindi_designation}
-                                        onChange={e => { set('hindi_designation', e.target.value); setErrors(p => ({ ...p, hindi_designation: undefined })); }}
-                                        className={errors.hindi_designation ? errorCls : inputCls} />
-                                    {errors.hindi_designation && <p className="text-xs text-red-500">{errors.hindi_designation}</p>}
+                                        readOnly
+                                        className={readonlyCls} />
                                 </div>
                             </div>
                         </div>
@@ -970,7 +1022,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                         Cancel
                     </button>
-                    <button type="submit" form="editProfileForm" disabled={loading || checkingInbox || checkingOfficeInbox || checkingDeptInbox || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock}
+                    <button type="submit" form="editProfileForm" disabled={loading || loadingForm || checkingInbox || checkingOfficeInbox || checkingDeptInbox || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock}
                         className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] disabled:opacity-50 flex items-center gap-2 transition-colors">
                         {loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                         Save Changes

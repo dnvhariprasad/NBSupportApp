@@ -8,7 +8,7 @@ import {
     Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers, Save
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
-import { USER_GRADES, fetchDepartments, getLocations } from '../data/nabardMetadata.js';
+import { USER_GRADES, DESIGNATION_OPTIONS, fetchDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
 async function fetchAllUsers(officeTypeFilter, locationFilter, deptNames) {
@@ -37,21 +37,6 @@ const PRIVILEGE_OPTIONS = [
     { value: 4,  label: 'Create Group',  description: 'Can create new groups' },
     { value: 8,  label: 'Sysadmin',      description: 'System administrator privileges' },
     { value: 16, label: 'Superuser',     description: 'Full superuser access' },
-];
-
-// ─── Designation options (from Nabard metadata) ───────────────────────────────
-const DESIGNATION_OPTIONS = [
-    { value: '',         hindi: '',              label: '— Select designation —' },
-    { value: 'DA',       hindi: 'विस',           label: 'DA' },
-    { value: 'AM',       hindi: 'सप्र',          label: 'AM' },
-    { value: 'MGR',      hindi: 'प्र',           label: 'MGR' },
-    { value: 'AGM',      hindi: 'समप्र',         label: 'AGM' },
-    { value: 'DGM',      hindi: 'उमप्र',         label: 'DGM' },
-    { value: 'GM',       hindi: 'मप्र',          label: 'GM' },
-    { value: 'GM(OIC)',  hindi: 'मप्र(काप्र)',   label: 'GM(OIC)' },
-    { value: 'CGM',      hindi: 'मुमप्र',        label: 'CGM' },
-    { value: 'DMD',      hindi: 'उप्रनि',        label: 'DMD' },
-    { value: 'CHAIRMAN', hindi: 'अध्यक्ष',      label: 'CHAIRMAN' },
 ];
 
 // ─── Toast Notification ───────────────────────────────────────────────────────

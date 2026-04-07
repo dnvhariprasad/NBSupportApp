@@ -2,6 +2,21 @@ import api from '../api/axios';
 
 // Nabard metadata: departments, locations, and grades for cascading dropdowns
 
+// ─── Designation Options ──────────────────────────────────────────────────────
+export const DESIGNATION_OPTIONS = [
+    { value: '',         hindi: '',              label: '— Select designation —' },
+    { value: 'DA',       hindi: 'विस',           label: 'DA' },
+    { value: 'AM',       hindi: 'सप्र',          label: 'AM' },
+    { value: 'MGR',      hindi: 'प्र',           label: 'MGR' },
+    { value: 'AGM',      hindi: 'समप्र',         label: 'AGM' },
+    { value: 'DGM',      hindi: 'उमप्र',         label: 'DGM' },
+    { value: 'GM',       hindi: 'मप्र',          label: 'GM' },
+    { value: 'GM(OIC)',  hindi: 'मप्र(काप्र)',   label: 'GM(OIC)' },
+    { value: 'CGM',      hindi: 'मुमप्र',        label: 'CGM' },
+    { value: 'DMD',      hindi: 'उप्रनि',        label: 'DMD' },
+    { value: 'CHAIRMAN', hindi: 'अध्यक्ष',      label: 'CHAIRMAN' },
+];
+
 export const HO_DEPARTMENTS = [
   { name: 'AD',     shortCode: 'ad' },
   { name: 'BID',    shortCode: 'bid' },

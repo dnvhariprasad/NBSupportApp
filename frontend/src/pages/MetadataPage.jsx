@@ -765,12 +765,16 @@ const CASE_TABS = [
     { id: 'hindicomments',  label: 'Hindi Comments',  icon: MessageSquareText },
 ];
 
-const CaseSection = ({ onToast }) => {
+const CaseSection = ({ onToast, isLocalAdmin }) => {
     const [activeTab, setActiveTab] = useState('filenumber');
+    // Filter tabs for Local Admin - hide case type and hindi comments
+    const visibleTabs = isLocalAdmin
+        ? CASE_TABS.filter(t => t.id === 'filenumber')
+        : CASE_TABS;
     return (
         <div className="space-y-4">
             <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
-                {CASE_TABS.map(t => (
+                {visibleTabs.map(t => (
                     <button key={t.id} onClick={() => setActiveTab(t.id)}
                         className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
                             activeTab === t.id
@@ -793,7 +797,9 @@ const CaseSection = ({ onToast }) => {
 // inputValue   : 'nature_of_correspondence_internal' | 'nature_of_correspondence_external'
 // folderPath   : '/Digidak Config/Nature of correspondence Internal' | ...External
 // listLabel    : heading shown in the list panel
-const NatureOfCorrespondenceTab = ({ inputValue, folderPath, listLabel, formTitle, fieldLabel, onToast }) => {
+// allowAdd: whether to allow adding new items (default: true)
+// allowEditDelete: whether to allow edit/delete operations (default: true)
+const NatureOfCorrespondenceTab = ({ inputValue, folderPath, listLabel, formTitle, fieldLabel, onToast, allowAdd = true, allowEditDelete = true }) => {
     const [value, setValue]           = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [items, setItems]           = useState([]);
@@ -883,8 +889,9 @@ const NatureOfCorrespondenceTab = ({ inputValue, folderPath, listLabel, formTitl
     const resolvedFieldLabel = fieldLabel ?? 'Nature of Correspondence';
 
     return (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-            {/* Left: form */}
+        <div className={`grid ${allowAdd ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'} gap-6 items-start`}>
+            {/* Left: form (only shown if add allowed) */}
+            {allowAdd && (
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                 <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-slate-50 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm shrink-0">
@@ -913,6 +920,7 @@ const NatureOfCorrespondenceTab = ({ inputValue, folderPath, listLabel, formTitl
                     </div>
                 </form>
             </div>
+            )}
 
             {/* Right: list with edit + delete */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
@@ -984,7 +992,7 @@ const NatureOfCorrespondenceTab = ({ inputValue, folderPath, listLabel, formTitl
                                                     </div>
                                                 ) : isDeleting ? (
                                                     <Loader2 size={15} className="animate-spin text-red-400 mx-auto" />
-                                                ) : isConfirming ? (
+                                                ) : allowEditDelete && isConfirming ? (
                                                     <div className="flex items-center justify-center gap-1">
                                                         <button onClick={() => handleDelete(item)}
                                                             className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-all">
@@ -995,7 +1003,7 @@ const NatureOfCorrespondenceTab = ({ inputValue, folderPath, listLabel, formTitl
                                                             Cancel
                                                         </button>
                                                     </div>
-                                                ) : (
+                                                ) : allowEditDelete ? (
                                                     <div className="flex items-center justify-center gap-1">
                                                         <button onClick={() => startEdit(item)}
                                                             className="p-1.5 rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
@@ -1008,7 +1016,7 @@ const NatureOfCorrespondenceTab = ({ inputValue, folderPath, listLabel, formTitl
                                                             <Trash2 size={14} />
                                                         </button>
                                                     </div>
-                                                )}
+                                                ) : null}
                                             </td>
                                         </tr>
                                     );
@@ -1049,7 +1057,11 @@ const NatureOfCorrespondenceSection = ({ onToast }) => {
                     inputValue="nature_of_correspondence_internal"
                     folderPath="/Digidak Config/Nature of correspondence Internal"
                     listLabel="Internal Values"
+                    formTitle="Add Nature of correspondence Internal"
+                    fieldLabel="Nature of correspondence Internal"
                     onToast={onToast}
+                    allowAdd={true}
+                    allowEditDelete={false}
                 />
             )}
             {activeTab === 'external' && (
@@ -1057,7 +1069,11 @@ const NatureOfCorrespondenceSection = ({ onToast }) => {
                     inputValue="nature_of_correspondence_external"
                     folderPath="/Digidak Config/Nature of correspondence External"
                     listLabel="External Values"
+                    formTitle="Add Nature of correspondence External"
+                    fieldLabel="Nature of correspondence External"
                     onToast={onToast}
+                    allowAdd={true}
+                    allowEditDelete={false}
                 />
             )}
         </div>
@@ -1095,6 +1111,8 @@ const DigidakSection = ({ onToast }) => {
                     formTitle="Add Mode of Dispatch"
                     fieldLabel="Mode of Dispatch"
                     onToast={onToast}
+                    allowAdd={true}
+                    allowEditDelete={false}
                 />
             )}
             {activeTab === 'category_external' && (
@@ -1105,6 +1123,8 @@ const DigidakSection = ({ onToast }) => {
                     formTitle="Add Category External"
                     fieldLabel="Category External"
                     onToast={onToast}
+                    allowAdd={true}
+                    allowEditDelete={false}
                 />
             )}
         </div>
@@ -1122,6 +1142,17 @@ const MetadataPage = () => {
     const [activeTab, setActiveTab] = useState('case');
     const [toast, setToast]         = useState(null);
 
+    // Get user info to check if Local Admin
+    const storedUser = localStorage.getItem('user');
+    const user = storedUser ? JSON.parse(storedUser) : null;
+    const adminRole = user?.properties?.admin_role || user?.admin_role || null;
+    const isLocalAdmin = adminRole === 'Local Admin';
+
+    // Filter tabs for Local Admin - hide Digidak tab
+    const visibleTopTabs = isLocalAdmin
+        ? TOP_TABS.filter(t => t.id === 'case')
+        : TOP_TABS;
+
     return (
         <div className="flex flex-col h-full bg-slate-50">
             <Toast toast={toast} onDismiss={() => setToast(null)} />
@@ -1135,7 +1166,7 @@ const MetadataPage = () => {
             {/* Top tab bar */}
             <div className="bg-white border-b border-slate-200 px-6">
                 <div className="flex gap-0">
-                    {TOP_TABS.map(t => (
+                    {visibleTopTabs.map(t => (
                         <button key={t.id} onClick={() => setActiveTab(t.id)}
                             className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-all ${
                                 activeTab === t.id
@@ -1151,7 +1182,7 @@ const MetadataPage = () => {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6">
-                {activeTab === 'case'    && <CaseSection onToast={setToast} />}
+                {activeTab === 'case'    && <CaseSection onToast={setToast} isLocalAdmin={isLocalAdmin} />}
                 {activeTab === 'digidak' && <DigidakSection onToast={setToast} />}
             </div>
         </div>
