@@ -55,6 +55,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [deptPendingCases,       setDeptPendingCases]       = useState([]);
     const [showDeptBlock,          setShowDeptBlock]          = useState(false);
 
+    // Location change — pending cases block
+    const [checkingLocationInbox,  setCheckingLocationInbox]  = useState(false);
+    const [locationPendingCases,   setLocationPendingCases]   = useState([]);
+    const [showLocationBlock,      setShowLocationBlock]      = useState(false);
+
     // Delegate modal state
     const [delegateTask,         setDelegateTask]         = useState(null);
     const [delegateUsers,        setDelegateUsers]        = useState([]);
@@ -73,6 +78,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setShowOfficeBlock(false);
         setDeptPendingCases([]);
         setShowDeptBlock(false);
+        setLocationPendingCases([]);
+        setShowLocationBlock(false);
         setDelegateTask(null);
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
@@ -276,6 +283,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             if (deptRemaining.length === 0) {
                 setShowDeptBlock(false);
             }
+            const locationRemaining = filterOut(locationPendingCases);
+            setLocationPendingCases(locationRemaining);
+            if (locationRemaining.length === 0) {
+                setShowLocationBlock(false);
+            }
             setDelegateTask(null);
         } catch (err) {
             setDelegateError(err.response?.data?.message || 'Delegation failed.');
@@ -381,6 +393,63 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     };
 
+    // Check inbox for cases matching specific location (RO/TE only)
+    const checkLocationInbox = async (oldLocation) => {
+        if (!oldLocation || form.office_type === 'HO' || !user?.object_name) {
+            setShowLocationBlock(false);
+            setLocationPendingCases([]);
+            return;
+        }
+
+        setCheckingLocationInbox(true);
+        setShowLocationBlock(false);
+        setLocationPendingCases([]);
+        try {
+            const res = await api.get('/inbox/tasklist', {
+                params: { username: user.object_name, page: 1, start: 0 }
+            });
+            const data = res.data || {};
+            let items = [];
+            if (Array.isArray(data.entries)) {
+                items = data.entries.map(e => {
+                    const props = e?.content?.properties || e?.properties || e;
+                    return { ...props, _raw: e };
+                });
+            } else if (Array.isArray(data.tasks)) {
+                items = data.tasks;
+            }
+
+            // Find the old location's short code to match against case names
+            const locs = getLocations(form.office_type);
+            const oldLocObj = locs.find(l => l.location === oldLocation);
+            const oldLocCode = oldLocObj?.shortCode?.toLowerCase();
+
+            if (!oldLocCode) {
+                setShowLocationBlock(false);
+                setLocationPendingCases([]);
+                setCheckingLocationInbox(false);
+                return;
+            }
+
+            // Filter cases that belong to the old location (RO/TE: parts[2] is location code)
+            const matched = items.filter(task => {
+                const caseName = pf(task, 'object_name') || task.caseName || '';
+                const parts = caseName.split('-');
+                const caseLocCode = (parts[2] || '').toLowerCase();
+                return caseLocCode === oldLocCode;
+            });
+
+            if (matched.length > 0) {
+                setLocationPendingCases(matched);
+                setShowLocationBlock(true);
+            }
+        } catch {
+            // Inbox check failed — allow proceeding
+        } finally {
+            setCheckingLocationInbox(false);
+        }
+    };
+
     const handleLocationChange = async (v) => {
         set('location', v);
         const locs = getLocations(form.office_type);
@@ -394,6 +463,21 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             setDeptOptions(await fetchDepartments(form.office_type, v));
         } else {
             setDeptOptions([]);
+        }
+
+        // Check inbox when location changes from original value (RO/TE only)
+        // Always check against the ORIGINAL location, not the immediate previous location
+        const originalLocation = originalGroupInfoRef.current.roShortCode
+            ? getLocations(form.office_type).find(l => l.shortCode === originalGroupInfoRef.current.roShortCode)?.location
+            : null;
+
+        if (v !== originalLocation && originalLocation && ['RO', 'TE'].includes(form.office_type) && user?.object_name) {
+            // Check for cases from the ORIGINAL location when changing away from it
+            await checkLocationInbox(originalLocation);
+        } else {
+            // Reverted back to original location — clear block
+            setShowLocationBlock(false);
+            setLocationPendingCases([]);
         }
     };
 
@@ -427,6 +511,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (showPendingBlock) return; // block save if pending cases exist
         if (showOfficeBlock) return;  // block save if office type changed with pending cases
         if (showDeptBlock) return;    // block save if department changed with pending cases
+        if (showLocationBlock) return; // block save if location changed with pending cases
         const v = {};
         if (!form.designation?.trim())        v.designation        = 'Designation is required';
         if (!form.uin?.trim())                v.uin                = 'UIN is required';
@@ -753,14 +838,21 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                 </select>
                                             </SelectWrapper>
                                         ) : (
-                                            <SelectWrapper>
-                                                <select value={form.location} onChange={e => handleLocationChange(e.target.value)} className={selectCls}>
-                                                    <option value="">— Select location —</option>
-                                                    {locations.map(l => (
-                                                        <option key={l.location} value={l.location}>{l.location}</option>
-                                                    ))}
-                                                </select>
-                                            </SelectWrapper>
+                                            <>
+                                                <SelectWrapper>
+                                                    <select value={form.location} onChange={e => handleLocationChange(e.target.value)} disabled={checkingLocationInbox} className={checkingLocationInbox ? disabledSelectCls : selectCls}>
+                                                        <option value="">— Select location —</option>
+                                                        {locations.map(l => (
+                                                            <option key={l.location} value={l.location}>{l.location}</option>
+                                                        ))}
+                                                    </select>
+                                                </SelectWrapper>
+                                                {checkingLocationInbox && (
+                                                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                                                        <Loader2 size={12} className="animate-spin" /> Checking inbox…
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                     <div className="space-y-1">
@@ -947,6 +1039,54 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                             </div>
                         )}
 
+                        {/* Location change — pending cases block (RO/TE only) */}
+                        {showLocationBlock && locationPendingCases.length > 0 && ['RO', 'TE'].includes(form.office_type) && (
+                            <div className="space-y-2">
+                                <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                                    <span>Cannot change location — this user has pending cases from the current location. Delegate or resolve them first.</span>
+                                </div>
+                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                    <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-slate-600">Pending Cases</span>
+                                        <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full font-medium">{locationPendingCases.length}</span>
+                                    </div>
+                                    <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                                        {locationPendingCases.map((task, idx) => {
+                                            const caseName = pf(task, 'object_name') || task.caseName || '—';
+                                            const desc     = pf(task, 'description') || '';
+                                            const status   = pf(task, 'status') || task.status || '';
+                                            const priority = pf(task, 'task_priority') || task.priority || '';
+                                            return (
+                                                <div key={pf(task, 'id') || task.id || idx} className="px-3 py-2.5 flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-medium text-slate-800 truncate">{caseName}</p>
+                                                        <p className="text-xs text-slate-500 truncate">{desc}</p>
+                                                    </div>
+                                                    <div className="shrink-0 flex items-center gap-1.5">
+                                                        {status && <span className="px-1.5 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700 font-medium whitespace-nowrap">{status}</span>}
+                                                        {priority && (
+                                                            <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium whitespace-nowrap ${
+                                                                priority === 'High' ? 'bg-red-100 text-red-700' :
+                                                                priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                                'bg-slate-100 text-slate-600'
+                                                            }`}>{priority}</span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDelegateClick(task)}
+                                                            className="flex items-center gap-1 px-2 py-1 bg-[#0A66C2] hover:bg-[#094d92] text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap">
+                                                            <ArrowRightLeft size={11} /> Delegate
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* ── Grade ── */}
                         <div>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -1052,7 +1192,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                         Cancel
                     </button>
-                    <button type="submit" form="editProfileForm" disabled={loading || loadingForm || checkingInbox || checkingOfficeInbox || checkingDeptInbox || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock}
+                    <button type="submit" form="editProfileForm" disabled={loading || loadingForm || checkingInbox || checkingOfficeInbox || checkingDeptInbox || checkingLocationInbox || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock || showLocationBlock}
                         className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] disabled:opacity-50 flex items-center gap-2 transition-colors">
                         {loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                         Save Changes
