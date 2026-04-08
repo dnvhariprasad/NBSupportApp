@@ -525,12 +525,34 @@ const AddMembersTab = ({ setToast }) => {
             const newDisplayName = `${prefix} -${newObjectName}`;
             await api.put(`/groups/${vhGroupName}/display-name`, { displayName: newDisplayName });
 
-            setVhCurrentDisplayName(newDisplayName);
             setModifyVHSelectedUser('');
             setToast({ type: 'success', message: `Vertical head updated to '${newObjectName}'.` });
-            // Refresh VH members
-            const res = await api.get(`/groups/${vhGroupName}/members`);
-            setVhMembers(res.data.users || []);
+
+            // Refresh VH details from server to get updated display name and members
+            const [detailsRes, membersRes, verticalMembersRes] = await Promise.allSettled([
+                api.get(`/groups/${vhGroupName}`),
+                api.get(`/groups/${vhGroupName}/members`),
+                api.get(`/groups/${selectedVertical}/members`), // Refresh main vertical members to update badges
+            ]);
+
+            if (detailsRes.status === 'fulfilled') {
+                const vhProps = detailsRes.value.data?.properties;
+                if (vhProps?.group_display_name) {
+                    setVhCurrentDisplayName(vhProps.group_display_name);
+                }
+            }
+
+            if (membersRes.status === 'fulfilled') {
+                setVhMembers(membersRes.value.data?.users || []);
+            }
+
+            // Refresh the main vertical members to update UI badges
+            if (verticalMembersRes.status === 'fulfilled') {
+                setVerticalMembers({
+                    users: verticalMembersRes.value.data?.users || [],
+                    groups: verticalMembersRes.value.data?.groups || [],
+                });
+            }
         } catch (err) {
             setToast({ type: 'error', message: err.response?.data?.message || 'Failed to update vertical head.' });
         } finally { setModifyingVH(false); }
@@ -1155,21 +1177,52 @@ const RemoveMembersTab = ({ setToast }) => {
 
         setUpdatingHead(true);
         try {
-            // Remove old head from vertical head group
+            // Find the new head user object to get display name
+            const newHeadObj = members.users.find(u => u.name === selectedNewHead);
+            const newHeadDisplayName = newHeadObj?.name || selectedNewHead;
+
+            // 1. Remove old head from vertical head group
             await api.delete(`/groups/${verticalHeadGroup}/members/${verticalHeadUser.name}`, {
                 params: { memberType: 'user' },
             });
 
-            // Add new head to vertical head group
+            // 2. Add new head to vertical head group
             await api.post(`/groups/${verticalHeadGroup}/members`, {
                 memberName: selectedNewHead,
                 memberType: 'user',
             });
 
-            setToast({ type: 'success', message: 'Vertical head updated successfully.' });
+            // 3. Update the vertical head group's display name with new user
+            try {
+                const newDisplayName = selectedGroup.replace(/_/g, '-').toUpperCase() + ` -${newHeadDisplayName}`;
+                await api.put(`/groups/${verticalHeadGroup}/display-name`, { displayName: newDisplayName });
+            } catch (displayErr) {
+                console.warn('Failed to update display name:', displayErr);
+                // Don't fail the entire operation if display name update fails
+            }
+
+            setToast({ type: 'success', message: `Vertical head updated to '${newHeadDisplayName}'.` });
             setShowVerticalHeadModal(false);
 
-            // Now proceed with removing the user
+            // Refresh both vertical members AND vertical head members to update the UI
+            const [membersRes, vhMembersRes] = await Promise.allSettled([
+                api.get(`/groups/${selectedGroup}/members`),
+                api.get(`/groups/${verticalHeadGroup}/members`),
+            ]);
+
+            if (membersRes.status === 'fulfilled') {
+                setMembers({
+                    users: membersRes.value.data?.users || [],
+                    groups: membersRes.value.data?.groups || [],
+                });
+            }
+
+            // Refresh vertical head members to update the badge
+            if (vhMembersRes.status === 'fulfilled') {
+                setVerticalHeadMembers(vhMembersRes.value.data?.users || []);
+            }
+
+            // Now proceed with removing the old head user
             await handleRemoveClick(verticalHeadUser);
         } catch (err) {
             setToast({ type: 'error', message: err.response?.data?.message || 'Failed to update vertical head.' });
