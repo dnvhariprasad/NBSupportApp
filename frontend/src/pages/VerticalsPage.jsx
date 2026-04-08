@@ -74,7 +74,7 @@ const Toast = ({ toast, onDismiss }) => {
     const styles = { success: 'bg-green-50 text-green-800 border-green-200', error: 'bg-red-50 text-red-800 border-red-200' };
     const Icon = toast.type === 'success' ? CheckCircle2 : AlertCircle;
     return (
-        <div className={`fixed top-5 right-5 z-50 flex items-start gap-3 px-4 py-3 border rounded-xl shadow-lg max-w-sm ${styles[toast.type]}`}>
+        <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex items-start gap-3 px-4 py-3 border rounded-xl shadow-lg max-w-sm ${styles[toast.type]}`}>
             <Icon size={18} className="mt-0.5 shrink-0" />
             <div className="flex-1 text-sm font-medium">{toast.message}</div>
             <button onClick={onDismiss} className="shrink-0 opacity-60 hover:opacity-100"><X size={16} /></button>
@@ -139,7 +139,7 @@ const VerticalCreationTab = ({ setToast }) => {
             </div>
 
             <div>
-                <Label icon={Layers}>Department</Label>
+                <Label icon={Layers}>Department <span className="text-red-500">*</span></Label>
                 <Select
                     value={dept} onChange={v => { setDept(v); setSuffix(''); }}
                     placeholder="— Select department —"
@@ -148,7 +148,7 @@ const VerticalCreationTab = ({ setToast }) => {
             </div>
 
             <div>
-                <Label icon={Tag}>Group Name</Label>
+                <Label icon={Tag}>Group Name <span className="text-red-500">*</span></Label>
                 <div className="flex items-stretch rounded-xl border border-slate-200 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-[#0A66C2] transition-all">
                     <span className="px-3 py-2.5 bg-slate-100 text-slate-500 text-sm font-mono border-r border-slate-200 whitespace-nowrap select-none">
                         {prefix}
@@ -426,7 +426,14 @@ const AddMembersTab = ({ setToast }) => {
         finally { setLoadingUserGroups(false); }
     };
 
-    const userAlreadyInGroup = verticalMembers.users.some(u => u.name === selectedUser);
+    // Check if selected user is already in the group by comparing both login name and display name
+    const userAlreadyInGroup = selectedUser && verticalMembers.users.some(u => {
+        const memberLoginName = u.user_login_name || u.login_name || '';
+        const selectedUserObj = users.find(x => x.user_login_name === selectedUser);
+        const selectedUserDisplayName = selectedUserObj?.object_name || '';
+        return memberLoginName.toLowerCase() === selectedUser.toLowerCase() ||
+               u.name.toLowerCase() === selectedUserDisplayName.toLowerCase();
+    });
 
     const handleAddToGroup = async () => {
         if (!selectedVertical || !selectedUser) return;
@@ -450,9 +457,15 @@ const AddMembersTab = ({ setToast }) => {
                     verticalGroupName: selectedVertical,
                 }).catch(e => console.warn('vertical_ids update failed:', e?.response?.data?.message || e.message));
             }
-            // Refresh members
-            const res = await api.get(`/groups/${selectedVertical}/members`);
-            setVerticalMembers({ users: res.data.users || [], groups: res.data.groups || [] });
+            // Refresh members and user groups
+            const [membersRes, groupsRes] = await Promise.allSettled([
+                api.get(`/groups/${selectedVertical}/members`),
+                api.get('/groups/by-user', { params: { username: selectedUser } }),
+            ]);
+            if (membersRes.status === 'fulfilled') setVerticalMembers({ users: membersRes.value.data.users || [], groups: membersRes.value.data.groups || [] });
+            if (groupsRes.status === 'fulfilled') setUserGroups(groupsRes.value.data || []);
+            // Clear selected user to reset form
+            setSelectedUser(''); setSelectedUserObjectName(''); setSelectedUserProfileId('');
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Failed to add member.';
             setToast({ type: 'error', message: msg });
@@ -580,10 +593,17 @@ const AddMembersTab = ({ setToast }) => {
                         <Label icon={Users}>User</Label>
                         {loadingUsers
                             ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
-                            : <Select value={selectedUser} onChange={handleUserChange}
-                                disabled={!officeType || users.length === 0}
-                                placeholder={!officeType ? '— Select office type first —' : users.length === 0 ? 'No users found' : '— Select user —'}
-                                options={users.map(u => ({ value: u.user_login_name, label: `${u.object_name} (${u.user_login_name})` }))} />
+                            : <>
+                                <Select value={selectedUser} onChange={handleUserChange}
+                                    disabled={!officeType || users.length === 0}
+                                    placeholder={!officeType ? '— Select office type first —' : users.length === 0 ? 'No users found' : '— Select user —'}
+                                    options={users.map(u => ({ value: u.user_login_name, label: `${u.object_name} (${u.user_login_name})` }))} />
+                                {userAlreadyInGroup && selectedUser && (
+                                    <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                                        <AlertCircle size={13} /> User already part of vertical
+                                    </p>
+                                )}
+                              </>
                         }
                     </div>
                 </div>
@@ -1054,6 +1074,10 @@ const RemoveMembersTab = ({ setToast }) => {
                 api.delete('/users/profile-vertical-ids', {
                     params: { userLoginName: pendingRemove.name, verticalGroupName: selectedGroup },
                 }).catch(e => console.warn('vertical_ids remove failed:', e?.response?.data?.message || e.message));
+                // Refresh user groups
+                api.get('/groups/by-user', { params: { username: pendingRemove.name } })
+                    .then(res => setUserGroups(res.data || []))
+                    .catch(e => console.warn('Failed to refresh user groups:', e?.response?.data?.message || e.message));
             }
             setPendingRemove(null); setInboxTasks([]); setInboxTotal(0);
         } catch (err) {
