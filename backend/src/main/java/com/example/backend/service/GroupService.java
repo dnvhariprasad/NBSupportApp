@@ -627,9 +627,10 @@ public class GroupService {
     }
 
     /**
-     * Update the group_display_name of a dm_group.
-     * PATCH /repositories/{repo}/groups/{groupName}
+     * Update the group_display_name of a dm_group using PATCH.
+     * Supports both PUT method and POST with X-HTTP-Method-Override header.
      */
+    @SuppressWarnings("unchecked")
     public Map<String, Object> updateGroupDisplayName(String groupName, String newDisplayName) {
         String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
                 + "/groups/" + groupName;
@@ -641,17 +642,37 @@ public class GroupService {
 
         log.info("Updating group_display_name for '{}' to '{}'", groupName, newDisplayName);
         try {
-            restClient.post()
-                    .uri(url)
-                    .header("Authorization", getAuthHeader())
-                    .header("Content-Type", "application/vnd.emc.documentum+json")
-                    .header("Accept", "application/vnd.emc.documentum+json")
-                    .header("X-HTTP-Method-Override", "PATCH")
-                    .body(body)
-                    .retrieve()
-                    .toBodilessEntity();
+            // Try PATCH via PUT first, then fallback to POST with override if needed
+            try {
+                Map<String, Object> response = restClient.put()
+                        .uri(url)
+                        .header("Authorization", getAuthHeader())
+                        .header("Content-Type", "application/vnd.emc.documentum+json")
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .body(body)
+                        .retrieve()
+                        .body(Map.class);
 
-            return Map.of("success", true, "message", "Display name updated successfully");
+                log.info("Successfully updated group_display_name for '{}' to '{}' via PUT", groupName, newDisplayName);
+                return Map.of("success", true, "message", "Display name updated successfully", "properties",
+                    response != null ? response.get("properties") : props);
+            } catch (Exception putError) {
+                log.warn("PUT request failed, trying POST with X-HTTP-Method-Override: {}", putError.getMessage());
+                // Fallback to POST with X-HTTP-Method-Override for better compatibility
+                Map<String, Object> response = restClient.post()
+                        .uri(url)
+                        .header("Authorization", getAuthHeader())
+                        .header("Content-Type", "application/vnd.emc.documentum+json")
+                        .header("Accept", "application/vnd.emc.documentum+json")
+                        .header("X-HTTP-Method-Override", "PATCH")
+                        .body(body)
+                        .retrieve()
+                        .body(Map.class);
+
+                log.info("Successfully updated group_display_name for '{}' to '{}' via POST+PATCH", groupName, newDisplayName);
+                return Map.of("success", true, "message", "Display name updated successfully", "properties",
+                    response != null ? response.get("properties") : props);
+            }
         } catch (Exception e) {
             log.error("Error updating display name for group '{}': {}", groupName, e.getMessage(), e);
             throw new RuntimeException("Failed to update display name: " + e.getMessage());
