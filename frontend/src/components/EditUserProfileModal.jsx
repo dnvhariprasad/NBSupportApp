@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
-import { X, Save, Loader2, User, Building2, MapPin, Tag, GraduationCap, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
+import { X, Save, Loader2, User, Building2, MapPin, Tag, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
 import { USER_GRADES, DESIGNATION_OPTIONS, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS } from '../data/nabardMetadata.js';
 
 const USER_GRADE_OPTIONS = [
@@ -38,6 +38,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [loadingForm, setLoadingForm] = useState(false);
     const [error, setError] = useState(null);
     const [errors, setErrors] = useState({});
+    const [designationChanged, setDesignationChanged] = useState(false);
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
 
     // Pending cases / delegate state
@@ -81,6 +82,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setLocationPendingCases([]);
         setShowLocationBlock(false);
         setDelegateTask(null);
+        setDesignationChanged(false);
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
             .catch(() => initForm(user));
@@ -795,8 +797,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                     <SelectWrapper>
                                         <select value={form.designation}
                                             onChange={e => {
-                                                set('designation', e.target.value);
+                                                const newDesignation = e.target.value;
+                                                set('designation', newDesignation);
                                                 setErrors(p => ({ ...p, designation: undefined }));
+                                                // Track if designation was actually changed from original
+                                                setDesignationChanged(newDesignation !== originalGroupInfoRef.current.designation);
                                                 // Reset hindi_designation touched so it can auto-populate
                                                 hindiTouched.current.hindi_designation = false;
                                             }}
@@ -807,12 +812,29 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         </select>
                                     </SelectWrapper>
                                     {errors.designation && <p className="text-xs text-red-500">{errors.designation}</p>}
+                                    {designationChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 Change user grade if required</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>User Role</Label>
                                     <input type="text" value={form.user_role}
                                         onChange={e => set('user_role', e.target.value)}
                                         className={inputCls} />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>User Grade</Label>
+                                    <SelectWrapper>
+                                        <select value={form.user_grade} onChange={e => handleGradeChange(e.target.value)} className={selectCls}>
+                                            {USER_GRADE_OPTIONS.map(o => (
+                                                <option key={o.value} value={o.value}>{o.label}</option>
+                                            ))}
+                                        </select>
+                                    </SelectWrapper>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Grade Level</Label>
+                                    <input type="number" readOnly value={form.grade_level}
+                                        placeholder="Auto-filled"
+                                        className={readonlyCls} />
                                 </div>
                                 <div className="space-y-1">
                                     <Label required>Email</Label>
@@ -1134,31 +1156,6 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 </div>
                             </div>
                         )}
-
-                        {/* ── Grade ── */}
-                        <div>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                                <GraduationCap size={12} /> Grade
-                            </p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                    <Label>User Grade</Label>
-                                    <SelectWrapper>
-                                        <select value={form.user_grade} onChange={e => handleGradeChange(e.target.value)} className={selectCls}>
-                                            {USER_GRADE_OPTIONS.map(o => (
-                                                <option key={o.value} value={o.value}>{o.label}</option>
-                                            ))}
-                                        </select>
-                                    </SelectWrapper>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label>Grade Level</Label>
-                                    <input type="number" readOnly value={form.grade_level}
-                                        placeholder="Auto-filled"
-                                        className={readonlyCls} />
-                                </div>
-                            </div>
-                        </div>
 
                         {/* ── User State (Super Admin only) ── */}
                         {isSuperAdmin && <div className="space-y-3">
