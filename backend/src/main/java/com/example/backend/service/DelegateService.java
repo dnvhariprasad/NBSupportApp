@@ -218,22 +218,19 @@ public class DelegateService {
      *
      * @param caseId              r_object_id of the cms_case_folder
      * @param performerDisplayName object_name of the target user (shown in xCP workflow)
+     * @param loginUsername        username of the logged-in user (delegating the case)
      */
-    public Map<String, Object> delegateCase(String caseId, String performerDisplayName) {
+    public Map<String, Object> delegateCase(String caseId, String performerDisplayName, String loginUsername) {
         // Sub-call A: resolve workflow ID from dmi_package
         String workflowId = resolveWorkflowId(caseId);
         log.info("Resolved workflowId {} for case {}", workflowId, caseId);
 
-        // Sub-call B: resolve assigned_performer from cms_workflow_param
-        String assignedUser = resolveAssignedPerformer(caseId);
-        log.info("Resolved assignedUser '{}' for case {}", assignedUser, caseId);
-
-        // Sub-call C: resolve queue item ID from dmi_queue_item
+        // Sub-call B: resolve queue item ID from dmi_queue_item
         String qitemId = resolveQueueItemId(workflowId);
         log.info("Resolved qitemId {} for workflow {}", qitemId, workflowId);
 
-        // Sub-call D: call process service
-        return callProcessService(caseId, assignedUser, performerDisplayName, qitemId);
+        // Sub-call C: call process service with login username as assigned_user
+        return callProcessService(caseId, loginUsername, performerDisplayName, qitemId);
     }
 
     @SuppressWarnings("unchecked")
@@ -253,23 +250,6 @@ public class DelegateService {
                 "No workflow found for case: " + caseId);
     }
 
-    @SuppressWarnings("unchecked")
-    private String resolveAssignedPerformer(String caseId) {
-        String dql = String.format(
-                "SELECT assigned_performer FROM cms_workflow_param " +
-                "WHERE ANY i_folder_id = '%s'",
-                caseId.replace("'", "''"));
-
-        Map<String, Object> response = restClient.get()
-                .uri(getRepoUrl() + "?dql={dql}&items-per-page=1&page=1&inline=true", dql)
-                .header("Authorization", getAuthHeader())
-                .header("Accept", "application/vnd.emc.documentum+json")
-                .retrieve()
-                .body(Map.class);
-
-        return extractFirstProperty(response, "assigned_performer",
-                "No workflow param found for case: " + caseId);
-    }
 
     @SuppressWarnings("unchecked")
     private String resolveQueueItemId(String workflowId) {
@@ -336,7 +316,7 @@ public class DelegateService {
         body.put("run-stateless", "true");
         body.put("data", data);
 
-        log.info("Calling process service: POST {} | performer={}, caseId={}", url, performer, caseId);
+        log.info("Calling process service: POST {} | assigned_user={}, performer={}, caseId={}", url, assignedUser, performer, caseId);
 
         // The xCP elevate activity can fail transiently on the first call
         // (DM_GROUP_E_NOT_DYNAMIC_MEMBER). Retry once after a brief pause.

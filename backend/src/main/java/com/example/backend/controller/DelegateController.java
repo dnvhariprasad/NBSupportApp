@@ -57,7 +57,7 @@ public class DelegateController {
     /**
      * Delegate a case to a user via the xCP cms_push_back_pull_back process.
      * POST /api/delegate
-     * Body: { "caseId": "...", "performerDisplayName": "..." }
+     * Body: { "caseId": "...", "performerDisplayName": "...", "loginUsername": "..." }
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> delegateCase(
@@ -65,6 +65,7 @@ public class DelegateController {
         try {
             String caseId = (String) request.get("caseId");
             String performerDisplayName = (String) request.get("performerDisplayName");
+            String loginUsername = (String) request.get("loginUsername");
 
             if (caseId == null || caseId.isBlank()) {
                 return ResponseEntity.badRequest()
@@ -74,8 +75,12 @@ public class DelegateController {
                 return ResponseEntity.badRequest()
                         .body(Map.of("success", false, "message", "performerDisplayName is required"));
             }
+            if (loginUsername == null || loginUsername.isBlank()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("success", false, "message", "loginUsername is required"));
+            }
 
-            return ResponseEntity.ok(delegateService.delegateCase(caseId, performerDisplayName));
+            return ResponseEntity.ok(delegateService.delegateCase(caseId, performerDisplayName, loginUsername));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage()));
