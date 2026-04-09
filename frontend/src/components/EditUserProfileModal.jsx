@@ -199,10 +199,35 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const handleDelegateClick = async (task) => {
         const caseName = pf(task, 'object_name') || task.caseName || '';
         const parts    = caseName.split('-');
-        const offType  = (parts[1] || '').toUpperCase();
-        const isRoTe   = offType === 'RO' || offType === 'TE';
-        const roCode   = (parts[2] || '').toLowerCase();
-        const deptCode = (isRoTe ? parts[3] : parts[1] || '').toLowerCase();
+        const deptName = pf(task, 'department_name') || task.department_name || '';
+
+        // Extract office type and department code from case name
+        // Case format: NB-DEPTCODE-... (HO) or NB-DEPTCODE-LOCATION-... (RO/TE)
+        // For now, determine if RO/TE by checking if 4+ parts exist OR check task properties
+        let offType = 'HO';
+        let roCode = '';
+        let deptCode = '';
+
+        // Check if task has office type info
+        if (task.ho_ro && (task.ho_ro === 'RO' || task.ho_ro === 'TE')) {
+            offType = task.ho_ro;
+            roCode = (parts[2] || '').toLowerCase();
+            deptCode = (parts[3] || '').toLowerCase();
+        } else {
+            // Default: assume HO, use parts[1] as dept code
+            offType = 'HO';
+            deptCode = (parts[1] || '').toLowerCase();
+        }
+
+        const isRoTe = offType === 'RO' || offType === 'TE';
+
+        // If we have department_name, extract the short code from it
+        if (deptName) {
+            const deptMatch = deptName.match(/\(([^)]+)\)$/);
+            if (deptMatch) {
+                deptCode = deptMatch[1].toLowerCase();
+            }
+        }
 
         // In EditUserProfileModal context, the current performer is the user being edited
         // Use form.object_name which is the loaded profile display name
@@ -260,9 +285,12 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const handleDelegateConfirm = async () => {
         if (!delegateSelectedUser || !delegateTask) return;
         const caseId = pf(delegateTask, 'id') || delegateTask.id || delegateTask.r_object_id;
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+        const assignedUser = `NEO Admin (${loginUsername})`;
         setDelegatingCaseId(caseId);
         try {
-            await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser });
+            await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser, loginUsername: assignedUser });
             const filterOut = (list) => list.filter(t => {
                 const tid = pf(t, 'id') || t.id || t.r_object_id;
                 return tid !== caseId;
@@ -617,14 +645,34 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const DelegateCaseModal = () => {
         if (!delegateTask) return null;
         const caseName   = pf(delegateTask, 'object_name') || delegateTask.caseName || '—';
-        const deptName   = pf(delegateTask, 'department_name') || '';
+        const deptName   = pf(delegateTask, 'department_name') || delegateTask.department_name || '';
         const parts      = caseName.split('-');
-        const offType    = (parts[1] || '').toUpperCase();
-        const isRoTe     = offType === 'RO' || offType === 'TE';
-        const roCode     = (parts[2] || '').toLowerCase();
-        const allLocs    = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
-        const locLabel   = isRoTe ? (allLocs.find(l => l.shortCode === roCode)?.location || roCode.toUpperCase()) : null;
-        const deptCode   = isRoTe ? parts[3] : parts[1] || '';
+
+        // Determine office type: check task.ho_ro first, otherwise default to HO
+        let offType = 'HO';
+        let roCode = '';
+        let deptCode = '';
+
+        if (delegateTask.ho_ro && (delegateTask.ho_ro === 'RO' || delegateTask.ho_ro === 'TE')) {
+            offType = delegateTask.ho_ro;
+            roCode = (parts[2] || '').toLowerCase();
+            deptCode = (parts[3] || '').toLowerCase();
+        } else {
+            offType = 'HO';
+            deptCode = (parts[1] || '').toLowerCase();
+        }
+
+        const isRoTe = offType === 'RO' || offType === 'TE';
+        const allLocs = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
+        const locLabel = isRoTe ? (allLocs.find(l => l.shortCode === roCode)?.location || roCode.toUpperCase()) : null;
+
+        // Extract dept code from department name if available
+        if (deptName) {
+            const deptMatch = deptName.match(/\(([^)]+)\)$/);
+            if (deptMatch) {
+                deptCode = deptMatch[1].toLowerCase();
+            }
+        }
         return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
