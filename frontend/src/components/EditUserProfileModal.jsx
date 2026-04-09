@@ -203,25 +203,29 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         const parts    = caseName.split('-');
         const deptName = pf(task, 'department_name') || task.department_name || '';
 
-        // Extract office type and department code from case name
-        // Case format: NB-DEPTCODE-... (HO) or NB-DEPTCODE-LOCATION-... (RO/TE)
-        // For now, determine if RO/TE by checking if 4+ parts exist OR check task properties
-        let offType = 'HO';
+        // Extract office type from task.ho_ro property, or fallback to parsing case name
+        // Case format: NB-DEPTCODE-... (HO) or NB-RO/TE-LOCATION-DEPTCODE-... (RO/TE)
+        let offType = 'HO'; // default
         let roCode = '';
         let deptCode = '';
 
-        // Check if task has office type info
-        if (task.ho_ro && (task.ho_ro === 'RO' || task.ho_ro === 'TE')) {
+        // Check if we have ho_ro property from task
+        if (task.ho_ro) {
             offType = task.ho_ro;
-            roCode = (parts[2] || '').toLowerCase();
-            deptCode = (parts[3] || '').toLowerCase();
-        } else {
-            // Default: assume HO, use parts[1] as dept code
-            offType = 'HO';
-            deptCode = (parts[1] || '').toLowerCase();
+        } else if (parts[1] === 'RO' || parts[1] === 'TE') {
+            // Parse from case name if ho_ro not available
+            offType = parts[1];
         }
 
         const isRoTe = offType === 'RO' || offType === 'TE';
+
+        if (isRoTe) {
+            roCode = (parts[2] || '').toLowerCase();
+            deptCode = (parts[3] || '').toLowerCase();
+        } else {
+            // HO: parts[1] is dept code
+            deptCode = (parts[1] || '').toLowerCase();
+        }
 
         // If we have department_name, extract the short code from it
         if (deptName) {
@@ -245,28 +249,22 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 const allLocs = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
                 const locObj  = allLocs.find(l => l.shortCode === roCode);
                 const location = locObj?.location || roCode;
-                const res = await api.get('/users/by-location', { params: { location } });
-                // Filter by department and remove current performer
+                const res = await api.get('/users/by-location', { params: { location, page: 1, size: 500 } });
+                // For RO/TE: show all location users (no department filter)
+                // Only filter out current performer
                 const allUsers = res.data?.users || res.data || [];
-                const deptCodeLower = deptCode.toLowerCase();
                 const filteredUsers = allUsers.filter(u => {
-                    // Check department_short_code_multi array
-                    const deptMulti = u.department_short_code_multi || [];
-                    const hasDept = Array.isArray(deptMulti)
-                        ? deptMulti.some(dept => dept?.toLowerCase() === deptCodeLower)
-                        : (deptMulti?.toLowerCase?.() === deptCodeLower);
-
                     // Check if not current performer
                     const userName = u.name?.trim().toLowerCase() || '';
                     const userObjName = u.object_name?.trim().toLowerCase() || '';
                     const currentName = currentPerformer?.trim().toLowerCase() || '';
                     const notCurrentPerformer = userName !== currentName && userObjName !== currentName;
 
-                    return hasDept && notCurrentPerformer;
+                    return notCurrentPerformer;
                 });
                 setDelegateUsers(filteredUsers);
             } else {
-                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode, officeType: offType } });
+                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode, officeType: offType, page: 1, size: 500 } });
                 // Filter out the current performer - check multiple name fields
                 const allUsers = res.data?.users || res.data || [];
                 const filteredUsers = allUsers.filter(u => {
@@ -650,21 +648,30 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         const deptName   = pf(delegateTask, 'department_name') || delegateTask.department_name || '';
         const parts      = caseName.split('-');
 
-        // Determine office type: check task.ho_ro first, otherwise default to HO
-        let offType = 'HO';
+        // Determine office type from delegateTask.ho_ro property, or fallback to parsing case name
+        // Case format: NB-DEPTCODE-... (HO) or NB-RO/TE-LOCATION-DEPTCODE-... (RO/TE)
+        let offType = 'HO'; // default
         let roCode = '';
         let deptCode = '';
 
-        if (delegateTask.ho_ro && (delegateTask.ho_ro === 'RO' || delegateTask.ho_ro === 'TE')) {
+        // Check if we have ho_ro property from task
+        if (delegateTask.ho_ro) {
             offType = delegateTask.ho_ro;
-            roCode = (parts[2] || '').toLowerCase();
-            deptCode = (parts[3] || '').toLowerCase();
-        } else {
-            offType = 'HO';
-            deptCode = (parts[1] || '').toLowerCase();
+        } else if (parts[1] === 'RO' || parts[1] === 'TE') {
+            // Parse from case name if ho_ro not available
+            offType = parts[1];
         }
 
         const isRoTe = offType === 'RO' || offType === 'TE';
+
+        if (isRoTe) {
+            roCode = (parts[2] || '').toLowerCase();
+            deptCode = (parts[3] || '').toLowerCase();
+        } else {
+            // HO: parts[1] is dept code
+            deptCode = (parts[1] || '').toLowerCase();
+        }
+
         const allLocs = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
         const locLabel = isRoTe ? (allLocs.find(l => l.shortCode === roCode)?.location || roCode.toUpperCase()) : null;
 
