@@ -16,7 +16,7 @@ import CaseInbox2Page from './pages/CaseInbox2Page';
 
 function App() {
   return (
-    <Router>
+    <Router basename="/neoadmin/">
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         
