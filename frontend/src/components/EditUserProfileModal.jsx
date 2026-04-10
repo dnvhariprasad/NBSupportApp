@@ -121,8 +121,19 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             deptShortCode      = multiCodes[0] || '';
             originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: multiCodes, designation: profile.designation || '' };
         } else {
+            // For HO users: try to get department_short_code from multiple sources
             const deptObj = depts.find(d => d.name === deptName);
-            deptShortCode = deptObj ? deptObj.shortCode : (profile.department_short_code || '');
+
+            // Try: 1) match by name, 2) first code from multi array, 3) direct department_short_code
+            if (deptObj) {
+                deptShortCode = deptObj.shortCode;
+            } else if (Array.isArray(profile.department_short_code_multi) && profile.department_short_code_multi.length > 0) {
+                deptShortCode = profile.department_short_code_multi[0];
+                deptShortCodeMulti = profile.department_short_code_multi;
+            } else {
+                deptShortCode = profile.department_short_code || '';
+            }
+
             originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: deptShortCode ? [deptShortCode] : [], designation: profile.designation || '' };
         }
 
@@ -199,41 +210,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const pf = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
 
     const handleDelegateClick = async (task) => {
-        const caseName = pf(task, 'object_name') || task.caseName || '';
-        const parts    = caseName.split('-');
-        const deptName = pf(task, 'department_name') || task.department_name || '';
-
-        // Extract office type from task.ho_ro property, or fallback to parsing case name
-        // Case format: NB-DEPTCODE-... (HO) or NB-RO/TE-LOCATION-DEPTCODE-... (RO/TE)
-        let offType = 'HO'; // default
-        let roCode = '';
-        let deptCode = '';
-
-        // Check if we have ho_ro property from task
-        if (task.ho_ro) {
-            offType = task.ho_ro;
-        } else if (parts[1] === 'RO' || parts[1] === 'TE') {
-            // Parse from case name if ho_ro not available
-            offType = parts[1];
-        }
-
+        // Use the delegating user's (form) office type and location/department, not the case properties
+        const offType = form.office_type || 'HO';
+        const roCode = (form.ro_short_code || '').toLowerCase();
+        const deptCode = (form.department_short_code || '').toLowerCase();
         const isRoTe = offType === 'RO' || offType === 'TE';
-
-        if (isRoTe) {
-            roCode = (parts[2] || '').toLowerCase();
-            deptCode = (parts[3] || '').toLowerCase();
-        } else {
-            // HO: parts[1] is dept code
-            deptCode = (parts[1] || '').toLowerCase();
-        }
-
-        // If we have department_name, extract the short code from it
-        if (deptName) {
-            const deptMatch = deptName.match(/\(([^)]+)\)$/);
-            if (deptMatch) {
-                deptCode = deptMatch[1].toLowerCase();
-            }
-        }
 
         // In EditUserProfileModal context, the current performer is the user being edited
         // Use form.object_name which is the loaded profile display name

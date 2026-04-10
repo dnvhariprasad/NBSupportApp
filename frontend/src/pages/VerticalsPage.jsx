@@ -820,16 +820,9 @@ const RemoveMembersTab = ({ setToast }) => {
     const pfield = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
 
     const handleDelegateClick = async (task) => {
-        const caseName = pfield(task, 'object_name') || task.caseName || '';
-        // Case number format:
-        //   HO: NB-{DEPT}-DTV-...          → parts[1] = dept shortCode
-        //   RO: NB-RO-{RO_CODE}-{DEPT}-... → parts[1] = 'RO', parts[2] = location shortCode
-        //   TE: NB-TE-{TE_CODE}-{DEPT}-... → parts[1] = 'TE', parts[2] = location shortCode
-        const parts     = caseName.split('-');
-        const offType   = (parts[1] || '').toUpperCase();
-        const isRoTe    = offType === 'RO' || offType === 'TE';
-        const roCode    = (parts[2] || '').toLowerCase();
-        const deptCode  = (isRoTe ? parts[3] : parts[1] || '').toLowerCase();
+        // Use the delegating user's own office type and location/department context
+        const offType = officeType || 'HO';
+        const isRoTe = offType === 'RO' || offType === 'TE';
 
         // In RemoveMembersTab context, the current performer is the pendingRemove user
         const currentPerformer = pendingRemove?.name || '';
@@ -840,32 +833,42 @@ const RemoveMembersTab = ({ setToast }) => {
         setLoadingDelegateUsers(true);
         try {
             if (isRoTe) {
-                const allLocations = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
-                const locObj = allLocations.find(l => l.shortCode === roCode);
-                const location = locObj?.location || roCode;
+                // For RO/TE: show all users from the delegating user's location (no department filter)
                 const res = await api.get('/users/by-location', { params: { location } });
-                // Filter by department and remove current performer
                 const allUsers = res.data?.users || res.data || [];
-                const deptCodeLower = deptCode.toLowerCase();
                 const filteredUsers = allUsers.filter(u => {
-                    // Check department_short_code_multi array
-                    const deptMulti = u.department_short_code_multi || [];
-                    const hasDept = Array.isArray(deptMulti)
-                        ? deptMulti.some(dept => dept?.toLowerCase() === deptCodeLower)
-                        : (deptMulti?.toLowerCase?.() === deptCodeLower);
-
                     // Check if not current performer
                     const userName = u.name?.trim().toLowerCase() || '';
                     const userObjName = u.object_name?.trim().toLowerCase() || '';
                     const currentName = currentPerformer?.trim().toLowerCase() || '';
                     const notCurrentPerformer = userName !== currentName && userObjName !== currentName;
 
-                    return hasDept && notCurrentPerformer;
+                    return notCurrentPerformer;
                 });
                 setDelegateUsers(filteredUsers);
             } else {
-                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode } });
-                // Filter out the current performer - check multiple name fields
+                // For HO: Try to get department from user profile, fallback to extracting from case name
+                let deptCode = '';
+                const deptMulti = profileCtx?.department_short_code_multi || [];
+
+                if (Array.isArray(deptMulti) && deptMulti.length > 0) {
+                    // Use first department from user's profile
+                    deptCode = deptMulti[0];
+                } else {
+                    // Fallback: extract department from case name
+                    const caseName = pfield(task, 'object_name') || task.caseName || '';
+                    const parts = caseName.split('-');
+                    // HO case format: NB-{DEPT}-...
+                    deptCode = (parts[1] || '').toLowerCase();
+                }
+
+                if (!deptCode) {
+                    setToast({ type: 'error', message: 'Department code not found.' });
+                    setLoadingDelegateUsers(false);
+                    return;
+                }
+
+                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode, officeType: offType } });
                 const allUsers = res.data?.users || res.data || [];
                 const filteredUsers = allUsers.filter(u => {
                     const userName = u.name?.trim().toLowerCase() || '';
