@@ -615,6 +615,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const storedUser  = JSON.parse(localStorage.getItem('user') || '{}');
     const adminRole   = storedUser.properties?.admin_role || storedUser.admin_role || null;
     const isSuperAdmin = adminRole === 'Super Admin';
+    const isLocalAdmin = adminRole === 'Local Admin';
 
     const depts     = deptOptions;
     const needsLoc  = ['RO', 'TE'].includes(form.office_type) && !form.location;
@@ -871,8 +872,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                     <SelectWrapper>
                                         <select value={form.office_type}
                                             onChange={e => handleOfficeTypeChange(e.target.value)}
-                                            disabled={checkingOfficeInbox}
-                                            className={checkingOfficeInbox ? disabledSelectCls : selectCls}>
+                                            disabled={checkingOfficeInbox || isLocalAdmin}
+                                            className={(checkingOfficeInbox || isLocalAdmin) ? disabledSelectCls : selectCls}>
                                             <option value="">— Select office type —</option>
                                             <option value="HO">HO — Head Office</option>
                                             <option value="RO">RO — Regional Office</option>
@@ -898,7 +899,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         ) : (
                                             <>
                                                 <SelectWrapper>
-                                                    <select value={form.location} onChange={e => handleLocationChange(e.target.value)} disabled={checkingLocationInbox} className={checkingLocationInbox ? disabledSelectCls : selectCls}>
+                                                    <select value={form.location} onChange={e => handleLocationChange(e.target.value)} disabled={checkingLocationInbox || isLocalAdmin} className={(checkingLocationInbox || isLocalAdmin) ? disabledSelectCls : selectCls}>
                                                         <option value="">— Select location —</option>
                                                         {locations.map(l => (
                                                             <option key={l.location} value={l.location}>{l.location}</option>
