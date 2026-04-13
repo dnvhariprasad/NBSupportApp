@@ -198,7 +198,7 @@ const AddMembersTab = ({ setToast }) => {
 
     const [profileCtx, setProfileCtx] = useState(null);
 
-    const [officeType,        setOfficeType]        = useState('');
+    const [officeType,        setOfficeType]        = useState('HO');
     const [location,          setLocation]          = useState('');
     const [roShortCode,       setRoShortCode]       = useState('');
     const [dept,              setDept]              = useState('');
@@ -575,8 +575,6 @@ const AddMembersTab = ({ setToast }) => {
                             placeholder="— Select office type —"
                             options={[
                                 { value: 'HO', label: 'HO — Head Office' },
-                                { value: 'RO', label: 'RO — Regional Office' },
-                                { value: 'TE', label: 'TE — Training Establishment' },
                             ]} />
                     </div>
                     {/* Location (RO/TE only) */}
@@ -783,7 +781,7 @@ const RemoveMembersTab = ({ setToast }) => {
 
     const [profileCtx, setProfileCtx] = useState(null);
 
-    const [officeType,     setOfficeType]     = useState('');
+    const [officeType,     setOfficeType]     = useState('HO');
     const [location,       setLocation]       = useState('');
     const [roShortCode,    setRoShortCode]    = useState('');
     const [dept,           setDept]           = useState('');
@@ -1414,8 +1412,6 @@ const RemoveMembersTab = ({ setToast }) => {
                             placeholder="— Select office type —"
                             options={[
                                 { value: 'HO', label: 'HO — Head Office' },
-                                { value: 'RO', label: 'RO — Regional Office' },
-                                { value: 'TE', label: 'TE — Training Establishment' },
                             ]} />
                     </div>
                     {isROTE && (
