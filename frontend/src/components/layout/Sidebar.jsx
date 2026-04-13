@@ -8,6 +8,7 @@ const Sidebar = () => {
     const allNavItems = [
         { name: 'Users',        path: '/dashboard/users',     icon: Users,        roles: null },
         { name: 'Verticals',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin', 'Local Admin'] },
+        { name: 'RO/TE Department Assignment',  path: '/dashboard/verticals2', icon: Network,     roles: ['Super Admin', 'Local Admin'] },
         { name: 'Departments',  path: '/dashboard/departments', icon: Building2,  roles: ['Super Admin'] },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
         { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
