@@ -689,7 +689,7 @@ public class UserService {
 
     public List<Map<String, Object>> getUsersByDeptShortCode(String shortCode, String officeType) {
         String safe = shortCode.replace("'", "''");
-        String dql  = "SELECT r_object_id, object_name, user_login_name, office_type, department_short_code FROM cms_user_profile"
+        String dql  = "SELECT r_object_id, object_name, user_login_name, office_type, department_short_code, department_short_code_multi FROM cms_user_profile"
                     + " WHERE ANY department_short_code_multi = '" + safe + "'";
 
         // Filter by office type if provided
@@ -704,7 +704,19 @@ public class UserService {
         List<?> raw = (List<?>) result.get("users");
         if (raw == null) return Collections.emptyList();
         List<Map<String, Object>> list = new ArrayList<>();
-        for (Object o : raw) { if (o instanceof Map<?,?> m) list.add((Map<String, Object>) m); }
+        for (Object o : raw) {
+            if (o instanceof Map<?,?> m) {
+                Map<String, Object> user = (Map<String, Object>) m;
+                // Additional safety: ensure office_type matches filter if provided
+                if (officeType != null && !officeType.isBlank()) {
+                    String userOfficeType = (String) user.get("office_type");
+                    if (!officeType.equalsIgnoreCase(userOfficeType)) {
+                        continue; // Skip if office type doesn't match
+                    }
+                }
+                list.add(user);
+            }
+        }
         return list;
     }
 

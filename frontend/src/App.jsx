@@ -8,6 +8,7 @@ import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
 import QueryPage from './pages/QueryPage';
 import VerticalsPage from './pages/VerticalsPage';
+import Verticals2Page from './pages/Verticals2Page';
 import DepartmentPage from './pages/DepartmentPage';
 import InboxPage from './pages/InboxPage';
 import MetadataPage from './pages/MetadataPage';
@@ -29,6 +30,7 @@ function App() {
             <Route path="inbox" element={<InboxPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="verticals" element={<VerticalsPage />} />
+            <Route path="verticals2" element={<Verticals2Page />} />
             <Route path="departments" element={<DepartmentPage />} />
             <Route path="metadata" element={<MetadataPage />} />
             <Route path="query" element={<QueryPage />} />

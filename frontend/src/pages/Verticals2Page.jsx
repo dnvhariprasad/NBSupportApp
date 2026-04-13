@@ -198,7 +198,7 @@ const AddMembersTab = ({ setToast }) => {
 
     const [profileCtx, setProfileCtx] = useState(null);
 
-    const [officeType,        setOfficeType]        = useState('HO');
+    const [officeType,        setOfficeType]        = useState('');
     const [location,          setLocation]          = useState('');
     const [roShortCode,       setRoShortCode]       = useState('');
     const [dept,              setDept]              = useState('');
@@ -340,7 +340,18 @@ const AddMembersTab = ({ setToast }) => {
         try {
             const res = await api.get('/groups/by-prefix', { params: { prefix } });
             const all = res.data || [];
-            setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('_cgm_sec')));
+            const filtered = all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('_cgm_sec'));
+            setVerticals(filtered);
+            // Auto-select if only one group exists
+            if (filtered.length === 1) {
+                setSelectedVertical(filtered[0].group_name);
+                setLoadingMembers(true);
+                try {
+                    const membersRes = await api.get(`/groups/${filtered[0].group_name}/members`);
+                    setVerticalMembers({ users: membersRes.data.users || [], groups: membersRes.data.groups || [] });
+                } catch { setVerticalMembers({ users: [], groups: [] }); }
+                finally { setLoadingMembers(false); }
+            }
         } catch { setVerticals([]); }
         finally { setLoadingVerticals(false); }
 
@@ -574,7 +585,8 @@ const AddMembersTab = ({ setToast }) => {
                             disabled={isLocalAdmin}
                             placeholder="— Select office type —"
                             options={[
-                                { value: 'HO', label: 'HO — Head Office' },
+                                { value: 'RO', label: 'RO — Regional Office' },
+                                { value: 'TE', label: 'TE — Training Establishment' },
                             ]} />
                     </div>
                     {/* Location (RO/TE only) */}
@@ -597,9 +609,9 @@ const AddMembersTab = ({ setToast }) => {
                     </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Vertical */}
+                    {/* Group */}
                     <div>
-                        <Label icon={UsersRound}>Vertical</Label>
+                        <Label icon={UsersRound}>Group</Label>
                         {loadingVerticals
                             ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
                             : <Select value={selectedVertical} onChange={handleVerticalChange}
@@ -781,7 +793,7 @@ const RemoveMembersTab = ({ setToast }) => {
 
     const [profileCtx, setProfileCtx] = useState(null);
 
-    const [officeType,     setOfficeType]     = useState('HO');
+    const [officeType,     setOfficeType]     = useState('');
     const [location,       setLocation]       = useState('');
     const [roShortCode,    setRoShortCode]    = useState('');
     const [dept,           setDept]           = useState('');
@@ -994,7 +1006,18 @@ const RemoveMembersTab = ({ setToast }) => {
         try {
             const res = await api.get('/groups/by-prefix', { params: { prefix } });
             const all = res.data || [];
-            setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('cgm_sec')));
+            const filtered = all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('cgm_sec'));
+            setVerticals(filtered);
+            // Auto-select if only one group exists
+            if (filtered.length === 1) {
+                setSelectedGroup(filtered[0].group_name);
+                setLoadingMembers(true);
+                try {
+                    const membersRes = await api.get(`/groups/${filtered[0].group_name}/members`);
+                    setMembers({ users: membersRes.data.users || [], groups: membersRes.data.groups || [] });
+                } catch { setMembers({ users: [], groups: [] }); }
+                finally { setLoadingMembers(false); }
+            }
         } catch { setVerticals([]); }
         finally { setLoadingVerts(false); }
     };
@@ -1411,7 +1434,8 @@ const RemoveMembersTab = ({ setToast }) => {
                             disabled={isLocalAdmin}
                             placeholder="— Select office type —"
                             options={[
-                                { value: 'HO', label: 'HO — Head Office' },
+                                { value: 'RO', label: 'RO — Regional Office' },
+                                { value: 'TE', label: 'TE — Training Establishment' },
                             ]} />
                     </div>
                     {isROTE && (
@@ -1432,7 +1456,7 @@ const RemoveMembersTab = ({ setToast }) => {
                     </div>
                 </div>
                 <div>
-                    <Label icon={UsersRound}>Vertical / Group</Label>
+                    <Label icon={UsersRound}>Group</Label>
                     {loadingVerts
                         ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
                         : <Select value={selectedGroup} onChange={handleGroupChange}
@@ -1583,23 +1607,18 @@ const RemoveMembersTab = ({ setToast }) => {
 };
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-const VerticalsPage = () => {
+const Verticals2Page = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
     const adminRole  = storedUser.properties?.admin_role || storedUser.admin_role || null;
     const isSuperAdmin = adminRole === 'Super Admin';
 
-    const [pageTab,  setPageTab]  = useState(isSuperAdmin ? 'creation' : 'members');
+    const [pageTab,  setPageTab]  = useState('members');
     const [innerTab, setInnerTab] = useState('add');
     const [toast,    setToast]    = useState(null);
 
-    const PAGE_TABS = isSuperAdmin
-        ? [
-            { key: 'creation', label: 'Vertical Creation' },
-            { key: 'members',  label: 'Manage Members'    },
-          ]
-        : [
-            { key: 'members',  label: 'Manage Members'    },
-          ];
+    const PAGE_TABS = [
+        { key: 'members',  label: 'Manage Members'    },
+    ];
     const INNER_TABS = [
         { key: 'add',    label: 'Add Members',    icon: UserPlus   },
         { key: 'remove', label: 'Remove Members', icon: UserCheck  },
@@ -1610,8 +1629,8 @@ const VerticalsPage = () => {
             <Toast toast={toast} onDismiss={() => setToast(null)} />
 
             <div className="mb-6">
-                <h1 className="text-2xl font-bold text-slate-900">Verticals</h1>
-                <p className="text-sm text-slate-500 mt-1">Manage HO verticals (dm_group) and their members</p>
+                <h1 className="text-2xl font-bold text-slate-900">RO/TE Department Assignment</h1>
+                <p className="text-sm text-slate-500 mt-1">Manage RO/TE Department and their members</p>
             </div>
 
             {/* Top-level tabs */}
@@ -1628,12 +1647,8 @@ const VerticalsPage = () => {
                 ))}
             </div>
 
-            {pageTab === 'creation' && <VerticalCreationTab setToast={setToast} />}
-
-            {pageTab === 'members' && (
-                <>
-                    {/* Inner tabs for Manage Members */}
-                    <div className="flex gap-2 mb-5">
+            {/* Inner tabs for Manage Members */}
+            <div className="flex gap-2 mb-5">
                         {INNER_TABS.map(t => (
                             <button key={t.key} onClick={() => setInnerTab(t.key)}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
@@ -1645,12 +1660,10 @@ const VerticalsPage = () => {
                             </button>
                         ))}
                     </div>
-                    {innerTab === 'add'    && <AddMembersTab    setToast={setToast} />}
-                    {innerTab === 'remove' && <RemoveMembersTab setToast={setToast} />}
-                </>
-            )}
+            {innerTab === 'add'    && <AddMembersTab    setToast={setToast} />}
+            {innerTab === 'remove' && <RemoveMembersTab setToast={setToast} />}
         </div>
     );
 };
 
-export default VerticalsPage;
+export default Verticals2Page;
