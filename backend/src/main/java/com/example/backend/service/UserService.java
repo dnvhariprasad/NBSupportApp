@@ -888,6 +888,66 @@ public class UserService {
         }
     }
 
+    /**
+     * Remove a specific department code from the user profile's department_short_code_multi repeating attribute.
+     * If the code doesn't exist, this silently succeeds (no error).
+     */
+    @SuppressWarnings("unchecked")
+    public void removeDepartmentCodeFromProfile(String userLoginName, String departmentCode) {
+        try {
+            // Step 1: Find cms_user_profile by object_name
+            String safeLogin = userLoginName.replace("'", "''");
+            String profileDql = "SELECT r_object_id FROM cms_user_profile WHERE object_name = '" + safeLogin + "'";
+            Map<String, Object> profileResult = executeDql(profileDql, 1, 1);
+            List<?> profileEntries = (List<?>) profileResult.get("users");
+            if (profileEntries == null || profileEntries.isEmpty()) {
+                log.warn("[DeptCode] No profile found for user '{}', skipping cleanup", userLoginName);
+                return;
+            }
+            String profileObjectId = (String) ((Map<String, Object>) profileEntries.get(0)).get("r_object_id");
+
+            // Step 2: Fetch current profile and get department_short_code_multi
+            Map<String, Object> profile = getProfileById(profileObjectId);
+            List<String> currentCodes = new ArrayList<>();
+            Object existing = profile.get("department_short_code_multi");
+            if (existing instanceof List<?> existingList) {
+                for (Object code : existingList) {
+                    if (code instanceof String s && !s.isBlank()) currentCodes.add(s);
+                }
+            }
+
+            // Step 3: If department code is not in the list, no action needed
+            String safeDeptCode = departmentCode.trim();
+            if (!currentCodes.contains(safeDeptCode)) {
+                log.debug("[DeptCode] Department code '{}' not found in profile of '{}', nothing to remove",
+                         departmentCode, userLoginName);
+                return;
+            }
+
+            // Step 4: Remove code and PATCH
+            currentCodes.remove(safeDeptCode);
+            String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                    + "/objects/" + profileObjectId;
+            Map<String, Object> body = Map.of("properties", Map.of("department_short_code_multi", currentCodes));
+
+            restClient.post()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .header("Accept",        "application/vnd.emc.documentum+json")
+                    .header("X-Method-Override", "PATCH")
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+
+            log.info("[DeptCode] Removed department code '{}' from profile of '{}'", departmentCode, userLoginName);
+        } catch (Exception e) {
+            log.warn("[DeptCode] Failed to remove department code '{}' from profile of '{}': {}",
+                    departmentCode, userLoginName, e.getMessage());
+            // Non-critical: don't throw, just log and continue
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> transformResponse(Map<String, Object> response, int page, int itemsPerPage) {
         Map<String, Object> result = new HashMap<>();
@@ -899,7 +959,7 @@ public class UserService {
 
         List<Map<String, Object>> users = new ArrayList<>();
         List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
-        
+
         if (entries != null) {
             for (Map<String, Object> entry : entries) {
                 Map<String, Object> content = (Map<String, Object>) entry.get("content");
@@ -911,11 +971,11 @@ public class UserService {
                 }
             }
         }
-        
+
         result.put("users", users);
         result.put("page", page);
         result.put("itemsPerPage", itemsPerPage);
-        
+
         List<Map<String, Object>> links = (List<Map<String, Object>>) response.get("links");
         boolean hasNext = false;
         if (links != null) {

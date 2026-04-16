@@ -14,10 +14,12 @@ public class GroupService {
 
     private final DctmConfig dctmConfig;
     private final RestClient restClient;
+    private final UserService userService;
 
-    public GroupService(DctmConfig dctmConfig, RestClient.Builder restClientBuilder) {
+    public GroupService(DctmConfig dctmConfig, RestClient.Builder restClientBuilder, UserService userService) {
         this.dctmConfig = dctmConfig;
         this.restClient = restClientBuilder.build();
+        this.userService = userService;
     }
 
     private String getAuthHeader() {
@@ -368,7 +370,8 @@ public class GroupService {
     }
 
     /**
-     * Remove a member from a group using DCTM REST API
+     * Remove a member from a group using DCTM REST API.
+     * For users in RO/TE department groups, also cleans up department_short_code_multi from the user profile.
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> removeMember(String groupName, String memberName, String memberType) {
@@ -397,6 +400,11 @@ public class GroupService {
                     .retrieve()
                     .toBodilessEntity();
 
+            // For user removals from RO/TE department groups, clean up department code
+            if ("user".equalsIgnoreCase(memberType)) {
+                cleanupUserDepartmentAssignment(groupName, memberName);
+            }
+
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
             result.put("message", memberType + " '" + memberName + "' removed successfully");
@@ -410,6 +418,46 @@ public class GroupService {
             result.put("message", "Failed to remove member: " + e.getMessage());
             return result;
         }
+    }
+
+    /**
+     * Clean up department assignment when a user is removed from a department group.
+     * Extracts department code from group name and removes it from user's department_short_code_multi.
+     * Non-critical: failures are logged but don't abort the removal.
+     */
+    private void cleanupUserDepartmentAssignment(String groupName, String memberName) {
+        try {
+            String departmentCode = extractDepartmentCodeFromGroupName(groupName);
+            if (departmentCode == null || departmentCode.isEmpty()) {
+                log.debug("[Cleanup] Could not extract department code from group '{}'", groupName);
+                return;
+            }
+            log.info("[Cleanup] Removing department code '{}' from user '{}' profile", departmentCode, memberName);
+            userService.removeDepartmentCodeFromProfile(memberName, departmentCode);
+        } catch (Exception e) {
+            log.warn("[Cleanup] Failed to clean up department assignment for user '{}': {}", memberName, e.getMessage());
+        }
+    }
+
+    /**
+     * Extract department code from group name.
+     * Examples:
+     *   "ecm_tn_fad" → "fad"
+     *   "ecm_ho_ddsi" → "ddsi"
+     *   "ecm_maharashtra_rbme" → "rbme"
+     */
+    private String extractDepartmentCodeFromGroupName(String groupName) {
+        if (groupName == null || groupName.isEmpty()) return null;
+
+        // Group names follow pattern: ecm_<location>_<deptcode>
+        // Split by underscore and get the last part
+        String[] parts = groupName.split("_");
+        if (parts.length >= 3) {
+            // Join all parts after the second underscore (in case dept code has underscores)
+            String code = String.join("_", java.util.Arrays.copyOfRange(parts, 2, parts.length));
+            return code.toLowerCase();
+        }
+        return null;
     }
 
     /**
