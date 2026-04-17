@@ -9,7 +9,7 @@ const LoginPage = () => {
     const [formData, setFormData] = useState({
         username: '',
         password: '',
-        repository: 'NABARDUAT'
+        repository: import.meta.env.VITE_DCTM_REPOSITORY || 'NABARDUAT'
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
