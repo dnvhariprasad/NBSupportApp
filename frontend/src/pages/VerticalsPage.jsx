@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api/axios';
 import {
     Layers, Tag, Users, UserPlus, X, Loader2, Check,
@@ -28,24 +28,127 @@ const Label = ({ children, icon: Icon }) => (
     </label>
 );
 
-const Select = ({ value, onChange, disabled, placeholder, options = [], className = '' }) => (
-    <div className="relative">
-        <select
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            disabled={disabled}
-            className={`w-full px-4 py-2.5 border rounded-xl text-sm appearance-none pr-10 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] cursor-pointer
-                ${disabled ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800'}
-                ${className}`}
-        >
-            <option value="">{placeholder}</option>
-            {options.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-        </select>
-        <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-    </div>
-);
+const Select = ({ value, onChange, disabled, placeholder, options = [], className = '', multiple = false }) => {
+    const displayText = multiple
+        ? (Array.isArray(value) && value.length > 0 ? `${value.length} selected` : placeholder)
+        : value || placeholder;
+
+    return (
+        <div className="relative">
+            <select
+                value={value}
+                onChange={e => {
+                    if (multiple) {
+                        const selected = Array.from(e.target.selectedOptions, option => option.value);
+                        onChange(selected);
+                    } else {
+                        onChange(e.target.value);
+                    }
+                }}
+                disabled={disabled}
+                multiple={multiple}
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm appearance-none pr-10 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] cursor-pointer
+                    ${multiple ? 'min-h-40' : ''}
+                    ${disabled ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800'}
+                    ${className}`}
+            >
+                {!multiple && <option value="">{placeholder}</option>}
+                {options.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+            </select>
+            {!multiple && <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />}
+        </div>
+    );
+};
+
+const MultiSelectUsers = ({ value = [], onChange, disabled, placeholder, options = [] }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const containerRef = useRef(null);
+
+    const filteredOptions = options.filter(o =>
+        o.label.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const toggleUser = (optionValue) => {
+        if (value.includes(optionValue)) {
+            onChange(value.filter(v => v !== optionValue));
+        } else {
+            onChange([...value, optionValue]);
+        }
+    };
+
+    const removeUser = (optionValue) => {
+        onChange(value.filter(v => v !== optionValue));
+    };
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+        <div ref={containerRef} className="relative">
+            <div className={`border rounded-xl bg-white transition-all ${
+                isOpen ? 'border-[#0A66C2] ring-2 ring-blue-500/20' : 'border-slate-200'
+            } ${disabled ? 'bg-slate-100' : ''}`}>
+                <div className="p-2 flex flex-wrap gap-1 min-h-10">
+                    {value.map(val => {
+                        const opt = options.find(o => o.value === val);
+                        return (
+                            <div key={val} className="flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium">
+                                <span>{opt?.label.split('(')[0].trim() || val}</span>
+                                <button
+                                    onClick={() => removeUser(val)}
+                                    className="text-blue-600 hover:text-blue-800 ml-0.5"
+                                    disabled={disabled}
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        );
+                    })}
+                    <input
+                        type="text"
+                        placeholder={value.length === 0 ? placeholder : 'Search...'}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onFocus={() => setIsOpen(true)}
+                        disabled={disabled}
+                        className="flex-1 outline-none text-sm py-1 px-1 min-w-32 bg-transparent"
+                    />
+                </div>
+            </div>
+
+            {isOpen && !disabled && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
+                    {filteredOptions.length > 0 ? (
+                        filteredOptions.map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => toggleUser(opt.value)}
+                                className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-100 transition-colors flex items-center gap-2 border-b border-slate-100 last:border-b-0 ${
+                                    value.includes(opt.value) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-800'
+                                }`}
+                            >
+                                <Check size={16} className={`flex-shrink-0 ${value.includes(opt.value) ? 'text-blue-600' : 'opacity-0'}`} />
+                                <span>{opt.label}</span>
+                            </button>
+                        ))
+                    ) : (
+                        <div className="px-4 py-3 text-xs text-slate-400 text-center">No users found</div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const Card = ({ children, className = '' }) => (
     <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-5 ${className}`}>
@@ -95,10 +198,10 @@ const VerticalCreationTab = ({ setToast }) => {
 
     const deptObj         = hoDepts.find(d => d.name === dept);
     const prefix          = deptObj ? `ecm_ho_${deptObj.shortCode.toLowerCase()}_` : 'ecm_ho_';
-    const cleanSuffix     = normalizeSuffix(suffix);
-    const groupName       = cleanSuffix ? `${prefix}${cleanSuffix}` : '';
+    const cleanVerticalShortcode = normalizeSuffix(verticalShortcode);
+    const groupName       = deptObj && cleanVerticalShortcode ? `${prefix}${cleanVerticalShortcode.toLowerCase()}` : '';
     const groupDisplayName = groupName ? groupName.replace(/_/g, '-').toUpperCase() : '';
-    const canCreate       = !!deptObj && cleanSuffix.length > 0
+    const canCreate       = !!deptObj && cleanVerticalShortcode.length > 0
                             && verticalFullName.trim().length > 0
                             && verticalShortcode.trim().length > 0;
 
@@ -147,38 +250,34 @@ const VerticalCreationTab = ({ setToast }) => {
                 />
             </div>
 
-            <div>
-                <Label icon={Tag}>Group Name <span className="text-red-500">*</span></Label>
-                <div className="flex items-stretch rounded-xl border border-slate-200 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-[#0A66C2] transition-all">
-                    <span className="px-3 py-2.5 bg-slate-100 text-slate-500 text-sm font-mono border-r border-slate-200 whitespace-nowrap select-none">
-                        {prefix}
-                    </span>
-                    <input type="text" value={suffix} onChange={e => setSuffix(e.target.value)}
-                        disabled={!dept} placeholder={dept ? 'e.g. common_cmd' : 'Select department first'}
-                        className="flex-1 px-3 py-2.5 text-sm font-mono focus:outline-none bg-white disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed" />
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <Label icon={Tag}>Vertical Full Name <span className="text-red-500">*</span></Label>
+                    <input type="text" value={verticalFullName} onChange={e => setVerticalFullName(e.target.value)}
+                        placeholder="e.g. Digital Initiatives and Technology"
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
                 </div>
-                {cleanSuffix && <p className="text-xs text-slate-400 font-mono mt-1 pl-1">Full: <span className="text-slate-600">{groupName}</span></p>}
-                <p className="text-xs text-slate-400 mt-1 pl-1">Spaces and repeated underscores auto-convert to single <code className="bg-slate-100 px-1 rounded">_</code></p>
+
+                <div>
+                    <Label icon={Tag}>Vertical Shortcode <span className="text-red-500">*</span></Label>
+                    <input type="text" value={verticalShortcode} onChange={e => setVerticalShortcode(e.target.value)}
+                        placeholder="e.g. DIT"
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
+                </div>
             </div>
 
-            <div>
-                <Label icon={Tag}>Group Display Name <span className="normal-case font-normal text-slate-400">(auto-filled)</span></Label>
-                <input type="text" readOnly value={groupDisplayName}
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 text-slate-600 cursor-default" />
-            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <Label icon={Tag}>Group Name <span className="normal-case font-normal text-slate-400">(auto-filled)</span></Label>
+                    <input type="text" readOnly value={groupName}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 text-slate-600 cursor-default" />
+                </div>
 
-            <div>
-                <Label icon={Tag}>Vertical Full Name <span className="text-red-500">*</span></Label>
-                <input type="text" value={verticalFullName} onChange={e => setVerticalFullName(e.target.value)}
-                    placeholder="e.g. Digital Initiatives and Technology"
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
-            </div>
-
-            <div>
-                <Label icon={Tag}>Vertical Shortcode <span className="text-red-500">*</span></Label>
-                <input type="text" value={verticalShortcode} onChange={e => setVerticalShortcode(e.target.value)}
-                    placeholder="e.g. DIT"
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
+                <div>
+                    <Label icon={Tag}>Group Display Name <span className="normal-case font-normal text-slate-400">(auto-filled)</span></Label>
+                    <input type="text" readOnly value={groupDisplayName}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 text-slate-600 cursor-default" />
+                </div>
             </div>
 
             <button onClick={handleCreate} disabled={!canCreate || creating}
@@ -205,12 +304,9 @@ const AddMembersTab = ({ setToast }) => {
     const [verticals,         setVerticals]         = useState([]);
     const [selectedVertical,  setSelectedVertical]  = useState('');
     const [users,             setUsers]             = useState([]);
-    const [selectedUser,      setSelectedUser]      = useState('');
-    const [selectedUserObjectName,  setSelectedUserObjectName]  = useState('');
-    const [selectedUserProfileId,   setSelectedUserProfileId]   = useState('');
+    const [selectedUsers,     setSelectedUsers]     = useState([]);
 
     const [verticalMembers,   setVerticalMembers]   = useState({ users: [], groups: [] });
-    const [userGroups,        setUserGroups]        = useState([]);
     const [vhGroupName,           setVhGroupName]           = useState('');
     const [vhExists,              setVhExists]              = useState(false);
     const [vhMembers,             setVhMembers]             = useState([]);
@@ -221,7 +317,6 @@ const AddMembersTab = ({ setToast }) => {
     const [loadingVerticals,  setLoadingVerticals]  = useState(false);
     const [loadingUsers,      setLoadingUsers]      = useState(false);
     const [loadingMembers,    setLoadingMembers]    = useState(false);
-    const [loadingUserGroups, setLoadingUserGroups] = useState(false);
     const [adding,            setAdding]            = useState(false);
     const [creatingVH,        setCreatingVH]        = useState(false);
     const [deptOptions,       setDeptOptions]       = useState([]);
@@ -286,9 +381,9 @@ const AddMembersTab = ({ setToast }) => {
         if (level === 'location') { setLocation(''); setRoShortCode(''); }
         setDept('');
         setSelectedVertical(''); setVerticals([]);
-        setSelectedUser(''); setUsers([]); setSelectedUserObjectName(''); setSelectedUserProfileId('');
+        setSelectedUsers([]); setUsers([]);
         setVerticalMembers({ users: [], groups: [] });
-        setUserGroups([]); setVhGroupName(''); setVhExists(false); setVhMembers([]);
+        setVhGroupName(''); setVhExists(false); setVhMembers([]);
         setVhCurrentDisplayName(''); setModifyVHSelectedUser('');
     };
 
@@ -327,7 +422,7 @@ const AddMembersTab = ({ setToast }) => {
         setDept(v);
         setSelectedVertical(''); setVerticals([]);
         setVerticalMembers({ users: [], groups: [] });
-        setUserGroups([]); setVhGroupName(''); setVhExists(false); setVhMembers([]);
+        setVhGroupName(''); setVhExists(false); setVhMembers([]);
         if (!v) return;
         const d = deptOptions.find(d => d.name === v);
         if (!d) return;
@@ -345,7 +440,7 @@ const AddMembersTab = ({ setToast }) => {
         finally { setLoadingVerticals(false); }
 
         // Fetch users by office type and department
-        setUsers([]); setSelectedUser(''); setSelectedUserObjectName(''); setSelectedUserProfileId('');
+        setUsers([]); setSelectedUsers([]);
         setLoadingUsers(true);
         try {
             if (officeType === 'HO') {
@@ -410,94 +505,71 @@ const AddMembersTab = ({ setToast }) => {
         }
     }, []);
 
-    // On user change
-    const handleUserChange = async (loginName) => {
-        const userObj = users.find(u => u.user_login_name === loginName);
-        setSelectedUser(loginName);
-        setSelectedUserObjectName(userObj?.object_name || loginName);
-        setSelectedUserProfileId(userObj?.r_object_id || '');
-        setUserGroups([]);
-        if (!loginName) return;
-        setLoadingUserGroups(true);
-        try {
-            const res = await api.get('/groups/by-user', { params: { username: loginName } });
-            setUserGroups(res.data || []);
-        } catch { setUserGroups([]); }
-        finally { setLoadingUserGroups(false); }
+    // Get users already in the group
+    const getUsersAlreadyInGroup = () => {
+        return selectedUsers.filter(loginName =>
+            verticalMembers.users.some(u => {
+                const memberLoginName = u.user_login_name || u.login_name || '';
+                return memberLoginName.toLowerCase() === loginName.toLowerCase();
+            })
+        );
     };
 
-    // Check if selected user is already in the group by comparing both login name and display name
-    const userAlreadyInGroup = selectedUser && verticalMembers.users.some(u => {
-        const memberLoginName = u.user_login_name || u.login_name || '';
-        const selectedUserObj = users.find(x => x.user_login_name === selectedUser);
-        const selectedUserDisplayName = selectedUserObj?.object_name || '';
-        return memberLoginName.toLowerCase() === selectedUser.toLowerCase() ||
-               u.name.toLowerCase() === selectedUserDisplayName.toLowerCase();
-    });
+    const usersAlreadyInGroup = getUsersAlreadyInGroup();
 
     const handleAddToGroup = async () => {
-        if (!selectedVertical || !selectedUser) return;
-        if (userAlreadyInGroup) {
-            setToast({ type: 'error', message: `'${selectedUser}' is already a member of '${selectedVertical}'.` });
+        if (!selectedVertical || selectedUsers.length === 0) return;
+        if (usersAlreadyInGroup.length > 0) {
+            const alreadyMemberNames = usersAlreadyInGroup.join(', ');
+            setToast({ type: 'error', message: `'${alreadyMemberNames}' already member(s) of '${selectedVertical}'.` });
             return;
         }
         setAdding(true);
         try {
-            const addRes = await api.post(`/groups/${selectedVertical}/members`, {
-                memberName: selectedUser, memberType: 'user',
-            });
-            if (addRes.data?.success === false) {
-                setToast({ type: 'error', message: addRes.data.message || 'Failed to add member.' });
-                return;
+            for (const loginName of selectedUsers) {
+                await api.post(`/groups/${selectedVertical}/members`, {
+                    memberName: loginName, memberType: 'user',
+                });
+                const userObj = users.find(u => u.user_login_name === loginName);
+                const userProfileId = userObj?.r_object_id || '';
+                if (userProfileId) {
+                    api.post(`/users/profiles/${userProfileId}/vertical-ids`, {
+                        verticalGroupName: selectedVertical,
+                    }).catch(e => console.warn('vertical_ids update failed:', e?.response?.data?.message || e.message));
+                }
             }
-            setToast({ type: 'success', message: `'${selectedUser}' added to '${selectedVertical}'.` });
-            // Update vertical_ids in cms_user_profile
-            if (selectedUserProfileId) {
-                api.post(`/users/profiles/${selectedUserProfileId}/vertical-ids`, {
-                    verticalGroupName: selectedVertical,
-                }).catch(e => console.warn('vertical_ids update failed:', e?.response?.data?.message || e.message));
-            }
-            // Refresh members and user groups
-            const [membersRes, groupsRes] = await Promise.allSettled([
-                api.get(`/groups/${selectedVertical}/members`),
-                api.get('/groups/by-user', { params: { username: selectedUser } }),
-            ]);
-            if (membersRes.status === 'fulfilled') setVerticalMembers({ users: membersRes.value.data.users || [], groups: membersRes.value.data.groups || [] });
-            if (groupsRes.status === 'fulfilled') setUserGroups(groupsRes.value.data || []);
-            // Clear selected user to reset form
-            setSelectedUser(''); setSelectedUserObjectName(''); setSelectedUserProfileId('');
+            setToast({ type: 'success', message: `${selectedUsers.length} user(s) added to '${selectedVertical}'.` });
+            setSelectedUsers([]);
+            // Refresh members
+            const membersRes = await api.get(`/groups/${selectedVertical}/members`);
+            if (membersRes.data) setVerticalMembers({ users: membersRes.data.users || [], groups: membersRes.data.groups || [] });
         } catch (err) {
-            const msg = err.response?.data?.message || err.message || 'Failed to add member.';
+            const msg = err.response?.data?.message || err.message || 'Failed to add members.';
             setToast({ type: 'error', message: msg });
         } finally { setAdding(false); }
     };
 
     const handleMarkVerticalHead = async () => {
-        if (!selectedVertical || !selectedUser) return;
+        if (!selectedVertical || selectedUsers.length === 0) return;
+        const firstUser = selectedUsers[0];
+        const userObj = users.find(u => u.user_login_name === firstUser);
+        const userDisplayName = userObj?.object_name || firstUser;
         setCreatingVH(true);
         try {
-            const vhDisplayName = selectedVertical.replace(/_/g, '-').toUpperCase() + ` -${selectedUserObjectName}`;
-            // 1. Create the vertical head group (ignore if it already exists from a prior attempt)
+            const vhDisplayName = selectedVertical.replace(/_/g, '-').toUpperCase() + ` -${userDisplayName}`;
             try {
                 await api.post('/groups', { group_name: vhGroupName, group_display_name: vhDisplayName });
             } catch (createErr) {
-                // Group may already exist from a failed previous attempt — proceed to add user anyway
                 const msg = createErr.response?.data?.message || '';
                 if (!msg.toLowerCase().includes('already') && !msg.toLowerCase().includes('exist')) {
-                    throw createErr; // Rethrow unexpected errors
+                    throw createErr;
                 }
             }
-            // 2. Add the user to the vertical head group
-            await api.post(`/groups/${vhGroupName}/members`, { memberName: selectedUser, memberType: 'user' });
-            setToast({ type: 'success', message: `Vertical head '${vhGroupName}' created and '${selectedUser}' assigned.` });
+            await api.post(`/groups/${vhGroupName}/members`, { memberName: firstUser, memberType: 'user' });
+            setToast({ type: 'success', message: `Vertical head '${vhGroupName}' created and '${firstUser}' assigned.` });
             setVhExists(true);
-            // Refresh user's groups + VH members
-            const [groupsRes, vhMembersRes] = await Promise.allSettled([
-                api.get('/groups/by-user', { params: { username: selectedUser } }),
-                api.get(`/groups/${vhGroupName}/members`),
-            ]);
-            if (groupsRes.status === 'fulfilled')   setUserGroups(groupsRes.value.data || []);
-            if (vhMembersRes.status === 'fulfilled') setVhMembers(vhMembersRes.value.data.users || []);
+            const vhMembersRes = await api.get(`/groups/${vhGroupName}/members`);
+            if (vhMembersRes.data) setVhMembers(vhMembersRes.data.users || []);
         } catch (err) {
             setToast({ type: 'error', message: err.response?.data?.message || 'Failed to create vertical head.' });
         } finally { setCreatingVH(false); }
@@ -558,8 +630,8 @@ const AddMembersTab = ({ setToast }) => {
         } finally { setModifyingVH(false); }
     };
 
-    const showMarkVHButton = selectedVertical && selectedUser;
-    const canAdd = selectedVertical && selectedUser && !userAlreadyInGroup;
+    const showMarkVHButton = selectedVertical && selectedUsers.length === 1;
+    const canAdd = selectedVertical && selectedUsers.length > 0 && usersAlreadyInGroup.length === 0;
 
     return (
         <div className="space-y-5">
@@ -610,17 +682,20 @@ const AddMembersTab = ({ setToast }) => {
                     </div>
                     {/* User */}
                     <div>
-                        <Label icon={Users}>User</Label>
+                        <Label icon={Users}>Users <span className="normal-case font-normal text-slate-400">(select multiple)</span></Label>
                         {loadingUsers
                             ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
                             : <>
-                                <Select value={selectedUser} onChange={handleUserChange}
+                                <MultiSelectUsers
+                                    value={selectedUsers}
+                                    onChange={setSelectedUsers}
                                     disabled={!officeType || users.length === 0}
-                                    placeholder={!officeType ? '— Select office type first —' : users.length === 0 ? 'No users found' : '— Select user —'}
-                                    options={users.map(u => ({ value: u.user_login_name, label: `${u.object_name} (${u.user_login_name})` }))} />
-                                {userAlreadyInGroup && selectedUser && (
-                                    <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
-                                        <AlertCircle size={13} /> User already part of vertical
+                                    placeholder={!officeType ? '— Select office type first —' : users.length === 0 ? 'No users found' : 'Search and select users...'}
+                                    options={users.map(u => ({ value: u.user_login_name, label: `${u.object_name} (${u.user_login_name})` }))}
+                                />
+                                {usersAlreadyInGroup.length > 0 && (
+                                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                                        <AlertCircle size={13} /> {usersAlreadyInGroup.join(', ')} already member(s)
                                     </p>
                                 )}
                               </>
@@ -629,8 +704,8 @@ const AddMembersTab = ({ setToast }) => {
                 </div>
             </Card>
 
-            {/* ── Step 2: Info panels (members + user groups + vertical head) ── */}
-            {(selectedVertical || selectedUser) && (
+            {/* ── Step 2: Info panels (members + vertical head) ── */}
+            {(selectedVertical || selectedUsers.length > 0) && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
 
                     {/* 1 — Vertical Members */}
@@ -711,35 +786,13 @@ const AddMembersTab = ({ setToast }) => {
                         </Card>
                     )}
 
-                    {/* 3 — User's Groups */}
-                    {selectedUser && (
-                        <Card>
-                            <SectionTitle>User's Groups</SectionTitle>
-                            {loadingUserGroups
-                                ? <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-slate-400" /></div>
-                                : userGroups.length === 0
-                                    ? <p className="text-xs text-slate-400 text-center py-3">Not in any group</p>
-                                    : <div className="space-y-1 max-h-48 overflow-y-auto">
-                                        {userGroups.map(g => (
-                                            <p key={g.group_name} className="text-xs font-mono text-slate-600 truncate">{g.group_name}</p>
-                                        ))}
-                                    </div>
-                            }
-                        </Card>
-                    )}
                 </div>
             )}
 
             {/* ── Step 3: Action buttons ── */}
-            {selectedVertical && selectedUser && (
+            {selectedVertical && selectedUsers.length > 0 && (
                 <Card className="space-y-3">
                     <SectionTitle>Actions</SectionTitle>
-
-                    {userAlreadyInGroup && (
-                        <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
-                            <AlertCircle size={14} /> User already exists in this group
-                        </div>
-                    )}
 
                     <div className="flex flex-wrap gap-3">
                         {/* Add to Group */}
@@ -763,7 +816,7 @@ const AddMembersTab = ({ setToast }) => {
                     </div>
 
                     <p className="text-xs text-slate-400">
-                        Adding <span className="font-mono text-slate-600">{selectedUser}</span> to <span className="font-mono text-slate-600">{selectedVertical}</span>
+                        Adding <span className="font-mono text-slate-600">{selectedUsers.length} user(s)</span> to <span className="font-mono text-slate-600">{selectedVertical}</span>
                         {vhGroupName && <> · Vertical head group: <span className="font-mono text-slate-600">{vhGroupName}</span>{vhExists ? ' (exists)' : ''}</>}
                     </p>
                 </Card>
@@ -1097,10 +1150,6 @@ const RemoveMembersTab = ({ setToast }) => {
                 api.delete('/users/profile-vertical-ids', {
                     params: { userLoginName: pendingRemove.name, verticalGroupName: selectedGroup },
                 }).catch(e => console.warn('vertical_ids remove failed:', e?.response?.data?.message || e.message));
-                // Refresh user groups
-                api.get('/groups/by-user', { params: { username: pendingRemove.name } })
-                    .then(res => setUserGroups(res.data || []))
-                    .catch(e => console.warn('Failed to refresh user groups:', e?.response?.data?.message || e.message));
             }
             setPendingRemove(null); setInboxTasks([]); setInboxTotal(0);
         } catch (err) {
