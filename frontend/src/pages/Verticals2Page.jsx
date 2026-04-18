@@ -95,10 +95,10 @@ const VerticalCreationTab = ({ setToast }) => {
 
     const deptObj         = hoDepts.find(d => d.name === dept);
     const prefix          = deptObj ? `ecm_ho_${deptObj.shortCode.toLowerCase()}_` : 'ecm_ho_';
-    const cleanSuffix     = normalizeSuffix(suffix);
-    const groupName       = cleanSuffix ? `${prefix}${cleanSuffix}` : '';
+    const cleanVerticalShortcode = normalizeSuffix(verticalShortcode);
+    const groupName       = deptObj && cleanVerticalShortcode ? `${prefix}${cleanVerticalShortcode.toLowerCase()}` : '';
     const groupDisplayName = groupName ? groupName.replace(/_/g, '-').toUpperCase() : '';
-    const canCreate       = !!deptObj && cleanSuffix.length > 0
+    const canCreate       = !!deptObj && cleanVerticalShortcode.length > 0
                             && verticalFullName.trim().length > 0
                             && verticalShortcode.trim().length > 0;
 
@@ -147,38 +147,34 @@ const VerticalCreationTab = ({ setToast }) => {
                 />
             </div>
 
-            <div>
-                <Label icon={Tag}>Group Name <span className="text-red-500">*</span></Label>
-                <div className="flex items-stretch rounded-xl border border-slate-200 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-[#0A66C2] transition-all">
-                    <span className="px-3 py-2.5 bg-slate-100 text-slate-500 text-sm font-mono border-r border-slate-200 whitespace-nowrap select-none">
-                        {prefix}
-                    </span>
-                    <input type="text" value={suffix} onChange={e => setSuffix(e.target.value)}
-                        disabled={!dept} placeholder={dept ? 'e.g. common_cmd' : 'Select department first'}
-                        className="flex-1 px-3 py-2.5 text-sm font-mono focus:outline-none bg-white disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed" />
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <Label icon={Tag}>Vertical Full Name <span className="text-red-500">*</span></Label>
+                    <input type="text" value={verticalFullName} onChange={e => setVerticalFullName(e.target.value)}
+                        placeholder="e.g. Digital Initiatives and Technology"
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
                 </div>
-                {cleanSuffix && <p className="text-xs text-slate-400 font-mono mt-1 pl-1">Full: <span className="text-slate-600">{groupName}</span></p>}
-                <p className="text-xs text-slate-400 mt-1 pl-1">Spaces and repeated underscores auto-convert to single <code className="bg-slate-100 px-1 rounded">_</code></p>
+
+                <div>
+                    <Label icon={Tag}>Vertical Shortcode <span className="text-red-500">*</span></Label>
+                    <input type="text" value={verticalShortcode} onChange={e => setVerticalShortcode(e.target.value)}
+                        placeholder="e.g. DIT"
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
+                </div>
             </div>
 
-            <div>
-                <Label icon={Tag}>Group Display Name <span className="normal-case font-normal text-slate-400">(auto-filled)</span></Label>
-                <input type="text" readOnly value={groupDisplayName}
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 text-slate-600 cursor-default" />
-            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <Label icon={Tag}>Group Name <span className="normal-case font-normal text-slate-400">(auto-filled)</span></Label>
+                    <input type="text" readOnly value={groupName}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 text-slate-600 cursor-default" />
+                </div>
 
-            <div>
-                <Label icon={Tag}>Vertical Full Name <span className="text-red-500">*</span></Label>
-                <input type="text" value={verticalFullName} onChange={e => setVerticalFullName(e.target.value)}
-                    placeholder="e.g. Digital Initiatives and Technology"
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
-            </div>
-
-            <div>
-                <Label icon={Tag}>Vertical Shortcode <span className="text-red-500">*</span></Label>
-                <input type="text" value={verticalShortcode} onChange={e => setVerticalShortcode(e.target.value)}
-                    placeholder="e.g. DIT"
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] bg-white" />
+                <div>
+                    <Label icon={Tag}>Group Display Name <span className="normal-case font-normal text-slate-400">(auto-filled)</span></Label>
+                    <input type="text" readOnly value={groupDisplayName}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 text-slate-600 cursor-default" />
+                </div>
             </div>
 
             <button onClick={handleCreate} disabled={!canCreate || creating}
