@@ -212,7 +212,8 @@ public class InboxService {
         String dql =
             "SELECT object_name, description, status, r_creator_name, task_priority, r_object_id " +
             "FROM cms_case_folder " +
-            "WHERE r_object_id IN (" + inClause + ")";
+            "WHERE r_object_id IN (" + inClause + ") " +
+            "AND (is_migrated IS NULL OR is_migrated = FALSE)";
         log.debug("Step-3 DQL: {}", dql);
         try {
             Map<String, Object> response = restClient.get()

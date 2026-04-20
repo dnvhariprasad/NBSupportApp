@@ -104,6 +104,9 @@ public class DelegateService {
                 where.append(" AND UPPER(object_name) LIKE '%-").append(sc).append("-%'");
             }
 
+            // Exclude migrated cases
+            where.append(" AND (is_migrated IS NULL OR is_migrated = FALSE)");
+
             String dql = String.format(
                     "SELECT r_object_id, object_name, subject, ho_ro, description, " +
                     "department_name, r_creation_date, functions, task_priority, status, " +
