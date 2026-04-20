@@ -13,11 +13,63 @@ function normalizeSuffix(raw) {
     return raw.replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
 }
 
-/** 'ecm_ho_ddsi_common_cmd' → 'ecm_ho_vertical_head_ddsi_common_cmd' */
+/**
+ * Converts group name to vertical head group name.
+ * HO: 'ecm_ho_ddsi' → 'ecm_ho_vertical_head_ddsi'
+ * RO/TE: 'ecm_mp_fad' → 'ecm_mp_vertical_head_fad'
+ */
 function toVerticalHeadName(groupName) {
-    if (!groupName.startsWith('ecm_ho_')) return '';
-    const rest = groupName.slice('ecm_ho_'.length);
-    return `ecm_ho_vertical_head_${rest}`;
+    if (!groupName) {
+        console.warn('[toVerticalHeadName] Empty/null groupName:', { groupName, type: typeof groupName });
+        return '';
+    }
+
+    const normalized = String(groupName).trim().toLowerCase();
+
+    if (!normalized.startsWith('ecm_')) {
+        console.warn('[toVerticalHeadName] Invalid format (not ecm_*):', {
+            original: groupName,
+            normalized
+        });
+        return '';
+    }
+
+    // HO pattern: ecm_ho_<anything>
+    if (normalized.startsWith('ecm_ho_')) {
+        const rest = normalized.slice(7); // 'ecm_ho_'.length = 7
+        const result = `ecm_ho_vertical_head_${rest}`;
+        console.log('[toVerticalHeadName] HO:', { groupName, rest, result });
+        return result;
+    }
+
+    // RO/TE pattern: ecm_<location>_<dept>[_suffix]
+    // Split and assume 2-letter location code (parts[1])
+    const parts = normalized.split('_');
+    console.log('[toVerticalHeadName] RO/TE split:', { groupName, normalized, parts, length: parts.length });
+
+    if (parts.length < 3) {
+        // ecm_<location> with no dept — invalid
+        console.warn('[toVerticalHeadName] RO/TE: not enough parts (need ≥3):', {
+            groupName,
+            parts,
+            length: parts.length
+        });
+        return '';
+    }
+
+    // parts[0]='ecm', parts[1]=location, parts[2]=dept, parts[3+]=suffix
+    const prefix = `${parts[0]}_${parts[1]}_`; // 'ecm_<loc>_'
+    const rest = parts.slice(2).join('_');    // 'dept[_suffix]'
+    const result = `${prefix}vertical_head_${rest}`;
+
+    console.log('[toVerticalHeadName] RO/TE result:', {
+        original: groupName,
+        normalized,
+        prefix,
+        rest,
+        result
+    });
+    return result;
 }
 
 // ─── Shared UI primitives ────────────────────────────────────────────────────
@@ -429,13 +481,18 @@ const AddMembersTab = ({ setToast }) => {
             setVerticals(filtered);
             // Auto-select if only one group exists
             if (filtered.length === 1) {
-                setSelectedVertical(filtered[0].group_name);
-                setLoadingMembers(true);
-                try {
-                    const membersRes = await api.get(`/groups/${filtered[0].group_name}/members`);
-                    setVerticalMembers({ users: membersRes.data.users || [], groups: membersRes.data.groups || [] });
-                } catch { setVerticalMembers({ users: [], groups: [] }); }
-                finally { setLoadingMembers(false); }
+                const singleGroupName = filtered[0].group_name;
+                setSelectedVertical(singleGroupName);
+                console.log('[handleDeptChange] Auto-selecting single vertical:', singleGroupName);
+                // Use updateVerticalInfo to calculate vhGroupName and fetch members
+                await updateVerticalInfo(singleGroupName);
+            } else {
+                // Multiple groups: clear vertical head info until user selects one
+                setVerticalMembers({ users: [], groups: [] });
+                setVhGroupName('');
+                setVhExists(false);
+                setVhMembers([]);
+                setVhCurrentDisplayName('');
             }
         } catch { setVerticals([]); }
         finally { setLoadingVerticals(false); }
@@ -472,39 +529,92 @@ const AddMembersTab = ({ setToast }) => {
         finally { setLoadingUsers(false); }
     };
 
-    // On vertical change
+    // Shared logic to update vertical info (called from both handleVerticalChange and auto-select)
+    const updateVerticalInfo = useCallback(async (verticalGroupName) => {
+        if (!verticalGroupName) {
+            setVerticalMembers({ users: [], groups: [] });
+            setVhGroupName('');
+            setVhExists(false);
+            setVhMembers([]);
+            setVhCurrentDisplayName('');
+            return;
+        }
+
+        // Calculate vertical head name
+        const vhName = toVerticalHeadName(verticalGroupName);
+        console.log('[updateVerticalInfo] Calculated vhName:', {
+            verticalGroupName,
+            vhName,
+            vhNameLength: vhName ? vhName.length : 0
+        });
+
+        if (!vhName) {
+            console.error('[updateVerticalInfo] WARNING: toVerticalHeadName returned empty for:', {
+                input: verticalGroupName,
+                type: typeof verticalGroupName,
+                length: String(verticalGroupName).length
+            });
+        }
+
+        // Set the vertical head group name
+        setVhGroupName(vhName);
+
+        // Fetch members and vertical head info in parallel
+        setLoadingMembers(true);
+        try {
+            const [membersRes, vhRes, vhMembersRes] = await Promise.allSettled([
+                api.get(`/groups/${verticalGroupName}/members`),
+                vhName ? api.get(`/groups/exists/${vhName}`) : Promise.resolve({ status: 'fulfilled', value: { data: { exists: false } } }),
+                vhName ? api.get(`/groups/${vhName}/members`) : Promise.resolve({ status: 'fulfilled', value: { data: { users: [] } } }),
+            ]);
+
+            console.log('[updateVerticalInfo] API responses:', {
+                membersStatus: membersRes.status,
+                vhStatus: vhRes.status,
+                vhMembersStatus: vhMembersRes.status
+            });
+
+            if (membersRes.status === 'fulfilled') {
+                setVerticalMembers({
+                    users:  membersRes.value.data.users  || [],
+                    groups: membersRes.value.data.groups || [],
+                });
+            }
+            if (vhRes.status === 'fulfilled') {
+                const exists = vhRes.value.data.exists;
+                setVhExists(exists);
+                const vhProps = vhRes.value.data.properties;
+                const displayName = vhProps?.group_display_name || '';
+                setVhCurrentDisplayName(displayName);
+                console.log('[updateVerticalInfo] VH exists:', { exists, displayName });
+            } else if (vhRes.status === 'rejected') {
+                console.warn('[updateVerticalInfo] VH check failed:', vhRes.reason?.message);
+            }
+            if (vhMembersRes.status === 'fulfilled') {
+                setVhMembers(vhMembersRes.value.data.users || []);
+            }
+        } catch (err) {
+            console.error('[updateVerticalInfo] Error:', err);
+        } finally {
+            setLoadingMembers(false);
+        }
+    }, []);
+
+    // On vertical change (from dropdown selection)
     const handleVerticalChange = useCallback(async (v) => {
+        console.log('[handleVerticalChange] Start:', { v });
         setSelectedVertical(v);
         setVerticalMembers({ users: [], groups: [] });
         setVhGroupName(''); setVhExists(false); setVhMembers([]);
-        if (!v) return;
+        setVhCurrentDisplayName('');
 
-        const vhName = toVerticalHeadName(v);
-        setVhGroupName(vhName);
+        if (!v) {
+            console.log('[handleVerticalChange] Empty selection, returning early');
+            return;
+        }
 
-        setLoadingMembers(true);
-        const [membersRes, vhRes, vhMembersRes] = await Promise.allSettled([
-            api.get(`/groups/${v}/members`),
-            api.get(`/groups/exists/${vhName}`),
-            api.get(`/groups/${vhName}/members`),
-        ]);
-        setLoadingMembers(false);
-
-        if (membersRes.status === 'fulfilled') {
-            setVerticalMembers({
-                users:  membersRes.value.data.users  || [],
-                groups: membersRes.value.data.groups || [],
-            });
-        }
-        if (vhRes.status === 'fulfilled') {
-            setVhExists(vhRes.value.data.exists);
-            const vhProps = vhRes.value.data.properties;
-            setVhCurrentDisplayName(vhProps?.group_display_name || '');
-        }
-        if (vhMembersRes.status === 'fulfilled') {
-            setVhMembers(vhMembersRes.value.data.users || []);
-        }
-    }, []);
+        await updateVerticalInfo(v);
+    }, [updateVerticalInfo]);
 
     // On user change
     // Get users already in the group
@@ -552,29 +662,84 @@ const AddMembersTab = ({ setToast }) => {
     };
 
     const handleMarkVerticalHead = async () => {
-        if (!selectedVertical || selectedUsers.length === 0) return;
+        console.log('[handleMarkVerticalHead] Start:', {
+            selectedVertical,
+            selectedUsers,
+            vhGroupName,
+            vhExists
+        });
+
+        if (!selectedVertical || selectedUsers.length === 0) {
+            console.warn('[handleMarkVerticalHead] Missing required fields:', {
+                selectedVertical,
+                selectedUsersCount: selectedUsers.length
+            });
+            return;
+        }
+
+        if (!vhGroupName) {
+            console.error('[handleMarkVerticalHead] vhGroupName is empty! This should have been set in handleVerticalChange');
+            setToast({ type: 'error', message: 'Vertical head group name is not set. Please select a vertical first.' });
+            return;
+        }
+
         const firstUser = selectedUsers[0];
         const userObj = users.find(u => u.user_login_name === firstUser);
         const userDisplayName = userObj?.object_name || firstUser;
+
         setCreatingVH(true);
         try {
             const vhDisplayName = selectedVertical.replace(/_/g, '-').toUpperCase() + ` -${userDisplayName}`;
+            console.log('[handleMarkVerticalHead] Creating VH:', {
+                vhGroupName,
+                vhDisplayName,
+                firstUser,
+                userDisplayName
+            });
+
+            // Try to create the group (it might already exist)
             try {
-                await api.post('/groups', { group_name: vhGroupName, group_display_name: vhDisplayName });
+                const createRes = await api.post('/groups', {
+                    group_name: vhGroupName,
+                    group_display_name: vhDisplayName
+                });
+                console.log('[handleMarkVerticalHead] Group created:', createRes.data);
             } catch (createErr) {
                 const msg = createErr.response?.data?.message || '';
+                console.warn('[handleMarkVerticalHead] Group creation error (checking if already exists):', {
+                    status: createErr.response?.status,
+                    message: msg
+                });
+                // If it's an "already exists" error, continue — we just want to add the user
                 if (!msg.toLowerCase().includes('already') && !msg.toLowerCase().includes('exist')) {
                     throw createErr;
                 }
             }
-            await api.post(`/groups/${vhGroupName}/members`, { memberName: firstUser, memberType: 'user' });
-            setToast({ type: 'success', message: `Vertical head '${vhGroupName}' created and '${firstUser}' assigned.` });
+
+            // Add the user to the vertical head group
+            await api.post(`/groups/${vhGroupName}/members`, {
+                memberName: firstUser,
+                memberType: 'user'
+            });
+
+            setToast({
+                type: 'success',
+                message: `Vertical head '${vhGroupName}' created and '${firstUser}' assigned.`
+            });
             setVhExists(true);
+
+            // Refresh vertical head members
             const vhMembersRes = await api.get(`/groups/${vhGroupName}/members`);
-            if (vhMembersRes.data) setVhMembers(vhMembersRes.data.users || []);
+            if (vhMembersRes.data) {
+                setVhMembers(vhMembersRes.data.users || []);
+            }
         } catch (err) {
-            setToast({ type: 'error', message: err.response?.data?.message || 'Failed to create vertical head.' });
-        } finally { setCreatingVH(false); }
+            const errorMsg = err.response?.data?.message || err.message || 'Failed to create vertical head.';
+            console.error('[handleMarkVerticalHead] Error:', { error: err, message: errorMsg });
+            setToast({ type: 'error', message: errorMsg });
+        } finally {
+            setCreatingVH(false);
+        }
     };
 
     const handleModifyVerticalHead = async () => {
