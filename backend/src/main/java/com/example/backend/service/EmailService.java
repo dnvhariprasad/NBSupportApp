@@ -31,7 +31,8 @@ public class EmailService {
                 + "Please reset your password after 1st log in.\n\n"
                 + "The password for old ECM application will be the password that you were using before.\n\n"
                 + "Regards,\n"
-                + "Admin Team, " + adminUser;
+                + "Admin Team,\n"
+                + "NEO Support Team.";
 
         return sendEmail(toEmail, subject, body);
     }
