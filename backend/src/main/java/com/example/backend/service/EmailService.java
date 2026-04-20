@@ -27,7 +27,9 @@ public class EmailService {
     public boolean sendPasswordResetEmail(String toEmail, String userName, String newPassword, String adminUser) {
         String subject = "Your password has been reset";
         String body = "Dear " + userName + ",\n\n"
-                + "Your password has been reset to: " + newPassword + "\n\n"
+                + "Your password for NEO application is " + newPassword + "\n\n"
+                + "Please reset your password after 1st log in.\n\n"
+                + "The password for old ECM application will be the password that you were using before.\n\n"
                 + "Regards,\n"
                 + "Admin Team, " + adminUser;
 
