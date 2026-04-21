@@ -3,12 +3,15 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import useIdleTimeout from '../../hooks/useIdleTimeout';
+import IdleWarningModal from '../IdleWarningModal';
 
 const MainLayout = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
     const adminRole = storedUser.properties?.admin_role || storedUser.admin_role || null;
     const hasAccess = adminRole === 'Super Admin' || adminRole === 'Local Admin';
     const navigate = useNavigate();
+    const { showWarning, remainingTime, handleContinue } = useIdleTimeout(30000, 1800000);
 
     if (!hasAccess) {
         return (
@@ -41,6 +44,7 @@ const MainLayout = () => {
                     <Outlet />
                 </div>
             </main>
+            <IdleWarningModal isOpen={showWarning} remainingTime={remainingTime} onContinue={handleContinue} />
         </div>
     );
 };
