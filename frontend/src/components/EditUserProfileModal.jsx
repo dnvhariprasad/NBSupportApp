@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { X, Save, Loader2, User, Building2, MapPin, Tag, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
-import { USER_GRADES, DESIGNATION_OPTIONS, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS } from '../data/nabardMetadata.js';
+import { USER_GRADES, DESIGNATION_OPTIONS, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS, DDM_DISTRICTS } from '../data/nabardMetadata.js';
 
 const USER_GRADE_OPTIONS = [
     { value: '', label: '— Select grade —', level: '' },
@@ -40,6 +40,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [errors, setErrors] = useState({});
     const [designationChanged, setDesignationChanged] = useState(false);
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
+    const hindiTouched = useRef({});
 
     // Pending cases / delegate state
     const [checkingInbox,       setCheckingInbox]       = useState(false);
@@ -101,6 +102,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         const officeType = profile.office_type || '';
         const location   = profile.location   || '';
         const deptName   = profile.department_name || '';
+        const isDDMProfile = deptName === 'DDM';
 
         const locs        = getLocations(officeType);
         const locObj      = locs.find(l => l.location === location);
@@ -119,7 +121,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 : (profile.department_short_code ? [profile.department_short_code] : []);
             deptShortCodeMulti = multiCodes;
             deptShortCode      = multiCodes[0] || '';
-            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: multiCodes, designation: profile.designation || '' };
+            // For DDM users: store empty deptCodes so standard group logic doesn't process district names
+            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: isDDMProfile ? [] : multiCodes, designation: profile.designation || '' };
         } else {
             // For HO users: try to get department_short_code from multiple sources
             const deptObj = depts.find(d => d.name === deptName);
@@ -464,7 +467,10 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         const locs = getLocations(form.office_type);
         const loc  = locs.find(l => l.location === v);
         set('ro_short_code',             loc ? loc.shortCode : '');
-        set('department_name',           '');
+        // For DDM users: clear district; for others: clear department_name
+        if (form.department_name !== 'DDM') {
+            set('department_name',           '');
+        }
         set('department_short_code',     '');
         set('department_names',          []);
         set('department_short_code_multi', []);
@@ -509,6 +515,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     };
 
+    const handleDDMDistrictChange = (district) => {
+        set('department_short_code', district);
+        set('department_short_code_multi', district ? [district] : []);
+    };
+
     const handleGradeChange = (v) => {
         set('user_grade', v);
         const opt = USER_GRADE_OPTIONS.find(o => o.value === v);
@@ -527,6 +538,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (!form.user_email_address?.trim()) v.user_email_address = 'Email is required';
         if (!form.hindi_user_name?.trim())    v.hindi_user_name    = 'Hindi Name is required';
         if (!form.hindi_designation?.trim())  v.hindi_designation  = 'Hindi Designation is required';
+        const isDDMUser = form.department_name === 'DDM' && ['RO', 'TE'].includes(form.office_type);
+        if (isDDMUser && !form.department_short_code?.trim()) v.department_short_code = 'District is required';
         if (Object.keys(v).length > 0) { setErrors(v); return; }
         setErrors({});
         setLoading(true);
@@ -536,7 +549,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             const { department_short_code_multi, ...rest } = form;
             const payload = {
                 ...rest,
-                ...(isROTE && { department_short_code_multi }),
+                ...(isROTE && !isDDMUser && { department_short_code_multi }),
+                ...(isDDMUser && { department_short_code_multi: form.department_short_code ? [form.department_short_code] : [] }),
             };
             await api.patch(`/users/profiles/${user.r_object_id}`, payload);
 
@@ -554,50 +568,71 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
             const loginName = user.user_login_name;
             const old = originalGroupInfoRef.current;
-            const newDeptCodes = isROTE
-                ? (form.department_short_code_multi || [])
-                : (form.department_short_code ? [form.department_short_code] : []);
             const newRoShortCode = (form.ro_short_code || '').toLowerCase();
 
-            const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
-            const newGroups = getGroups(form.office_type, newRoShortCode, newDeptCodes);
-
-            for (const g of oldGroups) {
-                if (!newGroups.includes(g))
-                    api.delete(`/groups/${g}/members/${encodeURIComponent(loginName)}`).catch(() => {});
-            }
-            for (const g of newGroups) {
-                if (!oldGroups.includes(g))
-                    api.post(`/groups/${g}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
-            }
-
-            // ── CGM group management based on designation change ──────────
-            const getCgmGroup = (offType, roCode, deptCodes) => {
-                if (offType === 'HO') {
-                    const dc = (deptCodes[0] || '').toLowerCase();
-                    return dc ? `ecm_digidak_ho_${dc}_cgm` : '';
-                } else if (['RO', 'TE'].includes(offType) && roCode) {
-                    return `ecm_digidak_${offType.toLowerCase()}_${roCode.toLowerCase()}_cgm`;
+            if (isDDMUser) {
+                // DDM-specific group management: handle ecm_digidak_ro_<code>_ddm groups
+                const oldRoCode = (old.roShortCode || '').toLowerCase();
+                if (oldRoCode !== newRoShortCode) {
+                    if (oldRoCode) {
+                        api.delete(`/groups/ecm_digidak_ro_${oldRoCode}_ddm/members/${encodeURIComponent(loginName)}`).catch(() => {});
+                    }
+                    if (newRoShortCode) {
+                        api.post(`/groups/ecm_digidak_ro_${newRoShortCode}_ddm/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+                    }
                 }
-                return '';
-            };
+            } else {
+                // Standard group management for non-DDM users
+                const newDeptCodes = isROTE
+                    ? (form.department_short_code_multi || [])
+                    : (form.department_short_code ? [form.department_short_code] : []);
 
-            const oldDesignation = (old.designation || '').toUpperCase();
-            const newDesignation = (form.designation || '').toUpperCase();
-            const wasCGM = oldDesignation === 'CGM';
-            const isCGM  = newDesignation === 'CGM';
+                const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
+                const newGroups = getGroups(form.office_type, newRoShortCode, newDeptCodes);
 
-            if (isCGM && !wasCGM) {
-                // Designation changed TO CGM — add CGM group
-                const cgmGroup = getCgmGroup(form.office_type, newRoShortCode, newDeptCodes);
-                if (cgmGroup) {
-                    api.post(`/groups/${cgmGroup}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+                for (const g of oldGroups) {
+                    if (!newGroups.includes(g))
+                        api.delete(`/groups/${g}/members/${encodeURIComponent(loginName)}`).catch(() => {});
                 }
-            } else if (wasCGM && !isCGM) {
-                // Designation changed FROM CGM — remove old CGM group
-                const cgmGroup = getCgmGroup(old.officeType, old.roShortCode, old.deptCodes);
-                if (cgmGroup) {
-                    api.delete(`/groups/${cgmGroup}/members/${encodeURIComponent(loginName)}`).catch(() => {});
+                for (const g of newGroups) {
+                    if (!oldGroups.includes(g))
+                        api.post(`/groups/${g}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+                }
+            }
+
+            // ── CGM group management based on designation change (skip for DDM users) ──────────
+            if (!isDDMUser) {
+                const getCgmGroup = (offType, roCode, deptCodes) => {
+                    if (offType === 'HO') {
+                        const dc = (deptCodes[0] || '').toLowerCase();
+                        return dc ? `ecm_digidak_ho_${dc}_cgm` : '';
+                    } else if (['RO', 'TE'].includes(offType) && roCode) {
+                        return `ecm_digidak_${offType.toLowerCase()}_${roCode.toLowerCase()}_cgm`;
+                    }
+                    return '';
+                };
+
+                const newDeptCodes = isROTE
+                    ? (form.department_short_code_multi || [])
+                    : (form.department_short_code ? [form.department_short_code] : []);
+
+                const oldDesignation = (old.designation || '').toUpperCase();
+                const newDesignation = (form.designation || '').toUpperCase();
+                const wasCGM = oldDesignation === 'CGM';
+                const isCGM  = newDesignation === 'CGM';
+
+                if (isCGM && !wasCGM) {
+                    // Designation changed TO CGM — add CGM group
+                    const cgmGroup = getCgmGroup(form.office_type, newRoShortCode, newDeptCodes);
+                    if (cgmGroup) {
+                        api.post(`/groups/${cgmGroup}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+                    }
+                } else if (wasCGM && !isCGM) {
+                    // Designation changed FROM CGM — remove old CGM group
+                    const cgmGroup = getCgmGroup(old.officeType, old.roShortCode, old.deptCodes);
+                    if (cgmGroup) {
+                        api.delete(`/groups/${cgmGroup}/members/${encodeURIComponent(loginName)}`).catch(() => {});
+                    }
                 }
             }
 
@@ -622,6 +657,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const locations = getLocations(form.office_type);
     const isHO      = form.office_type === 'HO';
     const isROTE    = ['RO', 'TE'].includes(form.office_type);
+    const isDDMUser = form.department_name === 'DDM' && isROTE;
 
     // Delegate case modal
     const DelegateCaseModal = () => {
@@ -925,49 +961,65 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                        <Label><Layers size={10} className="inline mr-0.5" />Department</Label>
+                                        <Label><Layers size={10} className="inline mr-0.5" />{isDDMUser ? 'District' : 'Department'}</Label>
                                         {isROTE ? (
-                                            <div className="border border-slate-200 rounded-lg overflow-hidden">
-                                                {needsLoc ? (
-                                                    <p className="px-3 py-2 text-sm text-slate-400">— Select location first —</p>
-                                                ) : !form.office_type ? (
-                                                    <p className="px-3 py-2 text-sm text-slate-400">— Select office type first —</p>
-                                                ) : (
-                                                    <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
-                                                        {depts.map(d => (
-                                                            <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={(form.department_short_code_multi || []).includes(d.shortCode)}
-                                                                    onChange={() => {
-                                                                        const currentCodes = form.department_short_code_multi || [];
-                                                                        const isRemoving = currentCodes.includes(d.shortCode);
-                                                                        const newCodes = isRemoving
-                                                                            ? currentCodes.filter(c => c !== d.shortCode)
-                                                                            : [...currentCodes, d.shortCode];
-                                                                        const firstDept = depts.find(dept => dept.shortCode === newCodes[0]);
-                                                                        set('department_short_code',       newCodes[0] || '');
-                                                                        set('department_short_code_multi', newCodes);
-                                                                        set('department_name',             firstDept?.name || '');
-
-                                                                        // RO/TE: check inbox for all departments removed vs original
-                                                                        const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
-                                                                        const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
-                                                                        if (removedCodes.length > 0) {
-                                                                            checkDeptInbox(removedCodes);
-                                                                        } else {
-                                                                            setShowDeptBlock(false);
-                                                                            setDeptPendingCases([]);
-                                                                        }
-                                                                    }}
-                                                                    className="rounded accent-[#0A66C2]"
-                                                                />
-                                                                <span className="text-sm text-slate-700">{d.name}</span>
-                                                            </label>
+                                            isDDMUser ? (
+                                                // District dropdown for DDM users
+                                                <SelectWrapper>
+                                                    <select value={form.department_short_code || ''}
+                                                        onChange={e => handleDDMDistrictChange(e.target.value)}
+                                                        disabled={!form.location}
+                                                        className={!form.location ? disabledSelectCls : selectCls}>
+                                                        <option value="">— Select district —</option>
+                                                        {(DDM_DISTRICTS[form.location] || []).map(d => (
+                                                            <option key={d} value={d}>{d}</option>
                                                         ))}
-                                                    </div>
-                                                )}
-                                            </div>
+                                                    </select>
+                                                </SelectWrapper>
+                                            ) : (
+                                                // Department checkboxes for non-DDM RO/TE users
+                                                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                                    {needsLoc ? (
+                                                        <p className="px-3 py-2 text-sm text-slate-400">— Select location first —</p>
+                                                    ) : !form.office_type ? (
+                                                        <p className="px-3 py-2 text-sm text-slate-400">— Select office type first —</p>
+                                                    ) : (
+                                                        <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                                            {depts.map(d => (
+                                                                <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={(form.department_short_code_multi || []).includes(d.shortCode)}
+                                                                        onChange={() => {
+                                                                            const currentCodes = form.department_short_code_multi || [];
+                                                                            const isRemoving = currentCodes.includes(d.shortCode);
+                                                                            const newCodes = isRemoving
+                                                                                ? currentCodes.filter(c => c !== d.shortCode)
+                                                                                : [...currentCodes, d.shortCode];
+                                                                            const firstDept = depts.find(dept => dept.shortCode === newCodes[0]);
+                                                                            set('department_short_code',       newCodes[0] || '');
+                                                                            set('department_short_code_multi', newCodes);
+                                                                            set('department_name',             firstDept?.name || '');
+
+                                                                            // RO/TE: check inbox for all departments removed vs original
+                                                                            const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
+                                                                            const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
+                                                                            if (removedCodes.length > 0) {
+                                                                                checkDeptInbox(removedCodes);
+                                                                            } else {
+                                                                                setShowDeptBlock(false);
+                                                                                setDeptPendingCases([]);
+                                                                            }
+                                                                        }}
+                                                                        className="rounded accent-[#0A66C2]"
+                                                                    />
+                                                                    <span className="text-sm text-slate-700">{d.name}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
                                         ) : (
                                             <SelectWrapper>
                                                 <select value={form.department_name}
@@ -985,13 +1037,16 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         )}
                                     </div>
                                     <div className="space-y-1">
-                                        <Label><Tag size={10} className="inline mr-0.5" />Dept. Short Code</Label>
+                                        <Label><Tag size={10} className="inline mr-0.5" />{isDDMUser ? 'District Code' : 'Dept. Short Code'}</Label>
                                         <input type="text" readOnly
-                                            value={isROTE
-                                                ? (form.department_short_code_multi || []).join(',')
-                                                : (form.department_short_code || '')}
+                                            value={isDDMUser
+                                                ? (form.department_short_code || '')
+                                                : (isROTE
+                                                    ? (form.department_short_code_multi || []).join(',')
+                                                    : (form.department_short_code || ''))}
                                             placeholder="Auto-filled"
                                             className={readonlyCls} />
+                                        {isDDMUser && errors.department_short_code && <p className="text-xs text-red-500">{errors.department_short_code}</p>}
                                     </div>
                                 </div>
                                 {checkingDeptInbox && (
