@@ -566,7 +566,12 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 return groups;
             };
 
-            const loginName = user.user_login_name;
+            const memberName = user.user_login_name;
+            if (!memberName || !memberName.trim()) {
+                console.error('Cannot perform group updates: user_login_name is missing', user);
+                throw new Error('User login name is required for group management');
+            }
+
             const old = originalGroupInfoRef.current;
             const newRoShortCode = (form.ro_short_code || '').toLowerCase();
 
@@ -575,10 +580,14 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 const oldRoCode = (old.roShortCode || '').toLowerCase();
                 if (oldRoCode !== newRoShortCode) {
                     if (oldRoCode) {
-                        api.delete(`/groups/ecm_digidak_ro_${oldRoCode}_ddm/members/${encodeURIComponent(loginName)}`).catch(() => {});
+                        api.delete(`/groups/ecm_digidak_ro_${oldRoCode}_ddm/members/${encodeURIComponent(memberName)}`).catch(err => {
+                            console.warn(`Failed to remove DDM group: ${err.message}`);
+                        });
                     }
                     if (newRoShortCode) {
-                        api.post(`/groups/ecm_digidak_ro_${newRoShortCode}_ddm/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+                        api.post(`/groups/ecm_digidak_ro_${newRoShortCode}_ddm/members`, { memberName, memberType: 'user' }).catch(err => {
+                            console.warn(`Failed to add DDM group: ${err.message}`);
+                        });
                     }
                 }
             } else {
@@ -590,17 +599,39 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
                 const newGroups = getGroups(form.office_type, newRoShortCode, newDeptCodes);
 
+                console.log('Group Management Debug:', {
+                    memberName,
+                    oldOfficeType: old.officeType,
+                    oldRoCode: old.roShortCode,
+                    oldDeptCodes: old.deptCodes,
+                    oldGroups,
+                    newOfficeType: form.office_type,
+                    newRoCode: newRoShortCode,
+                    newDeptCodes,
+                    newGroups,
+                    groupsToRemove: oldGroups.filter(g => !newGroups.includes(g)),
+                    groupsToAdd: newGroups.filter(g => !oldGroups.includes(g))
+                });
+
                 for (const g of oldGroups) {
-                    if (!newGroups.includes(g))
-                        api.delete(`/groups/${g}/members/${encodeURIComponent(loginName)}`).catch(() => {});
+                    if (!newGroups.includes(g)) {
+                        console.log(`Removing user from group: ${g}`);
+                        api.delete(`/groups/${g}/members/${encodeURIComponent(memberName)}`).catch(err => {
+                            console.error(`Failed to remove ${g}:`, err.response?.data || err.message);
+                        });
+                    }
                 }
                 for (const g of newGroups) {
-                    if (!oldGroups.includes(g))
-                        api.post(`/groups/${g}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+                    if (!oldGroups.includes(g)) {
+                        console.log(`Adding user to group: ${g}`);
+                        api.post(`/groups/${g}/members`, { memberName, memberType: 'user' }).catch(err => {
+                            console.error(`Failed to add ${g}:`, err.response?.data || err.message);
+                        });
+                    }
                 }
             }
 
-            // ── CGM group management based on designation change (skip for DDM users) ──────────
+            // ── CGM group management based on designation change or location change (skip for DDM users) ──────────
             if (!isDDMUser) {
                 const getCgmGroup = (offType, roCode, deptCodes) => {
                     if (offType === 'HO') {
@@ -620,18 +651,43 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 const newDesignation = (form.designation || '').toUpperCase();
                 const wasCGM = oldDesignation === 'CGM';
                 const isCGM  = newDesignation === 'CGM';
+                const oldRoCode = (old.roShortCode || '').toLowerCase();
+                const locationChanged = oldRoCode !== newRoShortCode;
 
                 if (isCGM && !wasCGM) {
                     // Designation changed TO CGM — add CGM group
                     const cgmGroup = getCgmGroup(form.office_type, newRoShortCode, newDeptCodes);
                     if (cgmGroup) {
-                        api.post(`/groups/${cgmGroup}/members`, { memberName: loginName, memberType: 'user' }).catch(() => {});
+                        console.log(`Adding CGM group: ${cgmGroup}`);
+                        api.post(`/groups/${cgmGroup}/members`, { memberName, memberType: 'user' }).catch(err => {
+                            console.error(`Failed to add ${cgmGroup}:`, err.response?.data || err.message);
+                        });
                     }
                 } else if (wasCGM && !isCGM) {
                     // Designation changed FROM CGM — remove old CGM group
                     const cgmGroup = getCgmGroup(old.officeType, old.roShortCode, old.deptCodes);
                     if (cgmGroup) {
-                        api.delete(`/groups/${cgmGroup}/members/${encodeURIComponent(loginName)}`).catch(() => {});
+                        console.log(`Removing CGM group (designation change): ${cgmGroup}`);
+                        api.delete(`/groups/${cgmGroup}/members/${encodeURIComponent(memberName)}`).catch(err => {
+                            console.error(`Failed to remove ${cgmGroup}:`, err.response?.data || err.message);
+                        });
+                    }
+                } else if (isCGM && locationChanged) {
+                    // Location changed while user is CGM — remove old location's CGM group, add new one
+                    const oldCgmGroup = getCgmGroup(old.officeType, old.roShortCode, old.deptCodes);
+                    const newCgmGroup = getCgmGroup(form.office_type, newRoShortCode, newDeptCodes);
+
+                    if (oldCgmGroup && oldCgmGroup !== newCgmGroup) {
+                        console.log(`Removing CGM group (location change): ${oldCgmGroup}`);
+                        api.delete(`/groups/${oldCgmGroup}/members/${encodeURIComponent(memberName)}`).catch(err => {
+                            console.error(`Failed to remove ${oldCgmGroup}:`, err.response?.data || err.message);
+                        });
+                    }
+                    if (newCgmGroup && oldCgmGroup !== newCgmGroup) {
+                        console.log(`Adding CGM group (location change): ${newCgmGroup}`);
+                        api.post(`/groups/${newCgmGroup}/members`, { memberName, memberType: 'user' }).catch(err => {
+                            console.error(`Failed to add ${newCgmGroup}:`, err.response?.data || err.message);
+                        });
                     }
                 }
             }
