@@ -31,14 +31,18 @@ const Sidebar = () => {
         { name: 'NABARD Department Management',  path: '/dashboard/departments', icon: Building2,  roles: ['Super Admin'] },
         { name: 'HO Vertical Management',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'ROTE' },
         { name: 'RO/TE Department Assignment',  path: '/dashboard/verticals2', icon: Network,     roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'HO' },
-        { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
+        { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null, hideForLocalAdmin: true },
         { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
-        { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null },
-        { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null },
-        { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null },
+        { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null, hideForLocalAdmin: true },
+        { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null, hideForLocalAdmin: true },
+        { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null, hideForLocalAdmin: true },
     ];
 
     const navItems = allNavItems.filter(item => {
+        // Hide items for Local Admin
+        if (isLocalAdmin && item.hideForLocalAdmin) {
+            return false;
+        }
         // Check role access
         if (item.roles && !item.roles.includes(adminRole)) {
             return false;
