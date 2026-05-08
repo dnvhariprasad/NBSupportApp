@@ -518,6 +518,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const handleDDMDistrictChange = (district) => {
         set('department_short_code', district);
         set('department_short_code_multi', district ? [district] : []);
+        set('department_name', 'DDM');
     };
 
     const handleGradeChange = (v) => {
@@ -1019,63 +1020,90 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                     <div className="space-y-1">
                                         <Label><Layers size={10} className="inline mr-0.5" />{isDDMUser ? 'District' : 'Department'}</Label>
                                         {isROTE ? (
-                                            isDDMUser ? (
-                                                // District dropdown for DDM users
-                                                <SelectWrapper>
-                                                    <select value={form.department_short_code || ''}
-                                                        onChange={e => handleDDMDistrictChange(e.target.value)}
-                                                        disabled={!form.location}
-                                                        className={!form.location ? disabledSelectCls : selectCls}>
-                                                        <option value="">— Select district —</option>
-                                                        {(DDM_DISTRICTS[form.location] || []).map(d => (
-                                                            <option key={d} value={d}>{d}</option>
-                                                        ))}
-                                                    </select>
-                                                </SelectWrapper>
-                                            ) : (
-                                                // Department checkboxes for non-DDM RO/TE users
-                                                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                                                    {needsLoc ? (
-                                                        <p className="px-3 py-2 text-sm text-slate-400">— Select location first —</p>
-                                                    ) : !form.office_type ? (
-                                                        <p className="px-3 py-2 text-sm text-slate-400">— Select office type first —</p>
-                                                    ) : (
-                                                        <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
-                                                            {depts.map(d => (
-                                                                <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={(form.department_short_code_multi || []).includes(d.shortCode)}
-                                                                        onChange={() => {
-                                                                            const currentCodes = form.department_short_code_multi || [];
-                                                                            const isRemoving = currentCodes.includes(d.shortCode);
-                                                                            const newCodes = isRemoving
-                                                                                ? currentCodes.filter(c => c !== d.shortCode)
-                                                                                : [...currentCodes, d.shortCode];
-                                                                            const firstDept = depts.find(dept => dept.shortCode === newCodes[0]);
-                                                                            set('department_short_code',       newCodes[0] || '');
-                                                                            set('department_short_code_multi', newCodes);
-                                                                            set('department_name',             firstDept?.name || '');
+                                            // RO/TE: DDM option always visible, with conditional content below
+                                            <div className="space-y-2">
+                                                {/* DDM option - always visible for RO/TE */}
+                                                {!needsLoc && form.office_type && (
+                                                    <label className="flex items-center gap-3 px-3 py-2 cursor-pointer border border-blue-200 rounded-lg bg-blue-50 hover:bg-blue-100">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={form.department_name === 'DDM'}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    set('department_name', 'DDM');
+                                                                    set('department_short_code', '');
+                                                                    set('department_short_code_multi', []);
+                                                                } else {
+                                                                    set('department_name', '');
+                                                                    set('department_short_code', '');
+                                                                    set('department_short_code_multi', []);
+                                                                }
+                                                            }}
+                                                            className="rounded accent-[#0A66C2]"
+                                                        />
+                                                        <span className="text-sm font-semibold text-blue-700">DDM — District Development Manager</span>
+                                                    </label>
+                                                )}
 
-                                                                            // RO/TE: check inbox for all departments removed vs original
-                                                                            const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
-                                                                            const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
-                                                                            if (removedCodes.length > 0) {
-                                                                                checkDeptInbox(removedCodes);
-                                                                            } else {
-                                                                                setShowDeptBlock(false);
-                                                                                setDeptPendingCases([]);
-                                                                            }
-                                                                        }}
-                                                                        className="rounded accent-[#0A66C2]"
-                                                                    />
-                                                                    <span className="text-sm text-slate-700">{d.name}</span>
-                                                                </label>
+                                                {/* District dropdown for DDM users OR Department checkboxes for regular users */}
+                                                {isDDMUser ? (
+                                                    // District dropdown for checked DDM
+                                                    <SelectWrapper>
+                                                        <select value={form.department_short_code || ''}
+                                                            onChange={e => handleDDMDistrictChange(e.target.value)}
+                                                            disabled={!form.location}
+                                                            className={!form.location ? disabledSelectCls : selectCls}>
+                                                            <option value="">— Select district —</option>
+                                                            {(DDM_DISTRICTS[form.location] || []).map(d => (
+                                                                <option key={d} value={d}>{d}</option>
                                                             ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )
+                                                        </select>
+                                                    </SelectWrapper>
+                                                ) : (
+                                                    // Department checkboxes for unchecked DDM
+                                                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                                        {needsLoc ? (
+                                                            <p className="px-3 py-2 text-sm text-slate-400">— Select location first —</p>
+                                                        ) : !form.office_type ? (
+                                                            <p className="px-3 py-2 text-sm text-slate-400">— Select office type first —</p>
+                                                        ) : (
+                                                            <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                                                {depts.map(d => (
+                                                                    <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={(form.department_short_code_multi || []).includes(d.shortCode)}
+                                                                            onChange={() => {
+                                                                                const currentCodes = form.department_short_code_multi || [];
+                                                                                const isRemoving = currentCodes.includes(d.shortCode);
+                                                                                const newCodes = isRemoving
+                                                                                    ? currentCodes.filter(c => c !== d.shortCode)
+                                                                                    : [...currentCodes, d.shortCode];
+                                                                                const firstDept = depts.find(dept => dept.shortCode === newCodes[0]);
+                                                                                set('department_short_code',       newCodes[0] || '');
+                                                                                set('department_short_code_multi', newCodes);
+                                                                                set('department_name',             firstDept?.name || '');
+
+                                                                                // RO/TE: check inbox for all departments removed vs original
+                                                                                const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
+                                                                                const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
+                                                                                if (removedCodes.length > 0) {
+                                                                                    checkDeptInbox(removedCodes);
+                                                                                } else {
+                                                                                    setShowDeptBlock(false);
+                                                                                    setDeptPendingCases([]);
+                                                                                }
+                                                                            }}
+                                                                            className="rounded accent-[#0A66C2]"
+                                                                        />
+                                                                        <span className="text-sm text-slate-700">{d.name}</span>
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         ) : (
                                             <SelectWrapper>
                                                 <select value={form.department_name}
