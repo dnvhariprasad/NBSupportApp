@@ -197,11 +197,45 @@ const MovementRegisterModal = ({ caseItem, onClose }) => {
 
 // ─── CaseInbox2Page ────────────────────────────────────────────────────────────
 const CaseInbox2Page = () => {
+    // Local Admin role & profile context
+    const storedUser    = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole     = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin  = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+
+    const [profileCtx, setProfileCtx] = useState(null);
+    const [localAdminOfficeType, setLocalAdminOfficeType] = useState('');
+    const [localAdminLocation, setLocalAdminLocation] = useState('');
+    const [localAdminDepartments, setLocalAdminDepartments] = useState([]);
+
+    // Fetch Local Admin profile context on mount
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                setLocalAdminOfficeType(ctx.office_type || '');
+                setLocalAdminLocation(ctx.location || '');
+                const deptMulti = ctx.department_short_code_multi || [];
+                setLocalAdminDepartments(Array.isArray(deptMulti) ? deptMulti : []);
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
     // Filter state
-    const [officeType,  setOfficeType]  = useState('');
-    const [location,    setLocation]    = useState('');
+    const [officeType,  setOfficeType]  = useState(() => isLocalAdmin ? '' : '');
+    const [location,    setLocation]    = useState(() => isLocalAdmin ? '' : '');
     const [department,  setDepartment]  = useState(null);
     const [allDepartments, setAllDepartments] = useState([]);
+
+    // Initialize filters for Local Admin when profile context loads
+    useEffect(() => {
+        if (isLocalAdmin && profileCtx && localAdminOfficeType) {
+            setOfficeType(localAdminOfficeType);
+            if (localAdminLocation) setLocation(localAdminLocation);
+        }
+    }, [isLocalAdmin, profileCtx, localAdminOfficeType, localAdminLocation]);
 
     // Users state
     const [users,        setUsers]        = useState([]);
@@ -222,11 +256,30 @@ const CaseInbox2Page = () => {
     const locations = getLocations(officeType);
     const isRoTe    = officeType === 'RO' || officeType === 'TE';
 
+    // For Local Admin: filter departments to only those in their profile
+    const departments = isLocalAdmin && profileCtx
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return allDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : allDepartments;
+
     // Fetch departments when office type / location changes
     useEffect(() => {
         if (!officeType || (isRoTe && !location)) { setAllDepartments([]); return; }
         fetchDepartments(officeType, location).then(setAllDepartments);
     }, [officeType, location]);
+
+    // For Local Admin: auto-fetch users when profile context loads with location/office type
+    useEffect(() => {
+        if (!isLocalAdmin) return;
+        if (!profileCtx || !officeType || (isRoTe && !location)) return;
+        if (isRoTe && location) {
+            fetchUsersByLocation(location);
+        }
+    }, [isLocalAdmin, profileCtx, officeType, location]);
 
     // Fetch users by location
     const fetchUsersByLocation = async (loc) => {
@@ -273,7 +326,7 @@ const CaseInbox2Page = () => {
             else setUsers([]);
             return;
         }
-        const dept = allDepartments.find(d => d.shortCode === shortCode) || null;
+        const dept = departments.find(d => d.shortCode === shortCode) || null;
         setDepartment(dept);
 
         if (dept) {
@@ -363,7 +416,8 @@ const CaseInbox2Page = () => {
                         <FieldLabel icon={Building2} label="Office Type" />
                         <SelectWrapper>
                             <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)}
-                                className={selectCls}>
+                                disabled={isLocalAdmin}
+                                className={isLocalAdmin ? disabledSelectCls : selectCls}>
                                 <option value="">— Select office type —</option>
                                 <option value="HO">HO — Head Office</option>
                                 <option value="RO">RO — Regional Office</option>
@@ -376,7 +430,8 @@ const CaseInbox2Page = () => {
                         {isRoTe ? (
                             <SelectWrapper>
                                 <select value={location} onChange={e => handleLocationChange(e.target.value)}
-                                    className={selectCls}>
+                                    disabled={isLocalAdmin}
+                                    className={isLocalAdmin ? disabledSelectCls : selectCls}>
                                     <option value="">— Select location —</option>
                                     {locations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
                                 </select>
@@ -394,7 +449,7 @@ const CaseInbox2Page = () => {
                                 disabled={!officeType || (isRoTe && !location)}
                                 className={!officeType || (isRoTe && !location) ? disabledSelectCls : selectCls}>
                                 <option value="">{!officeType ? '— Select office first —' : (isRoTe && !location) ? '— Select location first —' : '— All departments —'}</option>
-                                {allDepartments.map(d => <option key={d.shortCode} value={d.shortCode}>{d.name}</option>)}
+                                {departments.map(d => <option key={d.shortCode} value={d.shortCode}>{d.name}</option>)}
                             </select>
                         </SelectWrapper>
                     </div>
