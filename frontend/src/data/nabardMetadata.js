@@ -878,6 +878,38 @@ export const RO_DEPARTMENTS = {
   ],
 };
 
+// ─── DDM (District Development Manager) Districts ────────────────────────────
+// Maps location names (matching RO_LOCATIONS) to district names from DDM.xlsx
+export const DDM_DISTRICTS = {
+  'Andhra Pradesh': ['Ananthapur','Kakinada','Nandyal','Kadapa','Vizianagaram','Guntur','Kurnool','Parvathipuram Manyam','Prakasam','Nellore','Visakhapatnam','Eluru','East Godavari','West Godavari','Srikakulam','Chittoor','Annamayya','Sri Sathya Sai'],
+  'Arunachal Pradesh': ['Namsai','Lower Dibang Valley','Lower Subansiri','East Kameng'],
+  'Assam': ['Diphu','Goalpara','Nagaon','Darrang (Mangaldoi)','Golaghat','Dibrugarh','Tinsukhia','Baksa','Sibsagar','Lakhimpur','Cachar','Dima Hasao','Dhubri','Morigaon / Jagiroad','Bongaigaon','Nalbari','Udalguri','Barpeta','Hailakandi','Kokrajhar','Jorhat','Tezpur (Sonitpur)'],
+  'Bihar': ['Sheikhpura','Aurangabad','Sitamarhi','Muzaffarpur','Saran','Begusarai','Rohtas','Khagaria','Katihar','Bhagalpur','East Champaran','Gaya','Newadah','Nalanda','Supaul','Madhubani','West Champaran','Munger','Darbhanga','Jamuai','Jehanabad','Siwan','Saharsa','Samastipur','Kaimur','Purnea','Banka','Araria'],
+  'Chhattisgarh': ['Bastar','Dantewada','Kondagaon','Raigarh','Mahasamund','Rajnandgaon','Kabirdham','Janjgir Champa','Sarguja','Kankar','Durg','Manendragarh','Bilaspur'],
+  'Goa': ['South Goa (Madgaon)'],
+  'Gujarat': ['Banaskantha','Panchmahal','Surat','Sabarkantha','Valsad','Bharuch','Mehsana','Junagadh','Dahod','Tapi','Rajkot','Bhavnagar','Surendranagar','Morbi','Porbandar','Devbhumi Dwarka','Navsari','Anand','Vadodara','Jamnagar','Narmada','Amreli','Dang','Kutch (Bhuj)'],
+  'Himachal Pradesh': ['Solan','Mandi','Kulu','Kangra','Sirmour','Hamirpur','Kinnaur','Una','Chamba','Bilaspur'],
+  'Jammu and Kashmir': ['Samba','Leh - Ladakh','Kupwara','Kishtwar','Anantnag','Reasi','Pulwama','Ramban','Baramulla','Udhampur','Rajouri','Kathua','Doda'],
+  'Jharkhand': ['Lohardaga','Simdega','Garwah','Khunti','East Singhbhum','Deoghar','Bokaro','Koderma','Godda','Ramgarh','Chatra','Gumla','Dumka','Sahebganj','Giridih','Dhanbad','Latehar','Pakur','Hazaribagh','Saraikela Kharsawan','Palamau'],
+  'Karnataka': ['Uttara Kannada','Dakshin Kannada','Chamarajanagar','Yadgir','Davangere','Koppal','Raichur','Dharwar','Bijapur','Tumkur','Mysore','Kodagu','Bellary','Haveri','Mandya','Chitradurga','Bagalkot','Belgaum','Gulbarga','Shimoga','Bidar','Vijayanagara','Hassan','Gadag','Chickmangalur','Chikkaballapura'],
+  'Kerala': ['Thrissur','Alappuzha','Kottayam','Ernakulam','Idukki (Thodupuzha)','Kannur','Palakkad','Malappuram','Kozhikode','Kollam','Pathanamthitta','Wayanad','Kasargod'],
+  'Madhya Pradesh': ['Indore','Chhatarpur','Rewa','Satna','Vidisha','Dhar','Khandwa','Rajgarh','Ratlam','Chindwara','Mandla','Guna','Khargone','Gwalior','Shivpuri','Morena','Hoshangabad','Barwani','Tikamgarh','Shahdol','Sagar','Katni','Dewas','Mandsaur','Betul','Niwari','Jhabua','Damoh','Umaria','Balaghat','Shajapur','Narsinghpur','Dindori','Jabalpur','Sidhi'],
+  'Maharashtra': ['Kolhapur','Dharashiv','Amaravati','Raigad','Satara','Bhandara','Latur','Ahilyanagar','Solapur','Wardha','Nagpur','Nandurbar','Sangli','Chandrapur','Jalgaon','Beed','Palghar','Sindhudurg','Washim','Yeotmal','Gondia','Nanded','Gadchiroli','Akola','Jalna','Buldhana','Ratnagiri','Dhule','Hingoli','Parbhani'],
+  'Manipur': ['Senapati','Churachandpur','Ukhrul','Tamenglong'],
+  'Meghalaya': ['Ribhoi','Jaintia Hills','West Khasi Hills','South Garo Hills','Tura (West Garo Hills)','East Garo Hills'],
+  'Mizoram': ['Lunglei','Champhai','Kolasib'],
+  'Nagaland': ['Mokokchung','Kohima','Phek','Kiphire','Mon'],
+  'Odisha': ['Ganjam (Berhampur)','Jagatsinghpur','Balasore','Jajpur','Phulbani','Sambalpur','Kendrapara','Rayagada','Puri','Dhenkanal','Nayagarh','Baragarh','Kalahandi','Nabarangpur','Gajapati','Cuttack','Mayurubhanj','Malkangiri','Sundergarh','Nuapada','Bolangir','Subarnapur','Keonjher','Angul','Koraput','Bhadrak'],
+  'Punjab': ['Patiala','Jalandhar','Rupnagar','Ludhiana','Barnala','Amritsar','Sangrur','Kapurthala','Ferozepur','Hoshiarpur','Fazilka','Faridkot','Mansa','Gurdaspur','Fatehgarh Saheb','Moga','Bathinda'],
+  'Rajasthan': ['Kota','Bundi','Sirohi','Sikar','Dholpur','Churu','Banswara','Alwar','Sawai Madhopur','Jodhpur','Jhalawar','Ajmer','Nagaur','Kotputli-Behror','Chittorgarh','Barmer','Jaisalmer','Bikaner','Dungarpur','Sriganganagar','Udaipur','Jhunjhunu','Bhilwara','Baran','Rajsamand','Bharatpur','Karauli','Pali','Jalore','Hanumangarh'],
+  'Sikkim': ['South Sikkim'],
+  'Tamilnadu': ['Villupuram','Coimbatore','Karur','Salem','Kanyakumari','Perambalur','Pondicherry','Cuddalore','Tiruvannamalai','Madurai','Vellore','Erode','Tiruppur','Tiruchirapalli','Nagapattinam','Ramanathapuram','Sivaganga','Thanjavur','Virudhunagar','Dindigul','Tirunelveli','Krishnagiri','Pudukkottai','Tiruvarur','Dharmapuri','Kallakurichi','Kancheepuram','Theni','Namakkal','Thoothukudi'],
+  'Tripura': ['South Tripura','Dhalai','North Tripura'],
+  'Uttar Pradesh': ['Barabanki','Meerut','Allahabad','Moradabad','Varanasi','Mahoba','Etawah','Ghaziabad','Basti','Gorakhpur','Chandauli','Badaun','Shahjahanpur','Kanpur','Sultanpur','Gonda','Fatehpur','Mirzapur','Muzaffarnagar','Balrampur','Lakhimpur Kheri','Baharaich','Mathura','Deoria','Banda','Ballia','Bareilly','Pilibhit','Aligarh','Faizabad','Azamgarh','Baghpat','Pratapgarh','Jalaun (Orai)','Sonabadra','Hamirpur UP','Bijnore','Bulandshahr','Raebariely','Hardoi','Agra','Unnao','Farrukhabad','Saharanpur','Etah','Sitapur','Siddhartha Nagar','Lalitpur','Shravasti','Kushinagar','Jaunpur','Chitrakoot','Jhansi','Maharajganj','Gazipur'],
+  'Uttarakhand': ['Champawat','Tehri Garhwal','Almora','Chamoli','Pauri Garhwal','Udhamsingh Nagar','Uttarkashi','Haridwar','Pithoragarh','Nainital','Rudra Prayag'],
+  'West Bengal': ['Hooghly','Dakshin Dinajpur','Bankura','24 Parganas (North)','Malda','Purba Midnapur','Purulia','Paschim Midnapur','Uttar Dinajpur','South 24 Parganas','Birbhum','Nadia','Darjeeling','Burdwan','Jalpaiguri','Coochbehar','Murshidabad','Alipurduar','Jhargram'],
+};
+
 export const TE_DEPARTMENTS = {
   'Bird Kolkata': [
     { name: 'ACC',  shortCode: 'acc' },

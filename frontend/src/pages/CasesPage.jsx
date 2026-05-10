@@ -293,7 +293,6 @@ const CasesPage = () => {
                     <Briefcase size={16} />
                     Cases
                 </button>
-                {!isLocalAdmin && (
                 <button
                     onClick={() => setActiveTab('inbox')}
                     className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
@@ -305,7 +304,6 @@ const CasesPage = () => {
                     <Inbox size={16} />
                     Case Inbox
                 </button>
-                )}
                 <button
                     onClick={() => setActiveTab('delegate')}
                     className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
@@ -320,7 +318,7 @@ const CasesPage = () => {
             </div>
 
             {/* Case Inbox Tab */}
-            {!isLocalAdmin && activeTab === 'inbox' && <CaseInboxContent />}
+            {activeTab === 'inbox' && <CaseInboxContent />}
 
             {/* Delegate Case Tab */}
             {activeTab === 'delegate' && <DelegateContent />}
