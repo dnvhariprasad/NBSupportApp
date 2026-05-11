@@ -31,7 +31,7 @@ const Sidebar = () => {
         { name: 'NABARD Department Management',  path: '/dashboard/departments', icon: Building2,  roles: ['Super Admin'] },
         { name: 'HO Vertical Management',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'ROTE' },
         { name: 'RO/TE Department Assignment',  path: '/dashboard/verticals2', icon: Network,     roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'HO' },
-        { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null, hideForLocalAdmin: true },
+        { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
         { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
         { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null, hideForLocalAdmin: true },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null, hideForLocalAdmin: true },
