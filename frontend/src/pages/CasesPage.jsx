@@ -93,14 +93,14 @@ const CasesPage = () => {
 
     // ─── End Local Admin ─────────────────────────────────────────────────────────
 
-    const fetchCases = useCallback(async (searchTerm, pageNum) => {
+    const fetchCases = useCallback(async (searchTerm, pageNum, size = pageSize) => {
         setLoading(true);
         setHasSearched(true);
 
         try {
             const params = {
                 page: pageNum,
-                size: pageSize
+                size: size
             };
             if (searchTerm && searchTerm.trim() !== '') params.caseNumber = searchTerm.trim();
 
@@ -445,7 +445,7 @@ const CasesPage = () => {
                             <div className="flex items-center justify-between px-6 py-3 border-t border-slate-100 bg-slate-50/50 text-sm">
                                 <select
                                     value={pageSize}
-                                    onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); if (activeSearch) fetchCases(activeSearch, 1); }}
+                                    onChange={(e) => { const newSize = Number(e.target.value); setPageSize(newSize); setPage(1); if (activeSearch) fetchCases(activeSearch, 1, newSize); }}
                                     className="text-xs border border-slate-200 rounded px-2 py-1.5 bg-white focus:ring-1 focus:ring-blue-500 outline-none"
                                 >
                                     <option value={5}>5 per page</option>

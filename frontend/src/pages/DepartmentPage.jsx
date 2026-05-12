@@ -142,6 +142,21 @@ export default function DepartmentPage() {
                             />
                         </div>
 
+                        {/* Location (RO/TE only) */}
+                        {(officeType === 'RO' || officeType === 'TE') && (
+                            <div>
+                                <Label icon={MapPin}>
+                                    {officeType === 'RO' ? 'Regional Office Location' : 'Training Establishment Location'}
+                                </Label>
+                                <Select
+                                    value={location}
+                                    onChange={setLocation}
+                                    placeholder="Select location"
+                                    options={locationOptions}
+                                />
+                            </div>
+                        )}
+
                         {/* Department Name */}
                         <div>
                             <Label>Department Name</Label>
@@ -192,21 +207,6 @@ export default function DepartmentPage() {
                                         </label>
                                     ))}
                                 </div>
-                            </div>
-                        )}
-
-                        {/* Location (RO/TE only) */}
-                        {(officeType === 'RO' || officeType === 'TE') && (
-                            <div>
-                                <Label icon={MapPin}>
-                                    {officeType === 'RO' ? 'Regional Office Location' : 'Training Establishment Location'}
-                                </Label>
-                                <Select
-                                    value={location}
-                                    onChange={setLocation}
-                                    placeholder="Select location"
-                                    options={locationOptions}
-                                />
                             </div>
                         )}
 

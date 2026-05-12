@@ -35,7 +35,6 @@ const Sidebar = () => {
         { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
         { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null, hideForLocalAdmin: true },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null, hideForLocalAdmin: true },
-        { name: 'Groups',       path: '/dashboard/groups',    icon: UsersRound,   roles: null, hideForLocalAdmin: true },
     ];
 
     const navItems = allNavItems.filter(item => {
