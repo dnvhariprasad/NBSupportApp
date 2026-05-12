@@ -387,7 +387,11 @@ const AddMembersTab = ({ setToast }) => {
         if (!officeType || (isROTE && !location)) { setAllDeptOptions([]); setDeptOptions([]); return; }
         fetchDepartments(officeType, location).then(all => {
             setAllDeptOptions(all);
-            if (isLocalAdmin && profileCtx) {
+            // For local admins in RO/TE context, show all departments for the location
+            // (not filtered to just their assigned departments)
+            if (isLocalAdmin && isROTE) {
+                setDeptOptions(all);
+            } else if (isLocalAdmin && profileCtx) {
                 const raw = profileCtx.department_short_code_multi;
                 const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
                     .map(s => s.toLowerCase());
@@ -396,7 +400,7 @@ const AddMembersTab = ({ setToast }) => {
                 setDeptOptions(all);
             }
         });
-    }, [officeType, location, isLocalAdmin, profileCtx]);
+    }, [officeType, location, isLocalAdmin, profileCtx, isROTE]);
 
     // Local Admin RO/TE: auto-fetch users + verticals when location is set from profile
     useEffect(() => {
@@ -836,40 +840,42 @@ const AddMembersTab = ({ setToast }) => {
                             options={deptOptions.map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
                     </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Group */}
-                    <div>
-                        <Label icon={UsersRound}>Group</Label>
-                        {loadingVerticals
-                            ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
-                            : <Select value={selectedVertical} onChange={handleVerticalChange}
-                                disabled={(isROTE ? (!location || !dept) : !dept) || verticals.length === 0}
-                                placeholder={isROTE ? (!location ? '— Select location first —' : !dept ? '— Select department first —' : verticals.length === 0 ? 'No verticals found' : '— Select vertical —') : (!dept ? '— Select dept first —' : verticals.length === 0 ? 'No verticals found' : '— Select vertical —')}
-                                options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
-                        }
+                {officeType === 'HO' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Group */}
+                        <div>
+                            <Label icon={UsersRound}>Group</Label>
+                            {loadingVerticals
+                                ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
+                                : <Select value={selectedVertical} onChange={handleVerticalChange}
+                                    disabled={!dept || verticals.length === 0}
+                                    placeholder={!dept ? '— Select dept first —' : verticals.length === 0 ? 'No verticals found' : '— Select vertical —'}
+                                    options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
+                            }
+                        </div>
+                        {/* User */}
+                        <div>
+                            <Label icon={Users}>User</Label>
+                            {loadingUsers
+                                ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
+                                : <>
+                                    <MultiSelectUsers
+                                        value={selectedUsers}
+                                        onChange={setSelectedUsers}
+                                        disabled={!officeType || users.length === 0}
+                                        placeholder={!officeType ? '— Select office type first —' : users.length === 0 ? 'No users found' : 'Search and select users...'}
+                                        options={users.map(u => ({ value: u.user_login_name, label: `${u.object_name} (${u.user_login_name})` }))}
+                                    />
+                                    {usersAlreadyInGroup.length > 0 && (
+                                        <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                                            <AlertCircle size={13} /> {usersAlreadyInGroup.join(', ')} already member(s)
+                                        </p>
+                                    )}
+                                  </>
+                            }
+                        </div>
                     </div>
-                    {/* User */}
-                    <div>
-                        <Label icon={Users}>User</Label>
-                        {loadingUsers
-                            ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
-                            : <>
-                                <MultiSelectUsers
-                                    value={selectedUsers}
-                                    onChange={setSelectedUsers}
-                                    disabled={!officeType || users.length === 0}
-                                    placeholder={!officeType ? '— Select office type first —' : users.length === 0 ? 'No users found' : 'Search and select users...'}
-                                    options={users.map(u => ({ value: u.user_login_name, label: `${u.object_name} (${u.user_login_name})` }))}
-                                />
-                                {usersAlreadyInGroup.length > 0 && (
-                                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-                                        <AlertCircle size={13} /> {usersAlreadyInGroup.join(', ')} already member(s)
-                                    </p>
-                                )}
-                              </>
-                        }
-                    </div>
-                </div>
+                )}
             </Card>
 
             {/* ── Step 2: Info panels (members + vertical head) ── */}
@@ -1150,7 +1156,11 @@ const RemoveMembersTab = ({ setToast }) => {
     useEffect(() => {
         if (!officeType || (isROTE && !location)) { setDeptOptions([]); return; }
         fetchDepartments(officeType, location).then(all => {
-            if (isLocalAdmin && profileCtx) {
+            // For local admins in RO/TE context, show all departments for the location
+            // (not filtered to just their assigned departments)
+            if (isLocalAdmin && isROTE) {
+                setDeptOptions(all);
+            } else if (isLocalAdmin && profileCtx) {
                 const raw = profileCtx.department_short_code_multi;
                 const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
                     .map(s => s.toLowerCase());
@@ -1159,7 +1169,7 @@ const RemoveMembersTab = ({ setToast }) => {
                 setDeptOptions(all);
             }
         });
-    }, [officeType, location, isLocalAdmin, profileCtx]);
+    }, [officeType, location, isLocalAdmin, profileCtx, isROTE]);
 
     // Local Admin RO/TE: auto-fetch verticals when location is set from profile
     useEffect(() => {
@@ -1664,23 +1674,18 @@ const RemoveMembersTab = ({ setToast }) => {
                             options={deptOptions.map(d => ({ value: d.name, label: `${d.name} (${d.shortCode})` }))} />
                     </div>
                 </div>
-                <div>
-                    <Label icon={UsersRound}>Group</Label>
-                    {loadingVerts
-                        ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
-                        : <Select value={selectedGroup} onChange={handleGroupChange}
-                            disabled={!officeType || (isROTE ? (!location || !dept) : !dept) || verticals.length === 0}
-                            placeholder={
-                                !officeType ? '— Select office type first —'
-                                : (isROTE && !location) ? '— Select location first —'
-                                : (isROTE && !dept) ? '— Select department first —'
-                                : (!isROTE && !dept) ? '— Select department first —'
-                                : verticals.length === 0 ? 'No groups found'
-                                : '— Select group —'
-                            }
-                            options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
-                    }
-                </div>
+                {officeType === 'HO' && (
+                    <div>
+                        <Label icon={UsersRound}>Group</Label>
+                        {loadingVerts
+                            ? <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-400"><Loader2 size={14} className="animate-spin" /> Loading…</div>
+                            : <Select value={selectedGroup} onChange={handleGroupChange}
+                                disabled={!officeType || !dept || verticals.length === 0}
+                                placeholder={!dept ? '— Select dept first —' : verticals.length === 0 ? 'No groups found' : '— Select group —'}
+                                options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
+                        }
+                    </div>
+                )}
             </Card>
 
             {selectedGroup && (

@@ -1112,18 +1112,17 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                         ) : !form.office_type ? (
                                                             <p className="px-3 py-2 text-sm text-slate-400">— Select office type first —</p>
                                                         ) : (
-                                                            <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
-                                                                {depts.map(d => (
-                                                                    <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                                                            <>
+                                                                {depts.length > 0 && (
+                                                                    <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 border-b border-slate-100 bg-slate-50 font-semibold">
                                                                         <input
                                                                             type="checkbox"
-                                                                            checked={(form.department_short_code_multi || []).includes(d.shortCode)}
+                                                                            checked={(form.department_short_code_multi || []).length === depts.length && depts.length > 0}
+                                                                            indeterminate={(form.department_short_code_multi || []).length > 0 && (form.department_short_code_multi || []).length < depts.length}
                                                                             onChange={() => {
                                                                                 const currentCodes = form.department_short_code_multi || [];
-                                                                                const isRemoving = currentCodes.includes(d.shortCode);
-                                                                                const newCodes = isRemoving
-                                                                                    ? currentCodes.filter(c => c !== d.shortCode)
-                                                                                    : [...currentCodes, d.shortCode];
+                                                                                const allSelected = currentCodes.length === depts.length;
+                                                                                const newCodes = allSelected ? [] : depts.map(d => d.shortCode);
                                                                                 const firstDept = depts.find(dept => dept.shortCode === newCodes[0]);
                                                                                 set('department_short_code',       newCodes[0] || '');
                                                                                 set('department_short_code_multi', newCodes);
@@ -1141,10 +1140,43 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                                             }}
                                                                             className="rounded accent-[#0A66C2]"
                                                                         />
-                                                                        <span className="text-sm text-slate-700">{d.name}</span>
+                                                                        <span className="text-sm text-slate-700">{(form.department_short_code_multi || []).length === depts.length && depts.length > 0 ? 'Deselect All' : 'Select All'}</span>
                                                                     </label>
-                                                                ))}
-                                                            </div>
+                                                                )}
+                                                                <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                                                    {depts.map(d => (
+                                                                        <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={(form.department_short_code_multi || []).includes(d.shortCode)}
+                                                                                onChange={() => {
+                                                                                    const currentCodes = form.department_short_code_multi || [];
+                                                                                    const isRemoving = currentCodes.includes(d.shortCode);
+                                                                                    const newCodes = isRemoving
+                                                                                        ? currentCodes.filter(c => c !== d.shortCode)
+                                                                                        : [...currentCodes, d.shortCode];
+                                                                                    const firstDept = depts.find(dept => dept.shortCode === newCodes[0]);
+                                                                                    set('department_short_code',       newCodes[0] || '');
+                                                                                    set('department_short_code_multi', newCodes);
+                                                                                    set('department_name',             firstDept?.name || '');
+
+                                                                                    // RO/TE: check inbox for all departments removed vs original
+                                                                                    const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
+                                                                                    const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
+                                                                                    if (removedCodes.length > 0) {
+                                                                                        checkDeptInbox(removedCodes);
+                                                                                    } else {
+                                                                                        setShowDeptBlock(false);
+                                                                                        setDeptPendingCases([]);
+                                                                                    }
+                                                                                }}
+                                                                                className="rounded accent-[#0A66C2]"
+                                                                            />
+                                                                            <span className="text-sm text-slate-700">{d.name}</span>
+                                                                        </label>
+                                                                    ))}
+                                                                </div>
+                                                            </>
                                                         )}
                                                     </div>
                                                 )}
