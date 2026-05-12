@@ -575,24 +575,69 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
             const old = originalGroupInfoRef.current;
             const newRoShortCode = (form.ro_short_code || '').toLowerCase();
+            const wasDDMBefore = old.deptCodes.length === 0;
 
             if (isDDMUser) {
                 // DDM-specific group management: handle ecm_digidak_ro_<code>_ddm groups
                 const oldRoCode = (old.roShortCode || '').toLowerCase();
-                if (oldRoCode !== newRoShortCode) {
+
+                // If transitioning FROM standard departments TO DDM, remove all department-related groups
+                if (!wasDDMBefore) {
+                    // Calculate old groups to remove (all except dm_superusers_dynamic)
+                    const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
+
+                    console.log('Transitioning to DDM - removing old groups:', { oldGroups, memberName });
+
+                    for (const g of oldGroups) {
+                        console.log(`Removing old department group: ${g}`);
+                        api.delete(`/groups/${g}/members/${encodeURIComponent(memberName)}`).catch(err => {
+                            console.error(`Failed to remove ${g}:`, err.response?.data || err.message);
+                        });
+                    }
+
+                    // Also remove old CGM group if user was CGM
+                    const oldDesignation = (old.designation || '').toUpperCase();
+                    if (oldDesignation === 'CGM') {
+                        let oldCgmGroup = '';
+                        if (old.officeType === 'HO') {
+                            const dc = (old.deptCodes[0] || '').toLowerCase();
+                            oldCgmGroup = dc ? `ecm_digidak_ho_${dc}_cgm` : '';
+                        } else if (['RO', 'TE'].includes(old.officeType) && oldRoCode) {
+                            oldCgmGroup = `ecm_digidak_${old.officeType.toLowerCase()}_${oldRoCode}_cgm`;
+                        }
+                        if (oldCgmGroup) {
+                            console.log(`Removing old CGM group: ${oldCgmGroup}`);
+                            api.delete(`/groups/${oldCgmGroup}/members/${encodeURIComponent(memberName)}`).catch(err => {
+                                console.error(`Failed to remove ${oldCgmGroup}:`, err.response?.data || err.message);
+                            });
+                        }
+                    }
+                }
+
+                // Always ensure user is in the current DDM group (handles both new DDM and missed prior adds)
+                if (newRoShortCode) {
+                    api.post(`/groups/ecm_digidak_ro_${newRoShortCode}_ddm/members`, { memberName, memberType: 'user' }).catch(err => {
+                        console.warn(`Failed to add DDM group: ${err.message}`);
+                    });
+                }
+
+                // If location changed and user was DDM before, remove from old group
+                if (wasDDMBefore && oldRoCode && oldRoCode !== newRoShortCode) {
+                    api.delete(`/groups/ecm_digidak_ro_${oldRoCode}_ddm/members/${encodeURIComponent(memberName)}`).catch(err => {
+                        console.warn(`Failed to remove DDM group: ${err.message}`);
+                    });
+                }
+            } else {
+                // Standard group management for non-DDM users
+                // If user was DDM before, remove the old DDM group
+                if (wasDDMBefore) {
+                    const oldRoCode = (old.roShortCode || '').toLowerCase();
                     if (oldRoCode) {
                         api.delete(`/groups/ecm_digidak_ro_${oldRoCode}_ddm/members/${encodeURIComponent(memberName)}`).catch(err => {
                             console.warn(`Failed to remove DDM group: ${err.message}`);
                         });
                     }
-                    if (newRoShortCode) {
-                        api.post(`/groups/ecm_digidak_ro_${newRoShortCode}_ddm/members`, { memberName, memberType: 'user' }).catch(err => {
-                            console.warn(`Failed to add DDM group: ${err.message}`);
-                        });
-                    }
                 }
-            } else {
-                // Standard group management for non-DDM users
                 const newDeptCodes = isROTE
                     ? (form.department_short_code_multi || [])
                     : (form.department_short_code ? [form.department_short_code] : []);
@@ -1108,10 +1153,10 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             <SelectWrapper>
                                                 <select value={form.department_name}
                                                     onChange={e => handleDepartmentChange(e.target.value)}
-                                                    disabled={!form.office_type}
-                                                    className={!form.office_type ? disabledSelectCls : selectCls}>
+                                                    disabled={!form.office_type || (isLocalAdmin && isHO)}
+                                                    className={!form.office_type || (isLocalAdmin && isHO) ? disabledSelectCls : selectCls}>
                                                     <option value="">
-                                                        {!form.office_type ? '— Select office type first —' : '— Select department —'}
+                                                        {!form.office_type ? '— Select office type first —' : (isLocalAdmin && isHO) ? '— Not editable —' : '— Select department —'}
                                                     </option>
                                                     {depts.map(d => (
                                                         <option key={d.name} value={d.name}>{d.name}</option>

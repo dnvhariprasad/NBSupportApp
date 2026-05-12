@@ -2557,7 +2557,7 @@ const UserAccessTab = ({ onToast }) => {
                     </div>
                 )}
 
-                {users.length > 0 && (
+                {users.length > 0 && !isLocalAdmin && (
                     <div className="min-w-[160px]">
                         <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
                             <Shield size={11} className="inline -mt-0.5 mr-0.5" />
@@ -2643,7 +2643,7 @@ const UserAccessTab = ({ onToast }) => {
                                         <th className="px-4 py-3 font-semibold text-slate-600">Designation</th>
                                         {!isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Department</th>}
                                         {isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Location</th>}
-                                        <th className="px-4 py-3 font-semibold text-slate-600 text-center">Local Admin</th>
+                                        {!isLocalAdmin && <th className="px-4 py-3 font-semibold text-slate-600 text-center">Local Admin</th>}
                                         <th className="px-4 py-3 font-semibold text-slate-600 text-center">CGM Sect.</th>
                                     </tr>
                                 </thead>
@@ -2678,7 +2678,7 @@ const UserAccessTab = ({ onToast }) => {
                                             <td className="px-4 py-3 text-slate-600">{u.designation || '—'}</td>
                                             {!isRoTe && <td className="px-4 py-3 text-slate-600">{u.department_name || '—'}</td>}
                                             {isRoTe && <td className="px-4 py-3 text-slate-600">{u.location || '—'}</td>}
-                                            <td className="px-4 py-3 text-center">
+                                            {!isLocalAdmin && <td className="px-4 py-3 text-center">
                                                 {isAdmin ? (
                                                     <button
                                                         onClick={() => handleRemoveLocalAdmin(u)}
@@ -2703,7 +2703,7 @@ const UserAccessTab = ({ onToast }) => {
                                                         }
                                                     </button>
                                                 )}
-                                            </td>
+                                            </td>}
                                             <td className="px-4 py-3 text-center">
                                                 {loadingCgm ? (
                                                     <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
@@ -2786,7 +2786,7 @@ const UsersPage = () => {
     const allTabs = [
         { id: 'creation',  label: 'User Creation',        icon: UserPlus, roles: ['Super Admin'] },
         { id: 'directory', label: 'User Directory',       icon: Users,    roles: ['Super Admin', 'Local Admin'] },
-        { id: 'access',    label: 'User Access',          icon: Shield,   roles: ['Super Admin'] },
+        { id: 'access',    label: 'User Access',          icon: Shield,   roles: ['Super Admin', 'Local Admin'] },
         { id: 'password',  label: 'User Password Update', icon: KeyRound, roles: ['Super Admin'] },
     ];
 
