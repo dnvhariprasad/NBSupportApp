@@ -71,6 +71,10 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
     const [editingId, setEditingId] = useState(null);
     const [editValues, setEditValues] = useState({ object_name: '', description: '' });
     const [saving, setSaving]       = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [filterFileNumber, setFilterFileNumber] = useState('');
+    const [filterDescription, setFilterDescription] = useState('');
+    const itemsPerPage = 10;
 
     const canFetch = hoRo && deptShortCode && (hoRo === 'HO' || roShortCode);
 
@@ -78,6 +82,7 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
         if (!canFetch) return;
         setLoading(true);
         setError(null);
+        setCurrentPage(1);
         try {
             const params = { hoRo, deptShortCode };
             if (roShortCode) params.roShortCode = roShortCode;
@@ -130,7 +135,13 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
         try {
             await api.delete(`/metadata/file-numbers/${item.r_object_id}`);
             onToast({ type: 'success', message: `File number '${item.object_name}' deleted.` });
-            setItems(prev => prev.filter(i => i.r_object_id !== item.r_object_id));
+            const updated = items.filter(i => i.r_object_id !== item.r_object_id);
+            setItems(updated);
+            // Reset to page 1 if current page has no items after delete
+            const totalPages = Math.ceil(updated.length / itemsPerPage);
+            if (currentPage > totalPages && totalPages > 0) {
+                setCurrentPage(totalPages);
+            }
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Delete failed';
             onToast({ type: 'error', message: msg });
@@ -138,6 +149,25 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
             setDeleting(null);
         }
     };
+
+    // Filter logic
+    const filteredItems = items.filter(item => {
+        const fileNumMatch = !filterFileNumber ||
+            (item.object_name || '').toLowerCase().includes(filterFileNumber.toLowerCase());
+        const descMatch = !filterDescription ||
+            (item.description || '').toLowerCase().includes(filterDescription.toLowerCase());
+        return fileNumMatch && descMatch;
+    });
+
+    // Pagination logic
+    const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    const paginatedItems = filteredItems.slice(startIdx, startIdx + itemsPerPage);
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filterFileNumber, filterDescription]);
 
     if (!canFetch) return null;
 
@@ -159,6 +189,46 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                 </button>
             </div>
 
+            {/* Filter Section */}
+            {items.length > 0 && !loading && (
+                <div className="px-5 py-3 border-b border-slate-100 bg-white">
+                    <div className="flex items-end gap-3 flex-wrap">
+                        <div className="flex-1 min-w-56">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">File Number</label>
+                            <input
+                                type="text"
+                                placeholder="Search file number..."
+                                value={filterFileNumber}
+                                onChange={e => setFilterFileNumber(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+                            />
+                        </div>
+                        <div className="flex-1 min-w-56">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Description</label>
+                            <input
+                                type="text"
+                                placeholder="Search description..."
+                                value={filterDescription}
+                                onChange={e => setFilterDescription(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+                            />
+                        </div>
+                        {(filterFileNumber || filterDescription) && (
+                            <button
+                                onClick={() => { setFilterFileNumber(''); setFilterDescription(''); }}
+                                className="px-3 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                                Clear Filters
+                            </button>
+                        )}
+                    </div>
+                    {(filterFileNumber || filterDescription) && (
+                        <div className="text-xs text-slate-500 mt-2">
+                            Found <span className="font-semibold">{filteredItems.length}</span> result{filteredItems.length !== 1 ? 's' : ''}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {loading ? (
                 <div className="flex items-center justify-center gap-2 py-10 text-slate-400">
                     <Loader2 size={18} className="animate-spin text-indigo-500" />
@@ -171,6 +241,10 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
             ) : items.length === 0 ? (
                 <div className="px-5 py-8 text-center text-sm text-slate-400">
                     No file numbers found for this selection
+                </div>
+            ) : filteredItems.length === 0 ? (
+                <div className="px-5 py-8 text-center text-sm text-slate-400">
+                    No file numbers match your filters
                 </div>
             ) : (
                 <div className="overflow-x-auto">
@@ -187,7 +261,7 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {items.map((item, idx) => {
+                            {paginatedItems.map((item, idx) => {
                                 const isConfirming = confirmId === item.r_object_id;
                                 const isDeleting   = deleting  === item.r_object_id;
                                 const isEditing    = editingId === item.r_object_id;
@@ -195,7 +269,7 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                 return (
                                     <tr key={item.r_object_id || idx}
                                         className={`transition-colors ${rowBg}`}>
-                                        <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                        <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{startIdx + idx + 1}</td>
                                         <td className="px-4 py-2.5 font-mono text-sm font-semibold text-slate-800">
                                             {isEditing ? (
                                                 <input
@@ -233,6 +307,52 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                             })}
                         </tbody>
                     </table>
+                </div>
+            )}
+            {!loading && items.length > 0 && (
+                <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-sm">
+                    <span className="text-slate-600">
+                        Showing <span className="font-semibold">{startIdx + 1}</span> to <span className="font-semibold">{Math.min(startIdx + itemsPerPage, items.length)}</span> of <span className="font-semibold">{items.length}</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setCurrentPage(1)}
+                            disabled={currentPage === 1}
+                            className="p-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            title="First page">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <button
+                            onClick={() => setCurrentPage(c => Math.max(1, c - 1))}
+                            disabled={currentPage === 1}
+                            className="p-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            title="Previous page">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 12H5" /></svg>
+                        </button>
+                        <input
+                            type="number"
+                            min="1"
+                            max={totalPages}
+                            value={currentPage}
+                            onChange={e => setCurrentPage(Math.min(totalPages, Math.max(1, parseInt(e.target.value) || 1)))}
+                            className="w-12 px-2 py-1 border border-slate-200 rounded text-center text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <span className="text-slate-500">/ {totalPages}</span>
+                        <button
+                            onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))}
+                            disabled={currentPage === totalPages}
+                            className="p-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            title="Next page">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14" /></svg>
+                        </button>
+                        <button
+                            onClick={() => setCurrentPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                            className="p-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            title="Last page">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

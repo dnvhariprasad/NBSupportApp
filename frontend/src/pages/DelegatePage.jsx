@@ -115,7 +115,9 @@ const MovementRegisterModal = ({ caseItem, onClose }) => {
     useEffect(() => {
         if (!caseItem) return;
         setLoading(true);
-        api.get(`/delegate/cases/${caseItem.r_object_id}/movement`)
+        api.get(`/delegate/cases/${caseItem.r_object_id}/movement`, {
+            params: { isValidEntry: true }
+        })
             .then(res => setMovement(Array.isArray(res.data) ? res.data : []))
             .catch(() => setMovement([]))
             .finally(() => setLoading(false));
@@ -275,8 +277,9 @@ const DelegatePage = () => {
         fetchDepartments(officeType, location).then(setAllDepartments);
     }, [officeType, location]);
 
-    // For Local Admin: filter departments to only those in their profile
-    const departments = isLocalAdmin && profileCtx
+    // For Local Admin: filter departments to only those in their profile (HO only)
+    // For RO/TE, show all departments for the location
+    const departments = isLocalAdmin && profileCtx && !isRoTe
         ? (() => {
             const raw = profileCtx.department_short_code_multi;
             const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
