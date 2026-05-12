@@ -8,8 +8,7 @@ const LoginPage = () => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         username: '',
-        password: '',
-        repository: 'NABARDUAT'
+        password: ''
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -26,19 +25,56 @@ const LoginPage = () => {
         setError(null);
 
         try {
-            const response = await api.post('/auth/login', formData);
-            if (response.data.authenticated) {
-                localStorage.setItem('user', JSON.stringify(response.data.userDetails));
+            // Step 1: Authenticate with OTDS
+            const params = new URLSearchParams();
+            params.append('username', formData.username);
+            params.append('password', formData.password);
+            params.append('captcha_id', 'dev-no-captcha');
+            params.append('captcha_answer', '0');
+
+            const otdsResponse = await fetch('http://172.172.20.214/proxy/otds/Integration/otds-proxy/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: params.toString()
+            });
+
+            if (!otdsResponse.ok) {
+                const errorData = await otdsResponse.json().catch(() => ({}));
+                setError(errorData.message || `Authentication failed (${otdsResponse.status})`);
+                return;
+            }
+
+            const otdsData = await otdsResponse.json();
+            const token = otdsData.token || otdsData.access_token;
+
+            if (!token) {
+                setError('No token received from authentication service');
+                return;
+            }
+
+            // Step 2: Store token and fetch user profile from backend
+            localStorage.setItem('token', token);
+
+            // Fetch user profile from backend with the OTDS token and username
+            const userResponse = await api.get('/auth/profile', {
+                params: { username: formData.username },
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (userResponse.data) {
+                localStorage.setItem('user', JSON.stringify(userResponse.data));
                 navigate('/dashboard');
             } else {
-                setError(response.data.message || 'Authentication failed');
+                setError('Failed to fetch user profile');
             }
         } catch (err) {
             console.error(err);
-            if (err.response && err.response.data && err.response.data.message) {
+            if (err.response?.data?.message) {
                 setError(err.response.data.message);
             } else {
-                setError('Service unavailable. Please contact support.');
+                setError(err.message || 'Service unavailable. Please contact support.');
             }
         } finally {
             setIsLoading(false);
