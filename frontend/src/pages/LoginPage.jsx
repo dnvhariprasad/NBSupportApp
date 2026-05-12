@@ -41,8 +41,13 @@ const LoginPage = () => {
             });
 
             if (!otdsResponse.ok) {
-                const errorData = await otdsResponse.json().catch(() => ({}));
-                setError(errorData.message || `Authentication failed (${otdsResponse.status})`);
+                // Show user-friendly error message for authentication failures
+                if (otdsResponse.status === 400 || otdsResponse.status === 401 || otdsResponse.status === 403) {
+                    setError('Invalid username or password. Please try again.');
+                } else {
+                    const errorData = await otdsResponse.json().catch(() => ({}));
+                    setError(errorData.message || 'Authentication service unavailable. Please try again later.');
+                }
                 return;
             }
 
@@ -71,10 +76,12 @@ const LoginPage = () => {
             }
         } catch (err) {
             console.error(err);
-            if (err.response?.data?.message) {
+            if (err.response?.status === 401 || err.response?.status === 400) {
+                setError('Invalid username or password. Please try again.');
+            } else if (err.response?.data?.message) {
                 setError(err.response.data.message);
             } else {
-                setError(err.message || 'Service unavailable. Please contact support.');
+                setError('Service unavailable. Please check your connection and try again.');
             }
         } finally {
             setIsLoading(false);
@@ -170,18 +177,6 @@ const LoginPage = () => {
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
-                        </div>
-
-                         <div className="flex items-center">
-                            <input
-                                id="remember-me"
-                                name="remember-me"
-                                type="checkbox"
-                                className="h-4 w-4 text-[#0A66C2] focus:ring-[#0A66C2] border-gray-300 rounded"
-                            />
-                            <label htmlFor="remember-me" className="ml-2 block text-xs text-gray-500">
-                                Remember this device for 30 days
-                            </label>
                         </div>
 
                         {error && (
