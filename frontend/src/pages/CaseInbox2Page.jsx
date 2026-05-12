@@ -98,7 +98,9 @@ const MovementRegisterModal = ({ caseItem, onClose }) => {
         const caseId = caseItem.packagescase_folderid || caseItem.r_object_id || caseItem.objectId || caseItem.id;
         if (!caseId) { setLoading(false); return; }
         setLoading(true);
-        api.get(`/delegate/cases/${caseId}/movement`)
+        api.get(`/delegate/cases/${caseId}/movement`, {
+            params: { isValidEntry: true }
+        })
             .then(res => setMovement(Array.isArray(res.data) ? res.data : []))
             .catch(() => setMovement([]))
             .finally(() => setLoading(false));
