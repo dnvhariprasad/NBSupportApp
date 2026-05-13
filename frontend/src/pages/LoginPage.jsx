@@ -8,45 +8,138 @@ import api from '../api/axios';
 const getDefaultRepository = () => {
     // Check for explicit environment variable first
     if (import.meta.env.VITE_DCTM_REPOSITORY) {
+        console.log('[DCTM] Using environment variable:', import.meta.env.VITE_DCTM_REPOSITORY);
         return import.meta.env.VITE_DCTM_REPOSITORY;
     }
 
     // Check hostname to determine environment
     const hostname = window.location.hostname.toLowerCase();
+    console.log('[DCTM] Detected hostname:', hostname);
 
-    // Production: use EDMS
-    if (hostname.includes('production') || hostname.includes('prod') || hostname === 'nabard.gov.in') {
+    // Production: use EDMS (exact match first)
+    if (hostname === 'neo.nabard.org' || hostname.endsWith('.neo.nabard.org')) {
+        console.log('[DCTM] Environment: Production (neo.nabard.org) - Using EDMS');
         return 'EDMS';
     }
 
-    // Azure & UAT: use NABARDUAT
-    if (hostname.includes('azure') || hostname.includes('uat') || hostname.includes('test')) {
+    // UAT: use NABARDUAT (exact match first)
+    if (hostname === 'ecmrevampuat.nabard.org' || hostname.endsWith('.ecmrevampuat.nabard.org')) {
+        console.log('[DCTM] Environment: UAT (ecmrevampuat.nabard.org) - Using NABARDUAT');
+        return 'NABARDUAT';
+    }
+
+    // Azure: use NABARDUAT
+    if (hostname === '172.172.20.214' || hostname.includes('172.172.20.214') || hostname.includes('azure')) {
+        console.log('[DCTM] Environment: Azure (172.172.20.214) - Using NABARDUAT');
+        return 'NABARDUAT';
+    }
+
+    // Check for environment keywords as fallback
+    if (hostname.includes('production') || hostname.includes('prod')) {
+        console.log('[DCTM] Environment: Production (keyword match) - Using EDMS');
+        return 'EDMS';
+    }
+
+    if (hostname.includes('uat') || hostname.includes('test')) {
+        console.log('[DCTM] Environment: UAT (keyword match) - Using NABARDUAT');
         return 'NABARDUAT';
     }
 
     // Local/default: NABARDUAT
+    console.log('[DCTM] Environment: Development/Local (default) - Using NABARDUAT');
     return 'NABARDUAT';
+};
+
+// Determine OTDS URL based on environment
+const getOtdsUrl = () => {
+    // Check for explicit environment variable first (highest priority)
+    if (import.meta.env.VITE_OTDS_URL) {
+        console.log('[OTDS] Using environment variable:', import.meta.env.VITE_OTDS_URL);
+        return import.meta.env.VITE_OTDS_URL;
+    }
+
+    // Check hostname to determine environment
+    const hostname = window.location.hostname.toLowerCase();
+    console.log('[OTDS] Detected hostname:', hostname);
+
+    // Production: neo.nabard.org (check with exact match first)
+    if (hostname === 'neo.nabard.org' || hostname.endsWith('.neo.nabard.org')) {
+        const url = 'https://neo.nabard.org/proxy/otds/Integration/otds-proxy/token';
+        console.log('[OTDS] Environment: Production (neo.nabard.org)');
+        return url;
+    }
+
+    // UAT: ecmrevampuat.nabard.org (check with exact match first)
+    if (hostname === 'ecmrevampuat.nabard.org' || hostname.endsWith('.ecmrevampuat.nabard.org')) {
+        const url = 'https://ecmrevampuat.nabard.org/proxy/otds/Integration/otds-proxy/token';
+        console.log('[OTDS] Environment: UAT (ecmrevampuat.nabard.org)');
+        return url;
+    }
+
+    // Azure: IP-based or contains 'azure'
+    if (hostname === '172.172.20.214' || hostname.includes('172.172.20.214') || hostname.includes('azure')) {
+        const url = 'http://172.172.20.214/proxy/otds/Integration/otds-proxy/token';
+        console.log('[OTDS] Environment: Azure (172.172.20.214)');
+        return url;
+    }
+
+    // Check for environment keywords as fallback
+    if (hostname.includes('production') || hostname.includes('prod')) {
+        const url = 'https://neo.nabard.org/proxy/otds/Integration/otds-proxy/token';
+        console.log('[OTDS] Environment: Production (keyword match)');
+        return url;
+    }
+
+    if (hostname.includes('uat') || hostname.includes('test')) {
+        const url = 'https://ecmrevampuat.nabard.org/proxy/otds/Integration/otds-proxy/token';
+        console.log('[OTDS] Environment: UAT (keyword match)');
+        return url;
+    }
+
+    // Local/default: use Azure IP for development
+    const url = 'http://172.172.20.214/proxy/otds/Integration/otds-proxy/token';
+    console.log('[OTDS] Environment: Development/Local (default)');
+    return url;
 };
 
 const LoginPage = () => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         username: '',
-<<<<<<< HEAD
-<<<<<<< HEAD
-        password: '',
-        repository: import.meta.env.VITE_DCTM_REPOSITORY || 'NABARDUAT'
-=======
-        password: ''
->>>>>>> a5cec364fc7b71541c2e9674b114aaf45eb23393
-=======
         password: '',
         repository: getDefaultRepository()
->>>>>>> 7354b3eb6b1d2c31fca3f422799ec8003916b099
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [showPassword, setShowPassword] = useState(false);
+    const [authConfig, setAuthConfig] = useState(null);
+
+    // Fetch environment-specific auth config from backend on component mount
+    React.useEffect(() => {
+        const fetchAuthConfig = async () => {
+            try {
+                const response = await api.get('/auth/config');
+                if (response.data) {
+                    console.log('[AUTH] Backend config loaded:', response.data);
+                    console.log('[AUTH] Active Environment:', response.data.environment);
+                    console.log('[AUTH] Repository:', response.data.repository);
+                    console.log('[AUTH] OTDS Token API URL:', response.data.otdsTokenApiUrl);
+                    setAuthConfig(response.data);
+                    // Update formData with repository from backend
+                    setFormData(prev => ({
+                        ...prev,
+                        repository: response.data.repository || prev.repository
+                    }));
+                }
+            } catch (err) {
+                console.error('[AUTH] Failed to fetch auth config from backend:', err);
+                console.warn('[AUTH] Error details:', err.message);
+                // Fallback to client-side detection if backend endpoint fails
+                console.log('[AUTH] Falling back to client-side environment detection');
+            }
+        };
+        fetchAuthConfig();
+    }, []);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -66,7 +159,11 @@ const LoginPage = () => {
             params.append('captcha_id', 'dev-no-captcha');
             params.append('captcha_answer', '0');
 
-            const otdsResponse = await fetch('http://172.172.20.214/proxy/otds/Integration/otds-proxy/token', {
+            // Use OTDS endpoint from backend config (priority) or fallback to client-side detection
+            const otdsUrl = authConfig?.otdsTokenApiUrl || getOtdsUrl();
+            console.log('[LOGIN] Attempting OTDS authentication with URL:', otdsUrl);
+            console.log('[LOGIN] Using backend config:', !!authConfig?.otdsTokenApiUrl);
+            const otdsResponse = await fetch(otdsUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
