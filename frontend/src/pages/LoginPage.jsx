@@ -4,11 +4,36 @@ import { motion } from 'framer-motion';
 import { Lock, Loader2, ArrowRight, Compass, Mail, Eye, EyeOff } from 'lucide-react';
 import api from '../api/axios';
 
+// Determine repository based on environment
+const getDefaultRepository = () => {
+    // Check for explicit environment variable first
+    if (import.meta.env.VITE_DCTM_REPOSITORY) {
+        return import.meta.env.VITE_DCTM_REPOSITORY;
+    }
+
+    // Check hostname to determine environment
+    const hostname = window.location.hostname.toLowerCase();
+
+    // Production: use EDMS
+    if (hostname.includes('production') || hostname.includes('prod') || hostname === 'nabard.gov.in') {
+        return 'EDMS';
+    }
+
+    // Azure & UAT: use NABARDUAT
+    if (hostname.includes('azure') || hostname.includes('uat') || hostname.includes('test')) {
+        return 'NABARDUAT';
+    }
+
+    // Local/default: NABARDUAT
+    return 'NABARDUAT';
+};
+
 const LoginPage = () => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         username: '',
-        password: ''
+        password: '',
+        repository: getDefaultRepository()
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
