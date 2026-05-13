@@ -343,6 +343,7 @@ const AddMembersTab = ({ setToast }) => {
     const [selectedVertical,  setSelectedVertical]  = useState('');
     const [users,             setUsers]             = useState([]);
     const [selectedUsers,     setSelectedUsers]     = useState([]);
+    const [selectedUser,      setSelectedUser]      = useState('');
 
     const [verticalMembers,   setVerticalMembers]   = useState({ users: [], groups: [] });
     const [vhGroupName,           setVhGroupName]           = useState('');
@@ -423,7 +424,7 @@ const AddMembersTab = ({ setToast }) => {
         if (level === 'location') { setLocation(''); setRoShortCode(''); }
         setDept('');
         setSelectedVertical(''); setVerticals([]);
-        setSelectedUsers([]); setUsers([]);
+        setSelectedUsers([]); setSelectedUser(''); setUsers([]);
         setVerticalMembers({ users: [], groups: [] });
         setVhGroupName(''); setVhExists(false); setVhMembers([]);
         setVhCurrentDisplayName(''); setModifyVHSelectedUser('');
@@ -879,7 +880,7 @@ const AddMembersTab = ({ setToast }) => {
             </Card>
 
             {/* ── Step 2: Info panels (members + vertical head) ── */}
-            {(selectedVertical || selectedUsers.length > 0) && (
+            {(selectedVertical || selectedUsers.length > 0 || (isROTE && selectedUser)) && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
 
                     {/* 1 — Vertical Members */}
@@ -924,20 +925,22 @@ const AddMembersTab = ({ setToast }) => {
                                                 ))}
                                             </div>
                                         )}
-                                        {/* Modify Vertical Head */}
+                                        {/* Add/Modify Vertical Head */}
                                         <div className="border-t border-slate-100 pt-3 mt-2 space-y-2">
-                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Modify Vertical Head</p>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                                                {vhMembers.length > 0 ? 'Modify Vertical Head' : 'Add Vertical Head'}
+                                            </p>
                                             <select
                                                 value={modifyVHSelectedUser}
                                                 onChange={e => setModifyVHSelectedUser(e.target.value)}
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2]"
                                             >
-                                                <option value="">— Select new head —</option>
+                                                <option value="">— Select {vhMembers.length > 0 ? 'new' : ''} head —</option>
                                                 {verticalMembers.users.map(u => {
-                                                    const obj = users.find(x => x.user_login_name === u.name);
+                                                    const userObj = users.find(x => x.user_login_name === u.name);
                                                     return (
                                                         <option key={u.name} value={u.name}>
-                                                            {obj ? `${obj.object_name} (${u.name})` : u.name}
+                                                            {userObj ? `${userObj.object_name} (${u.name})` : u.name}
                                                         </option>
                                                     );
                                                 })}
@@ -948,8 +951,8 @@ const AddMembersTab = ({ setToast }) => {
                                                 className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {modifyingVH
-                                                    ? <><Loader2 size={12} className="animate-spin" /> Updating…</>
-                                                    : <><Star size={12} /> Update Vertical Head</>}
+                                                    ? <><Loader2 size={12} className="animate-spin" /> {vhMembers.length > 0 ? 'Updating' : 'Adding'}…</>
+                                                    : <><Star size={12} /> {vhMembers.length > 0 ? 'Update' : 'Add'} Vertical Head</>}
                                             </button>
                                         </div>
                                     </>
@@ -964,18 +967,20 @@ const AddMembersTab = ({ setToast }) => {
             )}
 
             {/* ── Step 3: Action buttons ── */}
-            {selectedVertical && selectedUsers.length > 0 && (
+            {selectedVertical && (isROTE ? selectedUser : selectedUsers.length > 0) && (
                 <Card className="space-y-3">
                     <SectionTitle>Actions</SectionTitle>
 
                     <div className="flex flex-wrap gap-3">
-                        {/* Add to Group */}
+                        {/* Add to Group (HO only) */}
+                        {!isROTE && (
                         <button onClick={handleAddToGroup} disabled={!canAdd || adding}
                             className="flex items-center gap-2 px-5 py-2.5 bg-[#0A66C2] hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                             {adding
                                 ? <><Loader2 size={14} className="animate-spin" /> Adding…</>
                                 : <><UserPlus size={14} /> Add to Vertical</>}
                         </button>
+                        )}
 
                         {/* Mark Vertical Head */}
                         {showMarkVHButton && (
@@ -990,7 +995,10 @@ const AddMembersTab = ({ setToast }) => {
                     </div>
 
                     <p className="text-xs text-slate-400">
-                        Adding <span className="font-mono text-slate-600">{selectedUsers.length} user(s)</span> to <span className="font-mono text-slate-600">{selectedVertical}</span>
+                        {isROTE
+                            ? <>Assigning <span className="font-mono text-slate-600">{selectedUser}</span> to <span className="font-mono text-slate-600">{selectedVertical}</span></>
+                            : <>Adding <span className="font-mono text-slate-600">{selectedUsers.length} user(s)</span> to <span className="font-mono text-slate-600">{selectedVertical}</span></>
+                        }
                         {vhGroupName && <> · Vertical head group: <span className="font-mono text-slate-600">{vhGroupName}</span>{vhExists ? ' (exists)' : ''}</>}
                     </p>
                 </Card>
@@ -1845,7 +1853,7 @@ const Verticals2Page = () => {
             <Toast toast={toast} onDismiss={() => setToast(null)} />
 
             <div className="mb-6">
-                <h1 className="text-2xl font-bold text-slate-900">RO/TE Department Assignment</h1>
+                <h1 className="text-2xl font-bold text-slate-900">RO/TE Department Head Assignment</h1>
                 <p className="text-sm text-slate-500 mt-1">Manage RO/TE Department and their members</p>
             </div>
 
