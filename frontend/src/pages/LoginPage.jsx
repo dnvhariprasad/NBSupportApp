@@ -8,8 +8,12 @@ const LoginPage = () => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         username: '',
+<<<<<<< HEAD
         password: '',
         repository: import.meta.env.VITE_DCTM_REPOSITORY || 'NABARDUAT'
+=======
+        password: ''
+>>>>>>> a5cec364fc7b71541c2e9674b114aaf45eb23393
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -26,19 +30,63 @@ const LoginPage = () => {
         setError(null);
 
         try {
-            const response = await api.post('/auth/login', formData);
-            if (response.data.authenticated) {
-                localStorage.setItem('user', JSON.stringify(response.data.userDetails));
+            // Step 1: Authenticate with OTDS
+            const params = new URLSearchParams();
+            params.append('username', formData.username);
+            params.append('password', formData.password);
+            params.append('captcha_id', 'dev-no-captcha');
+            params.append('captcha_answer', '0');
+
+            const otdsResponse = await fetch('http://172.172.20.214/proxy/otds/Integration/otds-proxy/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: params.toString()
+            });
+
+            if (!otdsResponse.ok) {
+                // Show user-friendly error message for authentication failures
+                if (otdsResponse.status === 400 || otdsResponse.status === 401 || otdsResponse.status === 403) {
+                    setError('Invalid username or password. Please try again.');
+                } else {
+                    const errorData = await otdsResponse.json().catch(() => ({}));
+                    setError(errorData.message || 'Authentication service unavailable. Please try again later.');
+                }
+                return;
+            }
+
+            const otdsData = await otdsResponse.json();
+            const token = otdsData.token || otdsData.access_token;
+
+            if (!token) {
+                setError('No token received from authentication service');
+                return;
+            }
+
+            // Step 2: Store token and fetch user profile from backend
+            localStorage.setItem('token', token);
+
+            // Fetch user profile from backend with the OTDS token and username
+            const userResponse = await api.get('/auth/profile', {
+                params: { username: formData.username },
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (userResponse.data) {
+                localStorage.setItem('user', JSON.stringify(userResponse.data));
                 navigate('/dashboard');
             } else {
-                setError(response.data.message || 'Authentication failed');
+                setError('Failed to fetch user profile');
             }
         } catch (err) {
             console.error(err);
-            if (err.response && err.response.data && err.response.data.message) {
+            if (err.response?.status === 401 || err.response?.status === 400) {
+                setError('Invalid username or password. Please try again.');
+            } else if (err.response?.data?.message) {
                 setError(err.response.data.message);
             } else {
-                setError('Service unavailable. Please contact support.');
+                setError('Service unavailable. Please check your connection and try again.');
             }
         } finally {
             setIsLoading(false);
@@ -134,18 +182,6 @@ const LoginPage = () => {
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
-                        </div>
-
-                         <div className="flex items-center">
-                            <input
-                                id="remember-me"
-                                name="remember-me"
-                                type="checkbox"
-                                className="h-4 w-4 text-[#0A66C2] focus:ring-[#0A66C2] border-gray-300 rounded"
-                            />
-                            <label htmlFor="remember-me" className="ml-2 block text-xs text-gray-500">
-                                Remember this device for 30 days
-                            </label>
                         </div>
 
                         {error && (

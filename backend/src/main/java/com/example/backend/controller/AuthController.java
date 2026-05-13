@@ -47,6 +47,57 @@ public class AuthController {
     }
 
     /**
+     * Get user profile after OTDS authentication
+     * Called after user authenticates via OTDS to fetch user details from Documentum
+     */
+    @GetMapping("/profile")
+    public ResponseEntity<?> getUserProfile(
+            @RequestParam String username,
+            @RequestHeader(value = "Authorization", required = false) String bearerToken) {
+
+        try {
+            log.info("Fetching user profile for username: {} with OTDS token", username);
+
+            // Validate that we have both username and OTDS token
+            if (username == null || username.trim().isEmpty()) {
+                return ResponseEntity.status(400).body(Map.of(
+                    "error", "Missing username parameter"
+                ));
+            }
+
+            if (bearerToken == null || bearerToken.trim().isEmpty()) {
+                log.warn("No OTDS token provided for user: {}", username);
+                return ResponseEntity.status(401).body(Map.of(
+                    "error", "Missing authentication token",
+                    "message", "OTDS token not provided"
+                ));
+            }
+
+            // Use service account to fetch user details and resolve admin role
+            AuthResponse response = authService.getUserProfile(username);
+
+            if (response != null && response.isAuthenticated()) {
+                log.info("Successfully fetched user profile for: {}", username);
+                return ResponseEntity.ok(response.getUserDetails());
+            } else {
+                String errorMsg = response != null ? response.getMessage() : "Unknown error";
+                log.warn("Failed to fetch user profile for '{}': {}", username, errorMsg);
+                return ResponseEntity.status(401).body(Map.of(
+                    "error", "User profile not found",
+                    "message", errorMsg
+                ));
+            }
+        } catch (Exception e) {
+            log.error("Error fetching user profile for '{}': {}", username, e.getMessage(), e);
+            return ResponseEntity.status(500).body(Map.of(
+                "error", "Failed to fetch user profile",
+                "message", e.getMessage(),
+                "details", e.getClass().getSimpleName()
+            ));
+        }
+    }
+
+    /**
      * Get login ticket for current configured user using DQL
      */
     @GetMapping("/login-ticket")
