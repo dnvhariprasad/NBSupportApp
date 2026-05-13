@@ -503,6 +503,63 @@ public class GroupService {
     }
 
     /**
+     * Get verticals from ECM CONFIG folder hierarchy using DQL.
+     * Queries dm_folder objects instead of dm_group.
+     * Returns folders under /ECM CONFIG/Office Type/{OFFICE_TYPE}/{DEPT_NAME}/
+     *
+     * Query: SELECT subject, object_name FROM dm_folder
+     *        WHERE folder ('/ECM CONFIG/Office Type/{OFFICE_TYPE}/{DEPT_NAME}/')
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, String>> getVerticalFolders(String officeType, String deptName) {
+        String safe = officeType.replace("'", "''");
+        String deptSafe = deptName.replace("'", "''");
+        String folderPath = "/ECM CONFIG/Office Type/" + safe + "/" + deptSafe;
+
+        String dql = "SELECT subject, object_name FROM dm_folder WHERE folder ('" + folderPath + "')";
+        String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+                   + "?dql={dql}&items-per-page=100&page=1&inline=true";
+
+        log.info("Fetching vertical folders from path '{}' via DQL", folderPath);
+        try {
+            Map<String, Object> response = restClient.get()
+                    .uri(url, dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, String>> results = new ArrayList<>();
+            List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+
+            if (entries != null) {
+                for (Map<String, Object> entry : entries) {
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        if (props != null) {
+                            Map<String, String> item = new HashMap<>();
+                            // Use subject as group_name for compatibility with existing functionality
+                            String subject = (String) props.get("subject");
+                            item.put("group_name", subject);
+                            item.put("subject", subject);
+                            item.put("object_name", (String) props.get("object_name"));
+                            item.put("r_object_id", (String) props.get("r_object_id"));
+                            results.add(item);
+                        }
+                    }
+                }
+            }
+
+            log.info("Found {} vertical folders under '{}'", results.size(), folderPath);
+            return results;
+        } catch (Exception e) {
+            log.error("Error fetching vertical folders from '{}': {}", folderPath, e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    /**
      * Return all dm_groups the given user belongs to.
      */
     @SuppressWarnings("unchecked")

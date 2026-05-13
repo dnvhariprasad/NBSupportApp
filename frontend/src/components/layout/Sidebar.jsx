@@ -67,7 +67,7 @@ const Sidebar = () => {
                         <Compass className="text-white" size={24} />
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold text-slate-900 leading-tight">NB Admin</h1>
+                        <h1 className="text-lg font-bold text-slate-900 leading-tight">NEO Admin</h1>
                     </div>
                 </div>
             </div>

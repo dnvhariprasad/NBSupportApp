@@ -240,7 +240,7 @@ const LoginPage = () => {
                         <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
                             <Compass size={28} className="text-white" />
                         </div>
-                        <span className="text-2xl font-bold tracking-tight">NB Admin</span>
+                        <span className="text-2xl font-bold tracking-tight">NEO Admin</span>
                     </div>
                 </div>
 
