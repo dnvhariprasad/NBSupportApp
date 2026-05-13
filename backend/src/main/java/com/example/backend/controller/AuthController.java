@@ -8,6 +8,7 @@ import com.example.backend.service.DctmAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
@@ -25,15 +26,18 @@ public class AuthController {
     private final DctmConfig dctmConfig;
     private final DctmAuthService dctmAuthService;
     private final RestClient restClient;
+    private final Environment environment;
 
     public AuthController(AuthService authService,
                          DctmConfig dctmConfig,
                          DctmAuthService dctmAuthService,
-                         RestClient.Builder restClientBuilder) {
+                         RestClient.Builder restClientBuilder,
+                         Environment environment) {
         this.authService = authService;
         this.dctmConfig = dctmConfig;
         this.dctmAuthService = dctmAuthService;
         this.restClient = restClientBuilder.build();
+        this.environment = environment;
     }
 
     @PostMapping("/login")
@@ -95,6 +99,26 @@ public class AuthController {
                 "details", e.getClass().getSimpleName()
             ));
         }
+    }
+
+    /**
+     * Get environment-specific configuration for login (OTDS endpoint and repository)
+     * Frontend calls this to get the correct OTDS token API endpoint based on deployed environment
+     */
+    @GetMapping("/config")
+    public ResponseEntity<Map<String, String>> getAuthConfig() {
+        Map<String, String> config = new HashMap<>();
+        String otdsTokenApiUrl = environment.getProperty("otds.token-api-url");
+        String repository = dctmConfig.getRepository();
+        String activeProfile = String.join(",", environment.getActiveProfiles());
+
+        config.put("otdsTokenApiUrl", otdsTokenApiUrl);
+        config.put("repository", repository);
+        config.put("environment", activeProfile.isEmpty() ? "default" : activeProfile);
+
+        log.info("Auth config requested - Profile: {}, Repository: {}, OTDS URL: {}",
+                 activeProfile, repository, otdsTokenApiUrl);
+        return ResponseEntity.ok(config);
     }
 
     /**
