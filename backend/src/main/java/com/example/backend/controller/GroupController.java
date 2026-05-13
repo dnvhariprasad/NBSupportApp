@@ -100,6 +100,18 @@ public class GroupController {
     }
 
     /**
+     * Get verticals from ECM CONFIG folders for dropdown.
+     * Queries dm_folder objects instead of dm_group.
+     * GET /api/groups/verticals?officeType=HO&deptName=DDSI
+     */
+    @GetMapping("/verticals")
+    public List<Map<String, String>> getVerticalFolders(
+            @RequestParam String officeType,
+            @RequestParam String deptName) {
+        return groupService.getVerticalFolders(officeType, deptName);
+    }
+
+    /**
      * Check whether a dm_group with the given name exists.
      * GET /api/groups/exists/{groupName}
      */

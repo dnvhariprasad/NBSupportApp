@@ -427,13 +427,15 @@ const AddMembersTab = ({ setToast }) => {
         const d = deptOptions.find(d => d.name === v);
         if (!d) return;
 
-        const prefix = officeType === 'HO'
-            ? `ecm_ho_${d.shortCode.toLowerCase()}`
-            : `ecm_${roShortCode.toLowerCase()}_${d.shortCode.toLowerCase()}`;
-
         setLoadingVerticals(true);
         try {
-            const res = await api.get('/groups/by-prefix', { params: { prefix } });
+            // Fetch verticals from ECM CONFIG folder structure
+            const res = await api.get('/groups/verticals', {
+                params: {
+                    officeType: officeType,
+                    deptName: d.name
+                }
+            });
             const all = res.data || [];
             setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('_cgm_sec')));
         } catch { setVerticals([]); }
@@ -677,7 +679,7 @@ const AddMembersTab = ({ setToast }) => {
                             : <Select value={selectedVertical} onChange={handleVerticalChange}
                                 disabled={(isROTE ? !location : !dept) || verticals.length === 0}
                                 placeholder={isROTE ? (!location ? '— Select location first —' : verticals.length === 0 ? 'No verticals found' : '— Select vertical —') : (!dept ? '— Select dept first —' : verticals.length === 0 ? 'No verticals found' : '— Select vertical —')}
-                                options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
+                                options={verticals.map(g => ({ value: g.group_name, label: g.object_name || g.group_name }))} />
                         }
                     </div>
                     {/* User */}
@@ -816,7 +818,7 @@ const AddMembersTab = ({ setToast }) => {
                     </div>
 
                     <p className="text-xs text-slate-400">
-                        Adding <span className="font-mono text-slate-600">{selectedUsers.length} user(s)</span> to <span className="font-mono text-slate-600">{selectedVertical}</span>
+                        Adding <span className="font-mono text-slate-600">{selectedUsers.length} user(s)</span> to <span className="font-mono text-slate-600">{verticals.find(g => g.group_name === selectedVertical)?.object_name || selectedVertical}</span>
                         {vhGroupName && <> · Vertical head group: <span className="font-mono text-slate-600">{vhGroupName}</span>{vhExists ? ' (exists)' : ''}</>}
                     </p>
                 </Card>
@@ -1025,14 +1027,9 @@ const RemoveMembersTab = ({ setToast }) => {
         setRoShortCode(roCode);
         setDept(''); setSelectedGroup(''); setVerticals([]); setMembers({ users: [], groups: [] });
         if (!v || !roCode) return;
-        // Fetch all RO/TE verticals by ecm_<roCode> prefix on location select
-        setLoadingVerts(true);
-        try {
-            const res = await api.get('/groups/by-prefix', { params: { prefix: `ecm_${roCode.toLowerCase()}` } });
-            const all = res.data || [];
-            setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('cgm_sec')));
-        } catch { setVerticals([]); }
-        finally { setLoadingVerts(false); }
+        // Note: For RO/TE location change, we'll fetch verticals when department is selected
+        // since we need deptShortCode for the ECM CONFIG path
+        setVerticals([]);
     };
 
     const handleDeptChange = async (v) => {
@@ -1040,12 +1037,15 @@ const RemoveMembersTab = ({ setToast }) => {
         if (!v) return;
         const d = deptOptions.find(d => d.name === v);
         if (!d) return;
-        const prefix = officeType === 'HO'
-            ? `ecm_ho_${d.shortCode.toLowerCase()}`
-            : `ecm_${roShortCode.toLowerCase()}_${d.shortCode.toLowerCase()}`;
         setLoadingVerts(true);
         try {
-            const res = await api.get('/groups/by-prefix', { params: { prefix } });
+            // Fetch verticals from ECM CONFIG folder structure
+            const res = await api.get('/groups/verticals', {
+                params: {
+                    officeType: officeType,
+                    deptName: d.name
+                }
+            });
             const all = res.data || [];
             setVerticals(all.filter(g => !g.group_name.includes('vertical_head') && !g.group_name.includes('_grade_') && !g.group_name.includes('cgm_sec')));
         } catch { setVerticals([]); }
@@ -1492,7 +1492,7 @@ const RemoveMembersTab = ({ setToast }) => {
                                 : verticals.length === 0 ? 'No groups found'
                                 : '— Select group —'
                             }
-                            options={verticals.map(g => ({ value: g.group_name, label: g.group_name }))} />
+                            options={verticals.map(g => ({ value: g.group_name, label: g.object_name || g.group_name }))} />
                     }
                 </div>
             </Card>
@@ -1500,7 +1500,7 @@ const RemoveMembersTab = ({ setToast }) => {
             {selectedGroup && (
                 <Card>
                     <div className="flex items-center justify-between mb-3">
-                        <SectionTitle>Members of <span className="font-mono normal-case">{selectedGroup}</span></SectionTitle>
+                        <SectionTitle>Members of <span className="font-mono normal-case">{verticals.find(g => g.group_name === selectedGroup)?.object_name || selectedGroup}</span></SectionTitle>
                         <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-xs">{allMembers.length}</span>
                     </div>
 
