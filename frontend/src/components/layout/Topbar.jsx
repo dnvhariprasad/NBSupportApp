@@ -116,6 +116,10 @@ const Topbar = () => {
         return name ? name.charAt(0).toUpperCase() : 'U';
     };
 
+    // Get user name from user object (may be at top level or under properties)
+    const userName = user.user_name || user.properties?.user_name || user.object_name || 'User';
+    const userEmail = user.user_address || user.properties?.user_address || 'No email';
+
     return (
         <header className="h-16 bg-white border-b border-slate-200 fixed top-0 right-0 left-64 z-10 flex items-center justify-end px-8 shadow-sm">
             <div className="flex items-center gap-6">
@@ -241,12 +245,12 @@ const Topbar = () => {
 
                 {/* Profile Section */}
                 <div className="relative" ref={dropdownRef}>
-                    <button 
+                    <button
                         onClick={() => setIsProfileOpen(!isProfileOpen)}
                         className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200"
                     >
                         <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-[#0A66C2] font-bold text-sm">
-                            {getInitials(user.properties?.user_name)}
+                            {getInitials(userName)}
                         </div>
                         <ChevronDown size={16} className={`text-slate-400 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
                     </button>
@@ -256,8 +260,8 @@ const Topbar = () => {
                         <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden text-sm animate-in fade-in zoom-in-95 duration-200">
                             {/* User Header */}
                             <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-                                <p className="font-bold text-slate-800 text-base mb-0.5">{user.properties?.user_name}</p>
-                                <p className="text-slate-500 text-xs break-all">{user.properties?.user_address || 'No email'}</p>
+                                <p className="font-bold text-slate-800 text-base mb-0.5">{userName}</p>
+                                <p className="text-slate-500 text-xs break-all">{userEmail}</p>
                             </div>
 
                             {/* Details — only shown for Super Admin / Local Admin */}
