@@ -412,6 +412,14 @@ public class GroupService {
             return result;
 
         } catch (Exception e) {
+            // If member doesn't exist in group (404), treat as success since goal is achieved
+            if (e.getMessage() != null && (e.getMessage().contains("404") || e.getMessage().contains("not found") || e.getMessage().contains("E_USER_NOT_FOUND"))) {
+                log.info("Member '{}' not in group '{}' (already removed or never added)", memberName, groupName);
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", true);
+                result.put("message", "Member not in group (already removed)");
+                return result;
+            }
             log.error("Error removing member '{}' from group '{}': {}", memberName, groupName, e.getMessage(), e);
             Map<String, Object> result = new HashMap<>();
             result.put("success", false);
