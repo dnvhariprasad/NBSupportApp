@@ -213,14 +213,31 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const pf = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
 
     const handleDelegateClick = async (task) => {
-        // Use the delegating user's (form) office type and location/department, not the case properties
-        const offType = form.office_type || 'HO';
-        const roCode = (form.ro_short_code || '').toLowerCase();
-        const deptCode = (form.department_short_code || '').toLowerCase();
-        const isRoTe = offType === 'RO' || offType === 'TE';
+        // Extract case location/department from case number
+        // Format for RO/TE: NB-RO/TE-{LOCATION}-{TYPE}-YEAR-QUARTER-NUMBER
+        // Format for HO:    NB-{DEPT}-{TYPE}-YEAR-QUARTER-NUMBER
+        const caseNumber = pf(task, 'object_name') || task.object_name || task.case_number || task.case_id || '';
+        const caseParts = caseNumber.split('-');
 
-        // In EditUserProfileModal context, the current performer is the user being edited
-        // Use form.object_name which is the loaded profile display name
+        const officeTypeOrDept = (caseParts[1] || '').toUpperCase();
+        const hoShortCodes = ['DDSI', 'DIT', 'FAD', 'CAC', 'DEAR', 'DFIBT', 'FNRM', 'MCIPL', 'SPPISL', 'NABCONS', 'OFDD', 'CGM'];
+
+        let caseLocOrDept = '';
+        let isCaseHO = false;
+
+        console.log('[Delegate] Case number parsed:', { caseNumber, caseParts, officeTypeOrDept });
+
+        if (officeTypeOrDept === 'RO' || officeTypeOrDept === 'TE') {
+            // RO/TE case: location is at index 2
+            caseLocOrDept = (caseParts[2] || '').toUpperCase();
+        } else {
+            // HO case: department is at index 1
+            caseLocOrDept = officeTypeOrDept;
+            isCaseHO = hoShortCodes.includes(caseLocOrDept);
+        }
+
+        console.log('[Delegate] Location/Dept code:', { caseLocOrDept, isCaseHO, officeTypeOrDept });
+
         const currentPerformer = form.object_name || '';
 
         setDelegateTask(task);
@@ -229,37 +246,71 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setDelegateError(null);
         setLoadingDelegateUsers(true);
         try {
-            if (isRoTe) {
-                const allLocs = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
-                const locObj  = allLocs.find(l => l.shortCode === roCode);
-                const location = locObj?.location || roCode;
-                const res = await api.get('/users/by-location', { params: { location, page: 1, size: 500 } });
-                // For RO/TE: show all location users (no department filter)
-                // Only filter out current performer
-                const allUsers = res.data?.users || res.data || [];
-                const filteredUsers = allUsers.filter(u => {
-                    // Check if not current performer
-                    const userName = u.name?.trim().toLowerCase() || '';
-                    const userObjName = u.object_name?.trim().toLowerCase() || '';
-                    const currentName = currentPerformer?.trim().toLowerCase() || '';
-                    const notCurrentPerformer = userName !== currentName && userObjName !== currentName;
+            if (!isCaseHO) {
+                // RO/TE case: caseLocOrDept is location code (TN, KA, MH, etc.)
+                if (!caseLocOrDept) {
+                    throw new Error('Could not extract location from case number: ' + caseNumber);
+                }
 
-                    return notCurrentPerformer;
-                });
+                const allLocs = [...RO_LOCATIONS, ...TE_LOCATIONS];
+                const locObj = allLocs.find(l => l.shortCode?.toUpperCase() === caseLocOrDept);
+                const location = locObj?.location;
+
+                console.log('[Delegate] RO/TE case:', { caseNumber, caseLocOrDept, foundLocation: locObj?.location, allLocsCount: allLocs.length });
+
+                if (!location) {
+                    throw new Error(`Location not found for shortCode: ${caseLocOrDept}. Make sure RO_LOCATIONS or TE_LOCATIONS has this location.`);
+                }
+
+                const res = await api.get('/users/by-location', { params: { location, page: 1, size: 500 } });
+                const allUsers = res.data?.users || res.data || [];
+
+                console.log('[Delegate] Fetched users:', { count: allUsers.length, sample: allUsers[0] });
+
+                const filteredUsers = allUsers
+                    .filter(u => {
+                        // Ensure user has a valid object_name
+                        const displayName = u.object_name || u.name || '';
+                        return displayName.trim().length > 0;
+                    })
+                    .filter(u => {
+                        // Filter out current performer
+                        const userName = u.name?.trim().toLowerCase() || '';
+                        const userObjName = u.object_name?.trim().toLowerCase() || '';
+                        const currentName = currentPerformer?.trim().toLowerCase() || '';
+                        return userName !== currentName && userObjName !== currentName;
+                    });
+
+                console.log('[Delegate] Filtered users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
                 setDelegateUsers(filteredUsers);
             } else {
-                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode, officeType: offType, page: 1, size: 500 } });
-                // Filter out the current performer - check multiple name fields
+                // HO case: caseLocOrDept is department code (DDSI, DIT, FAD, etc.)
+                console.log('[Delegate] HO case:', { caseNumber, caseLocOrDept });
+
+                const res = await api.get('/users/by-dept', { params: { shortCode: caseLocOrDept.toLowerCase(), officeType: 'HO', page: 1, size: 500 } });
                 const allUsers = res.data?.users || res.data || [];
-                const filteredUsers = allUsers.filter(u => {
-                    const userName = u.name?.trim().toLowerCase() || '';
-                    const userObjName = u.object_name?.trim().toLowerCase() || '';
-                    const currentName = currentPerformer?.trim().toLowerCase() || '';
-                    return userName !== currentName && userObjName !== currentName;
-                });
+
+                console.log('[Delegate] Fetched HO users:', { count: allUsers.length, sample: allUsers[0] });
+
+                const filteredUsers = allUsers
+                    .filter(u => {
+                        // Ensure user has a valid object_name
+                        const displayName = u.object_name || u.name || '';
+                        return displayName.trim().length > 0;
+                    })
+                    .filter(u => {
+                        // Filter out current performer
+                        const userName = u.name?.trim().toLowerCase() || '';
+                        const userObjName = u.object_name?.trim().toLowerCase() || '';
+                        const currentName = currentPerformer?.trim().toLowerCase() || '';
+                        return userName !== currentName && userObjName !== currentName;
+                    });
+
+                console.log('[Delegate] Filtered HO users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
                 setDelegateUsers(filteredUsers);
             }
-        } catch {
+        } catch (err) {
+            console.error('[Delegate] Failed to load users:', { error: err.message, caseNumber, caseLocOrDept, isCaseHO });
             setDelegateError('Failed to load users.');
         } finally {
             setLoadingDelegateUsers(false);

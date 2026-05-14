@@ -753,6 +753,16 @@ const AddMembersTab = ({ setToast }) => {
         const newUserObj = users.find(u => u.user_login_name === modifyVHSelectedUser);
         const newObjectName = newUserObj?.object_name || modifyVHSelectedUser;
         try {
+            // 0. If group doesn't exist, create it first
+            if (!vhExists) {
+                const vhDisplayName = selectedVertical.replace(/_/g, '-').toUpperCase() + ` -${newObjectName}`;
+                console.log('[handleModifyVerticalHead] Creating VH group first:', { vhGroupName, vhDisplayName });
+                await api.post('/groups', {
+                    group_name: vhGroupName,
+                    group_display_name: vhDisplayName
+                });
+            }
+
             // 1. Add new user to VH group
             await api.post(`/groups/${vhGroupName}/members`, {
                 memberName: modifyVHSelectedUser, memberType: 'user',
@@ -773,9 +783,10 @@ const AddMembersTab = ({ setToast }) => {
             setToast({ type: 'success', message: `Vertical head updated to '${newObjectName}'.` });
 
             // Refresh VH details from server to get updated display name and members
-            const [detailsRes, membersRes, verticalMembersRes] = await Promise.allSettled([
+            const [detailsRes, membersRes, vhCheckRes, verticalMembersRes] = await Promise.allSettled([
                 api.get(`/groups/${vhGroupName}`),
                 api.get(`/groups/${vhGroupName}/members`),
+                api.get(`/groups/exists/${vhGroupName}`), // Check if group exists (refresh vhExists)
                 api.get(`/groups/${selectedVertical}/members`), // Refresh main vertical members to update badges
             ]);
 
@@ -788,6 +799,11 @@ const AddMembersTab = ({ setToast }) => {
 
             if (membersRes.status === 'fulfilled') {
                 setVhMembers(membersRes.value.data?.users || []);
+            }
+
+            if (vhCheckRes.status === 'fulfilled') {
+                const exists = vhCheckRes.value.data?.exists;
+                setVhExists(exists || false);
             }
 
             // Refresh the main vertical members to update UI badges
