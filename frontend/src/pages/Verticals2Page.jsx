@@ -899,10 +899,10 @@ const AddMembersTab = ({ setToast }) => {
             {(selectedVertical || selectedUsers.length > 0 || (isROTE && selectedUser)) && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
 
-                    {/* 1 — Vertical Members */}
+                    {/* 1 — Department Members */}
                     {selectedVertical && (
                         <Card>
-                            <SectionTitle>Vertical Members</SectionTitle>
+                            <SectionTitle>Department Members</SectionTitle>
                             {loadingMembers
                                 ? <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-slate-400" /></div>
                                 : [...verticalMembers.users, ...verticalMembers.groups].length === 0
@@ -919,10 +919,10 @@ const AddMembersTab = ({ setToast }) => {
                         </Card>
                     )}
 
-                    {/* 2 — Vertical Head Group */}
+                    {/* 2 — Department Head Group */}
                     {selectedVertical && (
                         <Card>
-                            <SectionTitle>Vertical Head Group</SectionTitle>
+                            <SectionTitle>Department Head Group</SectionTitle>
                             <p className="text-xs font-mono text-slate-400 mb-2 break-all">{vhGroupName}</p>
                             {loadingMembers
                                 ? <div className="flex justify-center py-2"><Loader2 size={14} className="animate-spin text-slate-400" /></div>
@@ -944,10 +944,10 @@ const AddMembersTab = ({ setToast }) => {
                                             ))}
                                         </div>
                                     )}
-                                    {/* Add/Modify Vertical Head */}
+                                    {/* Add/Modify Department Head */}
                                     <div className="border-t border-slate-100 pt-3 mt-2 space-y-2">
                                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                                            {vhMembers.length > 0 ? 'Modify Vertical Head' : 'Add Vertical Head'}
+                                            {vhMembers.length > 0 ? 'Modify Department Head' : 'Add Department Head'}
                                         </p>
                                         <select
                                             value={modifyVHSelectedUser}
@@ -971,7 +971,7 @@ const AddMembersTab = ({ setToast }) => {
                                         >
                                             {modifyingVH
                                                 ? <><Loader2 size={12} className="animate-spin" /> {vhMembers.length > 0 ? 'Updating' : 'Adding'}…</>
-                                                : <><Star size={12} /> {vhMembers.length > 0 ? 'Update' : 'Add'} Vertical Head</>}
+                                                : <><Star size={12} /> {vhMembers.length > 0 ? 'Update' : 'Add'} Department Head</>}
                                         </button>
                                     </div>
                                 </>
@@ -998,13 +998,13 @@ const AddMembersTab = ({ setToast }) => {
                         </button>
                         )}
 
-                        {/* Mark Vertical Head */}
+                        {/* Mark Department Head */}
                         {showMarkVHButton && (
                             <button onClick={handleMarkVerticalHead} disabled={creatingVH || vhExists}
                                 className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                                 {creatingVH
                                     ? <><Loader2 size={14} className="animate-spin" /> Creating…</>
-                                    : <><Star size={14} /> Mark Vertical Head</>}
+                                    : <><Star size={14} /> Mark Department Head</>}
                             </button>
                         )}
 
@@ -1590,7 +1590,7 @@ const RemoveMembersTab = ({ setToast }) => {
         );
     };
 
-    // ── Vertical Head Assignment Modal ──────────────────────────────────────────
+    // ── Department Head Assignment Modal ──────────────────────────────────────────
     const VerticalHeadModal = () => {
         if (!showVerticalHeadModal || !verticalHeadUser) return null;
         return (
@@ -1598,9 +1598,9 @@ const RemoveMembersTab = ({ setToast }) => {
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
                     {/* Header */}
                     <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50">
-                        <h2 className="text-lg font-bold text-slate-900">Assign New Vertical Head</h2>
+                        <h2 className="text-lg font-bold text-slate-900">Assign New Department Head</h2>
                         <p className="text-xs text-slate-500 mt-1">
-                            {verticalHeadUser.name} is a vertical head. Assign a new head before removing.
+                            {verticalHeadUser.name} is a department head. Assign a new head before removing.
                         </p>
                     </div>
 
@@ -1608,7 +1608,7 @@ const RemoveMembersTab = ({ setToast }) => {
                     <div className="px-6 py-5 space-y-4">
                         <div>
                             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">
-                                Select New Vertical Head <span className="text-red-500">*</span>
+                                Select New Department Head <span className="text-red-500">*</span>
                             </label>
                             <select
                                 value={selectedNewHead}
@@ -1625,7 +1625,7 @@ const RemoveMembersTab = ({ setToast }) => {
 
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                             <p className="text-xs text-blue-700">
-                                <strong>Note:</strong> The selected user will be assigned as the new vertical head before {verticalHeadUser.name} is removed from the vertical.
+                                <strong>Note:</strong> The selected user will be assigned as the new department head before {verticalHeadUser.name} is removed from the department.
                             </p>
                         </div>
                     </div>
