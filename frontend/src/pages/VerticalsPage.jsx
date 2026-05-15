@@ -208,7 +208,27 @@ const VerticalCreationTab = ({ setToast }) => {
     const handleCreate = async () => {
         setCreating(true);
         try {
-            await api.post('/groups', { group_name: groupName, group_display_name: groupDisplayName });
+            const groupRes = await api.post('/groups', { group_name: groupName, group_display_name: groupDisplayName });
+
+            // Check if group already exists
+            if (groupRes.data?.exists) {
+                setToast({
+                    type: 'error',
+                    message: `Group '${groupName}' already exists. Please provide a different vertical shortcode.`
+                });
+                setCreating(false);
+                return;
+            }
+
+            // Check if creation failed
+            if (!groupRes.data?.success) {
+                setToast({
+                    type: 'error',
+                    message: groupRes.data?.message || 'Failed to create vertical group.'
+                });
+                setCreating(false);
+                return;
+            }
 
             // Create the associated dm_folder
             try {
@@ -222,13 +242,19 @@ const VerticalCreationTab = ({ setToast }) => {
                 const folderMsg = folderErr.response?.data?.message || folderErr.message;
                 setToast({ type: 'error', message: `Vertical created but folder creation failed: ${folderMsg}` });
                 setDept(''); setSuffix(''); setVerticalFullName(''); setVerticalShortcode('');
+                setCreating(false);
                 return;
             }
 
             setToast({ type: 'success', message: `Vertical '${groupName}' and folder created successfully.` });
             setDept(''); setSuffix(''); setVerticalFullName(''); setVerticalShortcode('');
         } catch (err) {
-            setToast({ type: 'error', message: `Failed: ${err.response?.data?.message || err.message}` });
+            const errMsg = err.response?.data?.message || err.message;
+            const isConflict = err.response?.status === 409;
+            const message = isConflict
+                ? `Group already exists. Please provide a different vertical shortcode.`
+                : `Failed to create vertical: ${errMsg}`;
+            setToast({ type: 'error', message });
         } finally {
             setCreating(false);
         }

@@ -213,14 +213,31 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const pf = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
 
     const handleDelegateClick = async (task) => {
-        // Use the delegating user's (form) office type and location/department, not the case properties
-        const offType = form.office_type || 'HO';
-        const roCode = (form.ro_short_code || '').toLowerCase();
-        const deptCode = (form.department_short_code || '').toLowerCase();
-        const isRoTe = offType === 'RO' || offType === 'TE';
+        // Extract case location/department from case number
+        // Format for RO/TE: NB-RO/TE-{LOCATION}-{TYPE}-YEAR-QUARTER-NUMBER
+        // Format for HO:    NB-{DEPT}-{TYPE}-YEAR-QUARTER-NUMBER
+        const caseNumber = pf(task, 'object_name') || task.object_name || task.case_number || task.case_id || '';
+        const caseParts = caseNumber.split('-');
 
-        // In EditUserProfileModal context, the current performer is the user being edited
-        // Use form.object_name which is the loaded profile display name
+        const officeTypeOrDept = (caseParts[1] || '').toUpperCase();
+        const hoShortCodes = ['DDSI', 'DIT', 'FAD', 'CAC', 'DEAR', 'DFIBT', 'FNRM', 'MCIPL', 'SPPISL', 'NABCONS', 'OFDD', 'CGM'];
+
+        let caseLocOrDept = '';
+        let isCaseHO = false;
+
+        console.log('[Delegate] Case number parsed:', { caseNumber, caseParts, officeTypeOrDept });
+
+        if (officeTypeOrDept === 'RO' || officeTypeOrDept === 'TE') {
+            // RO/TE case: location is at index 2
+            caseLocOrDept = (caseParts[2] || '').toUpperCase();
+        } else {
+            // HO case: department is at index 1
+            caseLocOrDept = officeTypeOrDept;
+            isCaseHO = hoShortCodes.includes(caseLocOrDept);
+        }
+
+        console.log('[Delegate] Location/Dept code:', { caseLocOrDept, isCaseHO, officeTypeOrDept });
+
         const currentPerformer = form.object_name || '';
 
         setDelegateTask(task);
@@ -229,37 +246,71 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setDelegateError(null);
         setLoadingDelegateUsers(true);
         try {
-            if (isRoTe) {
-                const allLocs = offType === 'TE' ? TE_LOCATIONS : RO_LOCATIONS;
-                const locObj  = allLocs.find(l => l.shortCode === roCode);
-                const location = locObj?.location || roCode;
-                const res = await api.get('/users/by-location', { params: { location, page: 1, size: 500 } });
-                // For RO/TE: show all location users (no department filter)
-                // Only filter out current performer
-                const allUsers = res.data?.users || res.data || [];
-                const filteredUsers = allUsers.filter(u => {
-                    // Check if not current performer
-                    const userName = u.name?.trim().toLowerCase() || '';
-                    const userObjName = u.object_name?.trim().toLowerCase() || '';
-                    const currentName = currentPerformer?.trim().toLowerCase() || '';
-                    const notCurrentPerformer = userName !== currentName && userObjName !== currentName;
+            if (!isCaseHO) {
+                // RO/TE case: caseLocOrDept is location code (TN, KA, MH, etc.)
+                if (!caseLocOrDept) {
+                    throw new Error('Could not extract location from case number: ' + caseNumber);
+                }
 
-                    return notCurrentPerformer;
-                });
+                const allLocs = [...RO_LOCATIONS, ...TE_LOCATIONS];
+                const locObj = allLocs.find(l => l.shortCode?.toUpperCase() === caseLocOrDept);
+                const location = locObj?.location;
+
+                console.log('[Delegate] RO/TE case:', { caseNumber, caseLocOrDept, foundLocation: locObj?.location, allLocsCount: allLocs.length });
+
+                if (!location) {
+                    throw new Error(`Location not found for shortCode: ${caseLocOrDept}. Make sure RO_LOCATIONS or TE_LOCATIONS has this location.`);
+                }
+
+                const res = await api.get('/users/by-location', { params: { location, page: 1, size: 500 } });
+                const allUsers = res.data?.users || res.data || [];
+
+                console.log('[Delegate] Fetched users:', { count: allUsers.length, sample: allUsers[0] });
+
+                const filteredUsers = allUsers
+                    .filter(u => {
+                        // Ensure user has a valid object_name
+                        const displayName = u.object_name || u.name || '';
+                        return displayName.trim().length > 0;
+                    })
+                    .filter(u => {
+                        // Filter out current performer
+                        const userName = u.name?.trim().toLowerCase() || '';
+                        const userObjName = u.object_name?.trim().toLowerCase() || '';
+                        const currentName = currentPerformer?.trim().toLowerCase() || '';
+                        return userName !== currentName && userObjName !== currentName;
+                    });
+
+                console.log('[Delegate] Filtered users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
                 setDelegateUsers(filteredUsers);
             } else {
-                const res = await api.get('/users/by-dept', { params: { shortCode: deptCode, officeType: offType, page: 1, size: 500 } });
-                // Filter out the current performer - check multiple name fields
+                // HO case: caseLocOrDept is department code (DDSI, DIT, FAD, etc.)
+                console.log('[Delegate] HO case:', { caseNumber, caseLocOrDept });
+
+                const res = await api.get('/users/by-dept', { params: { shortCode: caseLocOrDept.toLowerCase(), officeType: 'HO', page: 1, size: 500 } });
                 const allUsers = res.data?.users || res.data || [];
-                const filteredUsers = allUsers.filter(u => {
-                    const userName = u.name?.trim().toLowerCase() || '';
-                    const userObjName = u.object_name?.trim().toLowerCase() || '';
-                    const currentName = currentPerformer?.trim().toLowerCase() || '';
-                    return userName !== currentName && userObjName !== currentName;
-                });
+
+                console.log('[Delegate] Fetched HO users:', { count: allUsers.length, sample: allUsers[0] });
+
+                const filteredUsers = allUsers
+                    .filter(u => {
+                        // Ensure user has a valid object_name
+                        const displayName = u.object_name || u.name || '';
+                        return displayName.trim().length > 0;
+                    })
+                    .filter(u => {
+                        // Filter out current performer
+                        const userName = u.name?.trim().toLowerCase() || '';
+                        const userObjName = u.object_name?.trim().toLowerCase() || '';
+                        const currentName = currentPerformer?.trim().toLowerCase() || '';
+                        return userName !== currentName && userObjName !== currentName;
+                    });
+
+                console.log('[Delegate] Filtered HO users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
                 setDelegateUsers(filteredUsers);
             }
-        } catch {
+        } catch (err) {
+            console.error('[Delegate] Failed to load users:', { error: err.message, caseNumber, caseLocOrDept, isCaseHO });
             setDelegateError('Failed to load users.');
         } finally {
             setLoadingDelegateUsers(false);
@@ -567,6 +618,26 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 return groups;
             };
 
+            const getDigidakGroups = (offType, roCode, codes) => {
+                const groups = [];
+                if (offType === 'HO') {
+                    for (const c of codes) {
+                        if (c) {
+                            groups.push(`ecm_digidak_ho_${c.toLowerCase()}_cgm`);
+                            groups.push(`ecm_digidak_ho_${c.toLowerCase()}_cgm_ps`);
+                        }
+                    }
+                } else if (['RO', 'TE'].includes(offType) && roCode) {
+                    const ro = roCode.toLowerCase();
+                    for (const c of codes) {
+                        if (c) {
+                            groups.push(`ecm_digidak_${offType.toLowerCase()}_${ro}_${c.toLowerCase()}_cgm`);
+                        }
+                    }
+                }
+                return groups;
+            };
+
             const memberName = user.user_login_name;
             if (!memberName || !memberName.trim()) {
                 console.error('Cannot perform group updates: user_login_name is missing', user);
@@ -581,37 +652,47 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 // DDM-specific group management: handle ecm_digidak_ro_<code>_ddm groups
                 const oldRoCode = (old.roShortCode || '').toLowerCase();
 
+                console.log('DDM User Management Debug:', {
+                    isDDMUser,
+                    wasDDMBefore,
+                    oldRoCode,
+                    newRoShortCode,
+                    locationChanged: oldRoCode !== newRoShortCode,
+                    memberName
+                });
+
                 // If transitioning FROM standard departments TO DDM, remove all department-related groups
                 if (!wasDDMBefore) {
-                    // Calculate old groups to remove (all except dm_superusers_dynamic)
-                    const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
+                    // Query all current groups and remove any non-DDM, non-superuser groups
+                    api.get(`/groups/by-user?username=${encodeURIComponent(memberName)}`)
+                        .then(groupsResponse => {
+                            const currentGroups = Array.isArray(groupsResponse.data) ? groupsResponse.data : [];
+                            console.log('Transitioning to DDM - current groups:', { memberName, currentGroups });
 
-                    console.log('Transitioning to DDM - removing old groups:', { oldGroups, memberName });
-
-                    for (const g of oldGroups) {
-                        console.log(`Removing old department group: ${g}`);
-                        api.delete(`/groups/${g}/members/${encodeURIComponent(memberName)}`).catch(err => {
-                            console.error(`Failed to remove ${g}:`, err.response?.data || err.message);
+                            for (const groupObj of currentGroups) {
+                                const groupName = groupObj.group_name || groupObj.name;
+                                // Keep only dm_superusers_dynamic and DDM groups (if any)
+                                if (groupName &&
+                                    groupName !== 'dm_superusers_dynamic' &&
+                                    !groupName.includes('_ddm')) {
+                                    console.log(`Removing non-DDM group: ${groupName}`);
+                                    api.delete(`/groups/${groupName}/members/${encodeURIComponent(memberName)}`).catch(err => {
+                                        console.error(`Failed to remove ${groupName}:`, err.response?.data || err.message);
+                                    });
+                                }
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Failed to query user groups:', err.message);
+                            // Fallback: try to remove calculated groups if query fails
+                            const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
+                            const oldDigidakGroups = getDigidakGroups(old.officeType, old.roShortCode, old.deptCodes);
+                            const allOldGroups = [...oldGroups, ...oldDigidakGroups];
+                            console.log('Fallback - removing calculated groups:', { allOldGroups });
+                            for (const g of allOldGroups) {
+                                api.delete(`/groups/${g}/members/${encodeURIComponent(memberName)}`).catch(() => {});
+                            }
                         });
-                    }
-
-                    // Also remove old CGM group if user was CGM
-                    const oldDesignation = (old.designation || '').toUpperCase();
-                    if (oldDesignation === 'CGM') {
-                        let oldCgmGroup = '';
-                        if (old.officeType === 'HO') {
-                            const dc = (old.deptCodes[0] || '').toLowerCase();
-                            oldCgmGroup = dc ? `ecm_digidak_ho_${dc}_cgm` : '';
-                        } else if (['RO', 'TE'].includes(old.officeType) && oldRoCode) {
-                            oldCgmGroup = `ecm_digidak_${old.officeType.toLowerCase()}_${oldRoCode}_cgm`;
-                        }
-                        if (oldCgmGroup) {
-                            console.log(`Removing old CGM group: ${oldCgmGroup}`);
-                            api.delete(`/groups/${oldCgmGroup}/members/${encodeURIComponent(memberName)}`).catch(err => {
-                                console.error(`Failed to remove ${oldCgmGroup}:`, err.response?.data || err.message);
-                            });
-                        }
-                    }
                 }
 
                 // Always ensure user is in the current DDM group (handles both new DDM and missed prior adds)
@@ -621,11 +702,44 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                     });
                 }
 
-                // If location changed and user was DDM before, remove from old group
+                // Cleanup non-DDM groups for any DDM user (whether changing district or not)
+                // Query all current groups and remove any non-DDM, non-superuser groups
+                const cleanupNonDDMGroups = () => {
+                    api.get(`/groups/by-user?username=${encodeURIComponent(memberName)}`)
+                        .then(groupsResponse => {
+                            const currentGroups = Array.isArray(groupsResponse.data) ? groupsResponse.data : [];
+                            console.log('Current groups for DDM user - cleanup:', { memberName, currentGroups });
+
+                            for (const groupObj of currentGroups) {
+                                const groupName = groupObj.group_name || groupObj.name;
+                                // Keep only dm_superusers_dynamic and DDM groups
+                                if (groupName &&
+                                    groupName !== 'dm_superusers_dynamic' &&
+                                    !groupName.includes('_ddm')) {
+                                    console.log(`Removing non-DDM group from DDM user: ${groupName}`);
+                                    api.delete(`/groups/${groupName}/members/${encodeURIComponent(memberName)}`).catch(err => {
+                                        console.error(`Failed to remove ${groupName}:`, err.response?.data || err.message);
+                                    });
+                                }
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Failed to query user groups:', err.message);
+                        });
+                };
+
+                // If location changed and user was DDM before, remove from old DDM group and clean up
                 if (wasDDMBefore && oldRoCode && oldRoCode !== newRoShortCode) {
+                    console.log('DDM user changing district - removing old DDM group and cleaning up');
+                    // Remove from old DDM group
                     api.delete(`/groups/ecm_digidak_ro_${oldRoCode}_ddm/members/${encodeURIComponent(memberName)}`).catch(err => {
-                        console.warn(`Failed to remove DDM group: ${err.message}`);
+                        console.warn(`Failed to remove old DDM group: ${err.message}`);
                     });
+                    cleanupNonDDMGroups();
+                } else if (wasDDMBefore) {
+                    // User was already DDM, just ensure non-DDM groups are removed
+                    console.log('DDM user - cleaning up non-DDM groups');
+                    cleanupNonDDMGroups();
                 }
             } else {
                 // Standard group management for non-DDM users

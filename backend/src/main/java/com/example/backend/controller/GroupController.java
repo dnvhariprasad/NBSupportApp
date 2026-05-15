@@ -22,10 +22,22 @@ public class GroupController {
      * Create a new dm_group (vertical)
      */
     @PostMapping
-    public Map<String, Object> createGroup(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<Map<String, Object>> createGroup(@RequestBody Map<String, Object> request) {
         String groupName        = (String) request.get("group_name");
         String groupDisplayName = (String) request.get("group_display_name");
-        return groupService.createGroup(groupName, groupDisplayName);
+        Map<String, Object> result = groupService.createGroup(groupName, groupDisplayName);
+
+        // Check if group already exists
+        if (result.containsKey("exists") && (Boolean) result.get("exists")) {
+            return ResponseEntity.status(409).body(result); // 409 Conflict
+        }
+
+        // Check if creation failed
+        if (!((Boolean) result.getOrDefault("success", false))) {
+            return ResponseEntity.status(400).body(result); // 400 Bad Request
+        }
+
+        return ResponseEntity.ok(result);
     }
 
     /**
