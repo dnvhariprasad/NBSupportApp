@@ -404,8 +404,10 @@ const FileNumberTab = ({ onToast }) => {
         fetchDepartments(form.officeType, form.location).then(setAllDeptOptions);
     }, [form.officeType, form.location]);
 
-    // For Local Admin: filter departments to only those in their profile
-    const deptOptions     = isLocalAdmin && profileCtx
+    // For Local Admin:
+    // - HO: filter to only their assigned departments
+    // - RO/TE: show all departments for the location
+    const deptOptions     = isLocalAdmin && profileCtx && isHO
         ? (() => {
             const raw = profileCtx.department_short_code_multi;
             const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
