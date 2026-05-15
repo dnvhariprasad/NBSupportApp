@@ -635,6 +635,22 @@ public class GroupService {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> createGroup(String groupName, String groupDisplayName) {
+        // Check if group already exists
+        try {
+            Map<String, Object> existsCheck = checkGroupExists(groupName);
+            if ((Boolean) existsCheck.getOrDefault("exists", false)) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("exists", true);
+                error.put("message", "Group '" + groupName + "' already exists. Please provide a different vertical shortcode.");
+                log.warn("Attempted to create group '{}' which already exists", groupName);
+                return error;
+            }
+        } catch (Exception e) {
+            log.debug("Error checking if group exists: {}", e.getMessage());
+            // Continue with creation attempt
+        }
+
         String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/groups";
 
         Map<String, Object> props = new HashMap<>();
@@ -664,7 +680,10 @@ public class GroupService {
 
         } catch (Exception e) {
             log.error("Error creating group '{}': {}", groupName, e.getMessage(), e);
-            throw new RuntimeException("Failed to create group: " + e.getMessage());
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Failed to create group: " + e.getMessage());
+            return error;
         }
     }
 
