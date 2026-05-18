@@ -464,6 +464,7 @@ const CmsProfileTab = ({ onToast }) => {
 
     useEffect(() => {
         if (!isLocalAdmin || !loginUsername) {
+            setCurrentFilters({ officeTypeFilter: null, locationFilter: '', deptNames: '' });
             fetchUsers(null);
             return;
         }
@@ -474,7 +475,7 @@ const CmsProfileTab = ({ onToast }) => {
                 setProfileOfficeType(ctx.office_type || '');
                 setProfileLocation(ctx.location || '');
             })
-            .catch(() => { setProfileCtx({}); fetchUsers(null); });
+            .catch(() => { setProfileCtx({}); setCurrentFilters({ officeTypeFilter: null, locationFilter: '', deptNames: '' }); fetchUsers(null); });
     }, [isLocalAdmin, loginUsername]);
 
     // Fetch departments for HO Local Admin
@@ -497,17 +498,31 @@ const CmsProfileTab = ({ onToast }) => {
         ? filteredDepts.map(d => d.name).join(',')
         : '';
 
+    // Store current filter parameters
+    const [currentFilters, setCurrentFilters] = useState({
+        officeTypeFilter: null,
+        locationFilter: '',
+        deptNames: ''
+    });
+
     // Auto-fetch once Local Admin context is ready
     useEffect(() => {
         if (!isLocalAdmin || !profileCtx || !profileOfficeType) return;
         if (profileOfficeType === 'HO') {
             if (!localAdminDeptNames) return;
+            setCurrentFilters({ officeTypeFilter: profileOfficeType, locationFilter: '', deptNames: localAdminDeptNames });
             fetchUsers(profileOfficeType, '', localAdminDeptNames);
         } else {
             if (!profileLocation) return;
+            setCurrentFilters({ officeTypeFilter: profileOfficeType, locationFilter: profileLocation, deptNames: '' });
             fetchUsers(profileOfficeType, profileLocation, '');
         }
     }, [isLocalAdmin, profileCtx, profileOfficeType, profileLocation, localAdminDeptNames]);
+
+    // Wrapper for modal callback that retains filters
+    const handleRefreshUsers = () => {
+        fetchUsers(currentFilters.officeTypeFilter, currentFilters.locationFilter, currentFilters.deptNames);
+    };
 
     const fetchUsers = async (officeTypeFilter, locationFilter, deptNames) => {
         setLoading(true);
@@ -692,7 +707,7 @@ const CmsProfileTab = ({ onToast }) => {
                 user={selectedUser}
                 isOpen={isEditModalOpen}
                 onClose={() => setIsEditModalOpen(false)}
-                onUpdate={fetchUsers}
+                onUpdate={handleRefreshUsers}
             />
         </div>
     );
