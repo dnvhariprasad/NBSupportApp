@@ -58,4 +58,10 @@ public class WorkflowController {
             @PathVariable String activityId) {
         return ResponseEntity.ok(workflowService.retryActivity(workflowId, activityId));
     }
+
+    @GetMapping("/document/{documentId}/content")
+    public ResponseEntity<String> getDocumentContent(@PathVariable String documentId) {
+        String content = workflowService.getDocumentContent(documentId);
+        return ResponseEntity.ok(content);
+    }
 }

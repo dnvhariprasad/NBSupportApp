@@ -156,6 +156,7 @@ const WorkflowsPage = () => {
     const [detailError, setDetailError] = useState(null);
     const [activeTab, setActiveTab] = useState('variables');
     const [actionLoading, setActionLoading] = useState(null);
+    const [documentContents, setDocumentContents] = useState({}); // { documentId: content }
     const detailRef = useRef(null);
 
     /* ── toast notifications ── */
@@ -209,6 +210,21 @@ const WorkflowsPage = () => {
         };
         fetchList();
     }, [selectedProcess, page]);
+
+    /* ── fetch document contents for paused workflow errors ── */
+    useEffect(() => {
+        if (!detailData?.queueItems) return;
+        const pausedQueue = detailData.queueItems.filter(q => q.task_state === 'paused' || q.task_state === '4');
+        pausedQueue.forEach(q => {
+            if (q.r_exec_result_id && !documentContents[q.r_exec_result_id]) {
+                axios.get(`/workflows/document/${q.r_exec_result_id}/content`)
+                    .then(res => {
+                        setDocumentContents(prev => ({ ...prev, [q.r_exec_result_id]: res.data }));
+                    })
+                    .catch(err => console.error(`Failed to fetch document ${q.r_exec_result_id}:`, err));
+            }
+        });
+    }, [detailData?.queueItems]);
 
     /* ── fetch detail when a workflow is selected (or direct ID entered) ── */
     const loadDetail = async (workflowId) => {
@@ -871,8 +887,10 @@ const WorkflowsPage = () => {
                                             (v.string_value || '').toLowerCase().includes('error')
                                         );
 
-                                        // Priority: message > source > errorVariable > a_status
-                                        const rawError = q.message || q.source || errorVariable?.string_value || (associatedWorkItem?.a_status) || "";
+                                        // Priority: documentContent > r_exec_os_error > message > source > errorVariable > a_status
+                                        const docId = q.r_exec_result_id;
+                                        const documentContent = docId ? documentContents[docId] : null;
+                                        const rawError = documentContent || q.r_exec_os_error || q.message || q.source || errorVariable?.string_value || (associatedWorkItem?.a_status) || "";
                                         const solution = getSuggestedSolution(rawError);
 
                                         return (

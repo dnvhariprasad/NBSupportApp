@@ -388,7 +388,7 @@ public class WorkflowService {
                             Map<String, Object> qProps = new HashMap<>(
                                     (Map<String, Object>) qContent.get("properties"));
 
-                            // 4. Optionally fetch BPS fields for specific item if it's paused
+                            // 4. Optionally fetch BPS fields and error details for paused items
                             String state = String.valueOf(qProps.get("task_state"));
                             if ("paused".equalsIgnoreCase(state) || "4".equals(state)) {
                                 try {
@@ -411,6 +411,34 @@ public class WorkflowService {
                                     }
                                 } catch (Exception ignored) {
                                     // BPS fields probably don't exist in this repo
+                                }
+
+                                // Fetch error details from associated work item
+                                try {
+                                    String itemId = (String) qProps.get("item_id");
+                                    String workItemDql = "SELECT r_exec_os_error, r_exec_result_id FROM dmi_workitem WHERE r_object_id = '"
+                                            + itemId + "'";
+                                    Map<String, Object> wiRes = restClient.get()
+                                            .uri(baseUrl + "?dql={dql}&inline=true&items-per-page=1", workItemDql)
+                                            .header("Authorization", getAuthHeader())
+                                            .header("Accept", "application/vnd.emc.documentum+json")
+                                            .retrieve()
+                                            .body(Map.class);
+                                    if (wiRes != null && wiRes.containsKey("entries")) {
+                                        List<Map<String, Object>> wiEntries = (List<Map<String, Object>>) wiRes.get("entries");
+                                        if (!wiEntries.isEmpty()) {
+                                            Map<String, Object> wiProps = (Map<String, Object>) ((Map<String, Object>) wiEntries
+                                                    .get(0).get("content")).get("properties");
+                                            if (wiProps.containsKey("r_exec_os_error")) {
+                                                qProps.put("r_exec_os_error", wiProps.get("r_exec_os_error"));
+                                            }
+                                            if (wiProps.containsKey("r_exec_result_id")) {
+                                                qProps.put("r_exec_result_id", wiProps.get("r_exec_result_id"));
+                                            }
+                                        }
+                                    }
+                                } catch (Exception ignored) {
+                                    // Work item fields don't exist
                                 }
                             }
                             queueItems.add(qProps);
@@ -459,24 +487,103 @@ public class WorkflowService {
         }
     }
 
+    @SuppressWarnings("unchecked")
     public Map<String, Object> restartWorkflow(String workflowId) {
+        Map<String, Object> result = new HashMap<>();
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+        log.info("==== NEW RESTART CODE PATH EXECUTING ====");
+        log.info("Restarting workflow: {}", workflowId);
         try {
-            String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() +
-                    "/workflows/" + workflowId + "/restart";
-            Map<String, Object> response = restClient.post()
-                    .uri(url)
-                    .header("Authorization", getServiceAuthHeader())
+            // Fetch the workflow using the working getWorkflowById method
+            Map<String, Object> workflow = getWorkflowById(workflowId);
+
+            if (workflow == null || workflow.isEmpty()) {
+                log.info("Could not fetch workflow");
+                result.put("success", false);
+                result.put("error", "Could not fetch workflow");
+                return result;
+            }
+
+            Map<String, Object> workflowProps = workflow;
+
+            // Find the paused work item
+            List<Map<String, Object>> queueItems = (List<Map<String, Object>>) workflowProps.get("queueItems");
+            if (queueItems == null || queueItems.isEmpty()) {
+                log.info("No paused items found in workflow");
+                result.put("success", false);
+                result.put("error", "No paused activity found in workflow");
+                return result;
+            }
+
+            // Find first paused item
+            Map<String, Object> pausedQueueItem = null;
+            String pausedItemId = null;
+            Integer actSeqno = null;
+
+            for (Map<String, Object> item : queueItems) {
+                if ("paused".equals(item.get("task_state"))) {
+                    pausedQueueItem = item;
+                    pausedItemId = (String) item.get("item_id");
+                    break;
+                }
+            }
+
+            if (pausedItemId == null) {
+                log.info("No paused item found");
+                result.put("success", false);
+                result.put("error", "No paused activity found in workflow");
+                return result;
+            }
+            log.info("Found paused item ID: {}", pausedItemId);
+
+            // Find the activity name from workItems using the item_id
+            List<Map<String, Object>> workItems = (List<Map<String, Object>>) workflowProps.get("workItems");
+            String activityName = null;
+
+            if (workItems != null) {
+                for (Map<String, Object> workItem : workItems) {
+                    if (pausedItemId.equals(workItem.get("r_object_id"))) {
+                        activityName = (String) workItem.get("r_act_name");
+                        actSeqno = ((Number) workItem.get("r_act_seqno")).intValue();
+                        break;
+                    }
+                }
+            }
+
+            if (activityName == null) {
+                log.info("Could not determine activity name");
+                result.put("success", false);
+                result.put("error", "Could not determine activity name");
+                return result;
+            }
+            log.info("Found activity name: {}", activityName);
+
+            // Use REST API PUT endpoint with resume-all action to restart paused activities
+            String workflowUrl = baseUrl + "/workflows/" + workflowId + "?action=resume-all";
+
+            log.info("=== RESUMING PAUSED ACTIVITIES ===");
+            log.info("PUT URL: {}", workflowUrl);
+
+            Map<String, Object> response = restClient.put()
+                    .uri(workflowUrl)
+                    .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
+                    .header("Content-Type", "application/json")
                     .retrieve()
                     .body(Map.class);
 
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("message", "Workflow restarted successfully");
+            if (response != null) {
+                result.put("success", true);
+                result.put("message", "Workflow activity '" + activityName + "' restarted successfully");
+                result.put("data", response);
+            } else {
+                result.put("success", true);
+                result.put("message", "Workflow activity '" + activityName + "' restarted successfully");
+            }
             return result;
         } catch (Exception e) {
             log.error("Error restarting workflow {}: {}", workflowId, e.getMessage());
-            Map<String, Object> result = new HashMap<>();
             result.put("success", false);
             result.put("error", e.getMessage());
             return result;
@@ -503,6 +610,38 @@ public class WorkflowService {
             result.put("success", false);
             result.put("error", e.getMessage());
             return result;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public String getDocumentContent(String documentId) {
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+        try {
+            log.info("Fetching document content for ID: {}", documentId);
+
+            // Fetch the document object to get its properties
+            String docUrl = baseUrl + "/objects/" + documentId;
+            Map<String, Object> response = restClient.get()
+                    .uri(docUrl)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response != null && response.containsKey("content")) {
+                Map<String, Object> content = (Map<String, Object>) response.get("content");
+                if (content != null && content.containsKey("properties")) {
+                    // Return the object_name and other basic properties
+                    Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                    return props.toString();
+                }
+            }
+            return "Document metadata: " + (response != null ? response.toString() : "Not found");
+
+        } catch (Exception e) {
+            log.error("Error fetching document {} content: {}", documentId, e.getMessage());
+            return "Error fetching document: " + e.getMessage();
         }
     }
 }
