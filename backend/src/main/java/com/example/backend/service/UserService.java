@@ -2,6 +2,7 @@ package com.example.backend.service;
 
 import com.example.backend.config.DctmConfig;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -17,13 +18,15 @@ public class UserService {
     private final OtdsService otdsService;
     private final EmailService emailService;
     private final RestClient restClient;
+    private final ObjectProvider<GroupService> groupServiceProvider;
 
     public UserService(DctmConfig dctmConfig, OtdsService otdsService, EmailService emailService,
-                       RestClient.Builder restClientBuilder) {
+                       RestClient.Builder restClientBuilder, ObjectProvider<GroupService> groupServiceProvider) {
         this.dctmConfig = dctmConfig;
         this.otdsService = otdsService;
         this.emailService = emailService;
         this.restClient = restClientBuilder.build();
+        this.groupServiceProvider = groupServiceProvider;
     }
 
     private String getAuthHeader() {
@@ -398,7 +401,7 @@ public class UserService {
         boolean needsSync = properties.containsKey("is_active") || properties.containsKey("user_email_address");
         String dmUserName   = null; // cms_user_profile.object_name  = dm_user.user_name  (for REST PATCH URL)
         String dmLoginName  = null; // cms_user_profile.user_login_name = dm_user.user_login_name (for OTDS)
-        if (needsSync) {
+        if (needsSync || properties.containsKey("department_name") || properties.containsKey("department_short_code_multi")) {
             Map<String, String> names = getNamesByProfileId(objectId);
             dmUserName  = names.get("object_name");
             dmLoginName = names.get("user_login_name");
@@ -426,6 +429,12 @@ public class UserService {
             patchDmUser(dmUserName, Map.of("user_address", email != null ? email : ""));
         }
 
+        // 1c. Department change → remove department-related groups and clear vertical_ids
+        if ((properties.containsKey("department_name") || properties.containsKey("department_short_code_multi")) && dmUserName != null && !dmUserName.isBlank()) {
+            log.info("[DeptChange] Department changed for user '{}' — cleaning up groups and clearing vertical_ids", dmUserName);
+            handleDepartmentChange(objectId, dmUserName, properties);
+        }
+
         // 2. Prepare properties for cms_user_profile update
         Map<String, Object> body = new HashMap<>();
         Map<String, Object> props = new HashMap<>();
@@ -451,6 +460,10 @@ public class UserService {
             if (deptCode != null && !deptCode.isBlank())
                 props.put("department_short_code_multi", List.of(deptCode));
         }
+        // Clear vertical_ids when department changes
+        if (properties.containsKey("department_name") || properties.containsKey("department_short_code_multi")) {
+            props.put("vertical_ids", new ArrayList<>()); // Clear vertical_ids
+        }
         body.put("properties", props);
 
         try {
@@ -467,6 +480,124 @@ public class UserService {
             log.error("Error updating user profile " + objectId, e);
             throw new RuntimeException("Failed to update user profile: " + e.getMessage());
         }
+    }
+
+    /**
+     * Handle department change:
+     * - HO users: Remove from all groups except dm_superusers_dynamic
+     * - RO/TE users: Remove only department-related groups, ensure dm_superusers_dynamic exists
+     */
+    private void handleDepartmentChange(String objectId, String dmUserName, Map<String, Object> properties) {
+        try {
+            GroupService groupService = groupServiceProvider.getIfAvailable();
+            if (groupService == null) {
+                log.warn("[DeptChange] GroupService not available for department change cleanup");
+                return;
+            }
+
+            // Get user's office type
+            String officeType = getFieldFromProfile(objectId, "office_type");
+            boolean isHO = "HO".equalsIgnoreCase(officeType);
+
+            log.info("[DeptChange] User '{}' office_type: {} — {}", dmUserName, officeType, isHO ? "HO" : "RO/TE");
+
+            // Get all groups the user belongs to
+            List<Map<String, String>> allGroups = groupService.getGroupsByUser(dmUserName);
+            log.info("[DeptChange] User '{}' is member of {} groups", dmUserName, allGroups.size());
+
+            if (isHO) {
+                // HO users: Remove from all groups except dm_superusers_dynamic
+                for (Map<String, String> group : allGroups) {
+                    String groupName = group.get("group_name");
+                    if (groupName != null && !groupName.equals("dm_superusers_dynamic")) {
+                        try {
+                            log.info("[DeptChange-HO] Removing user '{}' from group '{}'", dmUserName, groupName);
+                            groupService.removeMember(groupName, dmUserName, "user");
+                        } catch (Exception e) {
+                            log.warn("[DeptChange-HO] Failed to remove '{}' from group '{}': {}", dmUserName, groupName, e.getMessage());
+                        }
+                    }
+                }
+            } else {
+                // RO/TE users: Remove only department-related groups
+                String newDeptShortCode = getNewDepartmentShortCode(properties);
+                if (newDeptShortCode != null && !newDeptShortCode.isEmpty()) {
+                    String deptCodeLower = newDeptShortCode.toLowerCase();
+
+                    for (Map<String, String> group : allGroups) {
+                        String groupName = group.get("group_name");
+                        // Remove groups containing the new department code (e.g., ecm_tn_ddsi_*)
+                        if (groupName != null && groupName.contains("_" + deptCodeLower + "_") && !groupName.equals("dm_superusers_dynamic")) {
+                            try {
+                                log.info("[DeptChange-ROTE] Removing user '{}' from department group '{}'", dmUserName, groupName);
+                                groupService.removeMember(groupName, dmUserName, "user");
+                            } catch (Exception e) {
+                                log.warn("[DeptChange-ROTE] Failed to remove '{}' from group '{}': {}", dmUserName, groupName, e.getMessage());
+                            }
+                        }
+                    }
+
+                    // Ensure dm_superusers_dynamic exists, add if missing
+                    boolean hasSuperUsersGroup = allGroups.stream()
+                            .anyMatch(g -> "dm_superusers_dynamic".equals(g.get("group_name")));
+
+                    if (!hasSuperUsersGroup) {
+                        try {
+                            log.info("[DeptChange-ROTE] Adding user '{}' to dm_superusers_dynamic group", dmUserName);
+                            groupService.addMember("dm_superusers_dynamic", dmUserName, "user", null);
+                        } catch (Exception e) {
+                            log.warn("[DeptChange-ROTE] Failed to add '{}' to dm_superusers_dynamic: {}", dmUserName, e.getMessage());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[DeptChange] Failed to handle department change groups for '{}': {}", dmUserName, e.getMessage());
+        }
+    }
+
+    /**
+     * Extract the new department short code from properties
+     */
+    private String getNewDepartmentShortCode(Map<String, Object> properties) {
+        // Check department_short_code_multi (list)
+        Object multiRaw = properties.get("department_short_code_multi");
+        if (multiRaw instanceof List<?> multiList && !multiList.isEmpty()) {
+            return (String) multiList.get(0);
+        }
+        // Fallback to department_short_code
+        Object singleRaw = properties.get("department_short_code");
+        if (singleRaw instanceof String) {
+            return (String) singleRaw;
+        }
+        return null;
+    }
+
+    /**
+     * Get a specific field from user profile
+     */
+    @SuppressWarnings("unchecked")
+    private String getFieldFromProfile(String objectId, String fieldName) {
+        try {
+            String url = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository() + "/objects/" + objectId;
+            Map<String, Object> response = restClient.get()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response != null) {
+                Map<String, Object> props = (Map<String, Object>) response.get("properties");
+                if (props != null) {
+                    Object value = props.get(fieldName);
+                    return value != null ? value.toString() : null;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[DeptChange] Failed to get field '{}' from profile {}: {}", fieldName, objectId, e.getMessage());
+        }
+        return null;
     }
 
     /**
