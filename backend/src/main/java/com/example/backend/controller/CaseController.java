@@ -25,6 +25,7 @@ public class CaseController {
             @RequestParam(defaultValue = "") String hoRo,
             @RequestParam(defaultValue = "") String location,
             @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String functions,
             @RequestParam(defaultValue = "") String fromDate,
             @RequestParam(defaultValue = "") String toDate,
             @RequestParam(defaultValue = "") String status,
@@ -32,7 +33,7 @@ public class CaseController {
             @RequestParam(defaultValue = "") String language,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return caseService.getCasesReport(hoRo, location, deptNames, fromDate, toDate, status, priority, language, page, size);
+        return caseService.getCasesReport(hoRo, location, deptNames, functions, fromDate, toDate, status, priority, language, page, size);
     }
 
     /**

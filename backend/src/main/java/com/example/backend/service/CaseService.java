@@ -123,6 +123,7 @@ public class CaseService {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getCasesReport(String hoRo, String location, String deptNames,
+                                               String functions,
                                                String fromDate, String toDate,
                                                String status, String priority, String language,
                                                int page, int itemsPerPage) {
@@ -149,6 +150,10 @@ public class CaseService {
                 }
                 inClause.append(")");
                 where.append(inClause);
+            }
+
+            if (functions != null && !functions.isBlank()) {
+                where.append(" AND functions = '").append(functions.trim().replace("'", "''")).append("'");
             }
 
             if (fromDate != null && !fromDate.isBlank()) {
@@ -183,8 +188,8 @@ public class CaseService {
                 where, page * itemsPerPage
             );
 
-            log.info("Cases report DQL filters — hoRo: {}, location: {}, deptNames: {}, from: {}, to: {}, status: {}, priority: {}, language: {}",
-                     hoRo, location, deptNames, fromDate, toDate, status, priority, language);
+            log.info("Cases report DQL filters — hoRo: {}, location: {}, deptNames: {}, functions: {}, from: {}, to: {}, status: {}, priority: {}, language: {}",
+                     hoRo, location, deptNames, functions, fromDate, toDate, status, priority, language);
 
             return executeCaseDQL(dql, page, itemsPerPage);
 

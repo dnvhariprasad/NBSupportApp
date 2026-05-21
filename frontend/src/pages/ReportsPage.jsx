@@ -19,6 +19,8 @@ const ReportsPage = () => {
     const [location,     setLocation]     = useState('');
     const [deptName,     setDeptName]     = useState('');
     const [departments,  setDepartments]  = useState([]);
+    const [vertical,     setVertical]     = useState('');
+    const [verticals,    setVerticals]    = useState([]);
     const [fromDate,     setFromDate]     = useState('');
     const [toDate,       setToDate]       = useState('');
     const [statusFilter,   setStatusFilter]   = useState('');
@@ -51,10 +53,29 @@ const ReportsPage = () => {
     useEffect(() => {
         setDeptName('');
         setDepartments([]);
+        setVertical('');
+        setVerticals([]);
         if (!officeType) return;
         if (isRoTe && !location) return;
         fetchDepartments(officeType, isRoTe ? location : '').then(setDepartments);
     }, [officeType, location, isRoTe]);
+
+    // Fetch verticals for HO when department is selected
+    useEffect(() => {
+        setVertical('');
+        setVerticals([]);
+        if (officeType !== 'HO' || !deptName) return;
+        axios.get('/groups/verticals', { params: { officeType: 'HO', deptName } })
+            .then(res => {
+                const all = res.data || [];
+                setVerticals(all.filter(g =>
+                    !g.group_name.includes('vertical_head') &&
+                    !g.group_name.includes('_grade_') &&
+                    !g.group_name.includes('_cgm_sec')
+                ));
+            })
+            .catch(() => setVerticals([]));
+    }, [officeType, deptName]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
     const handleOfficeTypeChange = (val) => {
@@ -62,26 +83,31 @@ const ReportsPage = () => {
         setLocation('');
         setDeptName('');
         setDepartments([]);
+        setVertical('');
+        setVerticals([]);
     };
 
     const handleLocationChange = (val) => {
         setLocation(val);
         setDeptName('');
         setDepartments([]);
+        setVertical('');
+        setVerticals([]);
     };
 
     const buildParams = useCallback(() => {
         const p = {};
-        if (officeType)            p.hoRo     = officeType;
-        if (isRoTe && location)    p.location = location;
+        if (officeType)            p.hoRo      = officeType;
+        if (isRoTe && location)    p.location  = location;
         if (deptName)              p.deptNames = deptName;
-        if (fromDate)              p.fromDate = fromDate;
-        if (toDate)                p.toDate   = toDate;
-        if (statusFilter)          p.status   = statusFilter;
-        if (priorityFilter)        p.priority = priorityFilter;
-        if (languageFilter)        p.language = languageFilter;
+        if (vertical)              p.functions = vertical;
+        if (fromDate)              p.fromDate  = fromDate;
+        if (toDate)                p.toDate    = toDate;
+        if (statusFilter)          p.status    = statusFilter;
+        if (priorityFilter)        p.priority  = priorityFilter;
+        if (languageFilter)        p.language  = languageFilter;
         return p;
-    }, [officeType, isRoTe, location, deptName, fromDate, toDate,
+    }, [officeType, isRoTe, location, deptName, vertical, fromDate, toDate,
         statusFilter, priorityFilter, languageFilter]);
 
     const fetchReport = useCallback(async (pageNum, size) => {
@@ -107,6 +133,7 @@ const ReportsPage = () => {
 
     const handleClear = () => {
         setOfficeType(''); setLocation(''); setDeptName(''); setDepartments([]);
+        setVertical(''); setVerticals([]);
         setFromDate(''); setToDate('');
         setStatusFilter(''); setPriorityFilter(''); setLanguageFilter('');
         setCases([]); setAllCases([]);
@@ -254,6 +281,21 @@ const ReportsPage = () => {
                             <select value={deptName} onChange={e => setDeptName(e.target.value)} className={selectCls}>
                                 <option value="">All Departments</option>
                                 {departments.map(d => <option key={d.shortCode} value={d.name}>{d.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Vertical — HO only, shown when dept is selected and verticals loaded */}
+                    {officeType === 'HO' && deptName && verticals.length > 0 && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Vertical</label>
+                            <select value={vertical} onChange={e => setVertical(e.target.value)} className={selectCls}>
+                                <option value="">All Verticals</option>
+                                {verticals.map(g => (
+                                    <option key={g.group_name} value={g.object_name || g.group_name}>
+                                        {g.object_name || g.group_name}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                     )}
