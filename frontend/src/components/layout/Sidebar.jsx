@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { GitBranch, Users, Compass, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, Building2 } from 'lucide-react';
+import { GitBranch, Users, Compass, Briefcase, UsersRound, Database, Network, ClipboardList, FolderCog, Building2, FileBarChart2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
 
@@ -33,6 +33,7 @@ const Sidebar = () => {
         { name: 'RO/TE Department Head Assignment',  path: '/dashboard/verticals2', icon: Network,     roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'HO' },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
         { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
+        { name: 'Reports',      path: '/dashboard/reports',   icon: FileBarChart2, roles: null },
         { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null, hideForLocalAdmin: true },
         { name: 'Query',        path: '/dashboard/query',     icon: Database,     roles: null, hideForLocalAdmin: true },
     ];
