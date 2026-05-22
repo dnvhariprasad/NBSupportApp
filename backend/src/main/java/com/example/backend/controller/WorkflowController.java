@@ -48,6 +48,11 @@ public class WorkflowController {
         return ResponseEntity.ok(workflowService.getWorkflowById(workflowId));
     }
 
+    @GetMapping("/test/getlogin")
+    public ResponseEntity<Map<String, Object>> testGetLogin() {
+        return ResponseEntity.ok(workflowService.testGetLogin());
+    }
+
     @PostMapping("/{workflowId}/restart")
     public ResponseEntity<Map<String, Object>> restartWorkflow(@PathVariable String workflowId) {
         return ResponseEntity.ok(workflowService.restartWorkflow(workflowId));

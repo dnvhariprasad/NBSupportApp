@@ -516,21 +516,27 @@ public class WorkflowService {
                 return result;
             }
 
-            // Find first paused item
+            // Find first paused item (case-insensitive)
             Map<String, Object> pausedQueueItem = null;
             String pausedItemId = null;
             Integer actSeqno = null;
 
-            for (Map<String, Object> item : queueItems) {
-                if ("paused".equals(item.get("task_state"))) {
+            log.info("Total queue items: {}", queueItems.size());
+            for (int i = 0; i < queueItems.size(); i++) {
+                Map<String, Object> item = queueItems.get(i);
+                String state = String.valueOf(item.get("task_state"));
+                log.info("Queue item {}: task_state = '{}' (lowercase: '{}')", i, state, state.toLowerCase());
+
+                if ("paused".equals(state.toLowerCase())) {
                     pausedQueueItem = item;
                     pausedItemId = (String) item.get("item_id");
+                    log.info("Found paused item at index {}", i);
                     break;
                 }
             }
 
             if (pausedItemId == null) {
-                log.info("No paused item found");
+                log.info("No paused item found in workflow");
                 result.put("success", false);
                 result.put("error", "No paused activity found in workflow");
                 return result;
@@ -540,12 +546,14 @@ public class WorkflowService {
             // Find the activity name from workItems using the item_id
             List<Map<String, Object>> workItems = (List<Map<String, Object>>) workflowProps.get("workItems");
             String activityName = null;
+            String actDefId = null;
 
             if (workItems != null) {
                 for (Map<String, Object> workItem : workItems) {
                     if (pausedItemId.equals(workItem.get("r_object_id"))) {
                         activityName = (String) workItem.get("r_act_name");
                         actSeqno = ((Number) workItem.get("r_act_seqno")).intValue();
+                        actDefId = (String) workItem.get("r_act_def_id");
                         break;
                     }
                 }
@@ -557,19 +565,24 @@ public class WorkflowService {
                 result.put("error", "Could not determine activity name");
                 return result;
             }
-            log.info("Found activity name: {}", activityName);
+            log.info("Found activity name: {} with seqno: {}", activityName, actSeqno);
 
-            // Use REST API PUT endpoint with resume-all action to restart paused activities
-            String workflowUrl = baseUrl + "/workflows/" + workflowId + "?action=resume-all";
+            // Use the Documentum custom URI format at repository level: restart,c,<workflow_id>,<r_act_seqno>
+            // This matches the API Tester format which works
+            String workflowUrl = baseUrl + "/restart,c," + workflowId + "," + actSeqno;
 
-            log.info("=== RESUMING PAUSED ACTIVITIES ===");
+            log.info("=== RESTARTING PAUSED ACTIVITY ===");
             log.info("PUT URL: {}", workflowUrl);
+
+            // Send empty body or minimal JSON body for the REST call
+            Map<String, Object> requestBody = new HashMap<>();
 
             Map<String, Object> response = restClient.put()
                     .uri(workflowUrl)
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
-                    .header("Content-Type", "application/json")
+                    .header("Content-Type", "application/vnd.emc.documentum+json")
+                    .body(requestBody)
                     .retrieve()
                     .body(Map.class);
 
@@ -607,6 +620,33 @@ public class WorkflowService {
         } catch (Exception e) {
             log.error("Error retrying activity {} in workflow {}: {}", activityId, workflowId, e.getMessage());
             Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("error", e.getMessage());
+            return result;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> testGetLogin() {
+        Map<String, Object> result = new HashMap<>();
+        String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+        String url = baseUrl + "/getlogin,c,dmadmin";
+
+        try {
+            log.info("Executing: GET {}", url);
+            Map<String, Object> response = restClient.get()
+                    .uri(url)
+                    .header("Authorization", getServiceAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            result.put("success", true);
+            result.put("loginTicket", response);
+            log.info("Login ticket obtained: {}", response);
+            return result;
+        } catch (Exception e) {
+            log.error("Error getting login ticket: {}", e.getMessage());
             result.put("success", false);
             result.put("error", e.getMessage());
             return result;

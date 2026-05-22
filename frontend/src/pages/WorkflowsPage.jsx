@@ -9,7 +9,8 @@ import {
 
 /* ────────────────────────────── helpers ────────────────────────────── */
 
-const getStatusInfo = (code) => {
+const getStatusInfo = (code, isPaused = false) => {
+    if (isPaused) return { label: 'Paused', color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' };
     const map = {
         0: { label: 'Dormant', color: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
         1: { label: 'Running', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
@@ -92,8 +93,8 @@ const getSuggestedSolution = (errorLog) => {
 
 /* ─────────────────────────── sub-components ───────────────────────── */
 
-const StatusBadge = ({ code, small = false }) => {
-    const { label, color, dot } = getStatusInfo(code);
+const StatusBadge = ({ code, small = false, isPaused = false }) => {
+    const { label, color, dot } = getStatusInfo(code, isPaused);
     return (
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-semibold ${small ? 'text-xs' : 'text-xs'} ${color}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
@@ -730,7 +731,7 @@ const WorkflowsPage = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <StatusBadge code={detailData.r_runtime_state} />
+                                        <StatusBadge code={detailData.r_runtime_state} isPaused={hasPaused} />
 
                                         <button
                                             onClick={handleRefreshDetail}
