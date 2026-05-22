@@ -118,6 +118,94 @@ public class CaseService {
     }
 
     /**
+     * Get cases report with date range filtering. Always excludes is_migrated and status='Delete'.
+     * No default date window — returns all matching cases unless date range is provided.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCasesReport(String hoRo, String location, String deptNames,
+                                               String functions,
+                                               String fromDate, String toDate,
+                                               String status, String priority, String language,
+                                               int page, int itemsPerPage) {
+        try {
+            StringBuilder where = new StringBuilder();
+            where.append("(is_migrated IS NULL OR is_migrated = FALSE)");
+            where.append(" AND status <> 'Delete'");
+            where.append(" AND status <> 'Draft'");
+
+            if (hoRo != null && !hoRo.isBlank()) {
+                where.append(" AND ho_ro = '").append(hoRo.trim().replace("'", "''")).append("'");
+            }
+
+            if (location != null && !location.isBlank()) {
+                where.append(" AND location = '").append(location.trim().replace("'", "''")).append("'");
+            }
+
+            if (deptNames != null && !deptNames.isBlank()) {
+                String[] names = deptNames.split(",");
+                StringBuilder inClause = new StringBuilder(" AND department_name IN (");
+                for (int i = 0; i < names.length; i++) {
+                    if (i > 0) inClause.append(", ");
+                    inClause.append("'").append(names[i].trim().replace("'", "''")).append("'");
+                }
+                inClause.append(")");
+                where.append(inClause);
+            }
+
+            if (functions != null && !functions.isBlank()) {
+                where.append(" AND functions = '").append(functions.trim().replace("'", "''")).append("'");
+            }
+
+            if (fromDate != null && !fromDate.isBlank()) {
+                where.append(" AND r_creation_date >= DATE('").append(fromDate.trim()).append("', 'yyyy-mm-dd')");
+            }
+
+            if (toDate != null && !toDate.isBlank()) {
+                where.append(" AND r_creation_date <= DATE('").append(toDate.trim()).append("', 'yyyy-mm-dd')");
+            }
+
+            if (status != null && !status.isBlank()) {
+                where.append(" AND status = '").append(status.trim().replace("'", "''")).append("'");
+            }
+
+            if (priority != null && !priority.isBlank()) {
+                where.append(" AND task_priority = '").append(priority.trim().replace("'", "''")).append("'");
+            }
+
+            if (language != null && !language.isBlank()) {
+                where.append(" AND language_type = '").append(language.trim().replace("'", "''")).append("'");
+            }
+
+            String dql = String.format(
+                "SELECT r_object_id, object_name, subject, ho_ro, description, " +
+                "department_name, functions, r_creation_date, r_creator_name, " +
+                "task_priority, status, case_nature, disposal_level, " +
+                "file_number, types, language_type " +
+                "FROM cms_case_folder " +
+                "WHERE %s " +
+                "ORDER BY r_creation_date DESC " +
+                "ENABLE(RETURN_TOP %d)",
+                where, page * itemsPerPage
+            );
+
+            log.info("Cases report DQL filters — hoRo: {}, location: {}, deptNames: {}, functions: {}, from: {}, to: {}, status: {}, priority: {}, language: {}",
+                     hoRo, location, deptNames, functions, fromDate, toDate, status, priority, language);
+
+            return executeCaseDQL(dql, page, itemsPerPage);
+
+        } catch (Exception e) {
+            log.error("Error in getCasesReport", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("cases", new ArrayList<>());
+            errorResult.put("hasNext", false);
+            errorResult.put("page", page);
+            errorResult.put("itemsPerPage", itemsPerPage);
+            errorResult.put("error", "Failed to get cases report: " + e.getMessage());
+            return errorResult;
+        }
+    }
+
+    /**
      * Execute a DQL query for cases and return paginated results.
      * Uses Documentum REST API with DQL parameter.
      */
