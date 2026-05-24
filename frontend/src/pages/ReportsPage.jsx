@@ -14,7 +14,11 @@ const PRIORITY_OPTIONS = ['Ordinary', 'Urgent'];
 const LANGUAGE_OPTIONS = ['Bilingual', 'English', 'Hindi', 'Others'];
 
 const ReportsPage = () => {
-    // ── Filter state ──────────────────────────────────────────────────────────
+    // ── Tab state ─────────────────────────────────────────────────────────────
+    const [activeTab, setActiveTab] = useState('cases'); // 'cases' or 'digidak'
+    const [digidakSubTab, setDigidakSubTab] = useState('inbox'); // 'inbox' or 'outbox'
+
+    // ── Cases Report Filter state ─────────────────────────────────────────────
     const [officeType,   setOfficeType]   = useState('');
     const [location,     setLocation]     = useState('');
     const [deptName,     setDeptName]     = useState('');
@@ -27,9 +31,27 @@ const ReportsPage = () => {
     const [priorityFilter, setPriorityFilter] = useState('');
     const [languageFilter, setLanguageFilter] = useState('');
 
+    // ── Digidak Report Filter state ───────────────────────────────────────────
+    const [digidakOfficeType,   setDigidakOfficeType]   = useState('');
+    const [digidakLocation,     setDigidakLocation]     = useState('');
+    const [digidakDeptName,     setDigidakDeptName]     = useState('');
+    const [digidakDepartments,  setDigidakDepartments]  = useState([]);
+    const [digidakFromDate,     setDigidakFromDate]     = useState('');
+    const [digidakToDate,       setDigidakToDate]       = useState('');
+    const [digidakLanguage,     setDigidakLanguage]     = useState('');
+    const [digidakModeOfReceipt,setDigidakModeOfReceipt]= useState('');
+    const [digidakPriority,     setDigidakPriority]     = useState('');
+    const [digidakSecrecy,      setDigidakSecrecy]      = useState('');
+    const [digidakStatus,       setDigidakStatus]       = useState('');
+    const [digidakTypeCategory, setDigidakTypeCategory] = useState('');
+    const [digidakMetadata,     setDigidakMetadata]     = useState({
+        languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: []
+    });
+
     // ── Results state ─────────────────────────────────────────────────────────
     const [cases,          setCases]          = useState([]);
     const [allCases,       setAllCases]       = useState([]); // holds full export dataset
+    const [digidakResults, setDigidakResults] = useState([]);
     const [loading,        setLoading]        = useState(false);
     const [exporting,      setExporting]      = useState(false);
     const [page,           setPage]           = useState(1);
@@ -77,7 +99,41 @@ const ReportsPage = () => {
             .catch(() => setVerticals([]));
     }, [officeType, deptName]);
 
-    // ── Handlers ──────────────────────────────────────────────────────────────
+    // ── Digidak Departments ───────────────────────────────────────────────────
+    const digidakLocations = useMemo(() => getLocations(digidakOfficeType), [digidakOfficeType]);
+    const digidakIsRoTe = digidakOfficeType === 'RO' || digidakOfficeType === 'TE';
+
+    useEffect(() => {
+        setDigidakDeptName('');
+        setDigidakDepartments([]);
+        if (!digidakOfficeType) return;
+        if (digidakIsRoTe && !digidakLocation) return;
+        fetchDepartments(digidakOfficeType, digidakIsRoTe ? digidakLocation : '').then(setDigidakDepartments);
+    }, [digidakOfficeType, digidakLocation, digidakIsRoTe]);
+
+    // ── Fetch Digidak Metadata ────────────────────────────────────────────────
+    useEffect(() => {
+        axios.get('/digidak/metadata')
+            .then(res => setDigidakMetadata(res.data || {}))
+            .catch(() => setDigidakMetadata({
+                languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: []
+            }));
+    }, []);
+
+    // ── Clear Digidak filters on tab change ────────────────────────────────────
+    useEffect(() => {
+        setDigidakLanguage('');
+        setDigidakModeOfReceipt('');
+        setDigidakPriority('');
+        setDigidakSecrecy('');
+        setDigidakStatus('');
+        setDigidakTypeCategory('');
+        setDigidakResults([]);
+        setFiltersApplied(false);
+        setPage(1);
+    }, [digidakSubTab]);
+
+    // ── Cases Handlers ────────────────────────────────────────────────────────
     const handleOfficeTypeChange = (val) => {
         setOfficeType(val);
         setLocation('');
@@ -93,6 +149,20 @@ const ReportsPage = () => {
         setDepartments([]);
         setVertical('');
         setVerticals([]);
+    };
+
+    // ── Digidak Handlers ──────────────────────────────────────────────────────
+    const handleDigidakOfficeTypeChange = (val) => {
+        setDigidakOfficeType(val);
+        setDigidakLocation('');
+        setDigidakDeptName('');
+        setDigidakDepartments([]);
+    };
+
+    const handleDigidakLocationChange = (val) => {
+        setDigidakLocation(val);
+        setDigidakDeptName('');
+        setDigidakDepartments([]);
     };
 
     const buildParams = useCallback(() => {
@@ -137,6 +207,56 @@ const ReportsPage = () => {
         setFromDate(''); setToDate('');
         setStatusFilter(''); setPriorityFilter(''); setLanguageFilter('');
         setCases([]); setAllCases([]);
+        setFiltersApplied(false); setError(''); setPage(1);
+    };
+
+    // ── Digidak Report Functions ──────────────────────────────────────────────
+    const buildDigidakParams = useCallback(() => {
+        const p = { decisionType: digidakSubTab }; // 'inbox' or 'outbox'
+        if (digidakOfficeType)        p.hoRo = digidakOfficeType;
+        if (digidakIsRoTe && digidakLocation) p.location = digidakLocation;
+        if (digidakDeptName)          p.deptNames = digidakDeptName;
+        if (digidakFromDate)          p.fromDate = digidakFromDate;
+        if (digidakToDate)            p.toDate = digidakToDate;
+        if (digidakLanguage)          p.language = digidakLanguage;
+        if (digidakModeOfReceipt)     p.modeOfReceipt = digidakModeOfReceipt;
+        if (digidakPriority)          p.priority = digidakPriority;
+        if (digidakSecrecy)           p.secrecy = digidakSecrecy;
+        if (digidakStatus)            p.status = digidakStatus;
+        if (digidakTypeCategory)      p.typeCategory = digidakTypeCategory;
+        return p;
+    }, [digidakOfficeType, digidakIsRoTe, digidakLocation, digidakDeptName,
+        digidakFromDate, digidakToDate, digidakLanguage, digidakModeOfReceipt,
+        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakSubTab]);
+
+    const fetchDigidakReport = useCallback(async (pageNum = 1, size = 10) => {
+        setLoading(true);
+        setError('');
+        try {
+            const { data } = await axios.get('/digidak/report', {
+                params: { ...buildDigidakParams(), page: pageNum, size }
+            });
+            setDigidakResults(data.items || []);
+            setHasNextPage(data.hasNext || false);
+            setFiltersApplied(true);
+            setPage(pageNum);
+        } catch {
+            setError('Failed to load Digidak report. Please try again.');
+            setDigidakResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [buildDigidakParams]);
+
+    const handleDigidakApply = () => fetchDigidakReport(1, pageSize);
+
+    const handleDigidakClear = () => {
+        setDigidakOfficeType(''); setDigidakLocation(''); setDigidakDeptName('');
+        setDigidakDepartments([]);
+        setDigidakFromDate(''); setDigidakToDate('');
+        setDigidakLanguage(''); setDigidakModeOfReceipt(''); setDigidakPriority('');
+        setDigidakSecrecy(''); setDigidakStatus(''); setDigidakTypeCategory('');
+        setDigidakResults([]);
         setFiltersApplied(false); setError(''); setPage(1);
     };
 
@@ -211,6 +331,45 @@ const ReportsPage = () => {
         XLSX.writeFile(wb, `cases_report_${new Date().toISOString().slice(0,10)}.xlsx`);
     };
 
+    // ── Digidak Export Functions ──────────────────────────────────────────────
+    const fetchAllDigidakForExport = async () => {
+        setExporting(true);
+        try {
+            const { data } = await axios.get('/digidak/report', {
+                params: { ...buildDigidakParams(), page: 1, size: 1000 }
+            });
+            return data.items || [];
+        } catch {
+            return [];
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const exportDigidakToExcel = async () => {
+        const rows = await fetchAllDigidakForExport();
+        if (!rows.length) return;
+        const sheetData = rows.map((r, i) => ({
+            '#':               i + 1,
+            'UID Number':      r.uid_number       ?? '',
+            'Letter Subject':  r.letter_subject   ?? '',
+            'Initiator':       r.initiator        ?? '',
+            'File Number':     r.file_number      ?? '',
+            'Type Category':   r.type_category    ?? '',
+            'Language':        r.languages        ?? '',
+            'Mode of Dispatch':r.mode_of_receipt  ?? '',
+            'Priority':        r.priority         ?? '',
+            'Secrecy':         r.secrecy          ?? '',
+            'Status':          r.status           ?? '',
+            'Decision':        r.decision         ?? '',
+            'Date Created':    r.r_creation_date  ?? '',
+        }));
+        const ws = XLSX.utils.json_to_sheet(sheetData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `${digidakSubTab.charAt(0).toUpperCase() + digidakSubTab.slice(1)} Report`);
+        XLSX.writeFile(wb, `digidak_${digidakSubTab}_report_${new Date().toISOString().slice(0,10)}.xlsx`);
+    };
+
     // ── Helpers ───────────────────────────────────────────────────────────────
     const formatDate = (d) => {
         if (!d) return '-';
@@ -238,12 +397,32 @@ const ReportsPage = () => {
             </div>
 
             {/* Tab Bar */}
-            <div className="border-b border-slate-200 mb-6">
-                <button className="px-4 py-2 text-sm font-semibold border-b-2 border-[#0A66C2] text-[#0A66C2]">
+            <div className="border-b border-slate-200 mb-6 flex gap-1">
+                <button
+                    onClick={() => setActiveTab('cases')}
+                    className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                        activeTab === 'cases'
+                            ? 'border-b-2 border-[#0A66C2] text-[#0A66C2]'
+                            : 'border-b-2 border-transparent text-slate-600 hover:text-slate-800'
+                    }`}
+                >
                     Cases Report
+                </button>
+                <button
+                    onClick={() => setActiveTab('digidak')}
+                    className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                        activeTab === 'digidak'
+                            ? 'border-b-2 border-[#0A66C2] text-[#0A66C2]'
+                            : 'border-b-2 border-transparent text-slate-600 hover:text-slate-800'
+                    }`}
+                >
+                    Digidak
                 </button>
             </div>
 
+            {/* Cases Report Section */}
+            {activeTab === 'cases' && (
+            <>
             {/* Filter Card */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
                 <div className="flex items-center gap-2 mb-4">
@@ -487,6 +666,279 @@ const ReportsPage = () => {
                     <div className="px-4 py-3 bg-red-50 text-red-600 text-sm border-t border-red-100">{error}</div>
                 )}
             </div>
+            </>
+            )}
+
+            {/* Digidak Report Section */}
+            {activeTab === 'digidak' && (
+            <>
+            {/* Digidak Sub-tabs */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6">
+                <div className="flex gap-4 border-b border-slate-200">
+                    <button
+                        onClick={() => setDigidakSubTab('inbox')}
+                        className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            digidakSubTab === 'inbox'
+                                ? 'border-[#0A66C2] text-[#0A66C2]'
+                                : 'border-transparent text-slate-600 hover:text-slate-800'
+                        }`}
+                    >
+                        Inbox Report
+                    </button>
+                    <button
+                        onClick={() => setDigidakSubTab('outbox')}
+                        className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            digidakSubTab === 'outbox'
+                                ? 'border-[#0A66C2] text-[#0A66C2]'
+                                : 'border-transparent text-slate-600 hover:text-slate-800'
+                        }`}
+                    >
+                        Outbox Report
+                    </button>
+                </div>
+            </div>
+
+            {/* Digidak Filter Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Filter size={16} className="text-slate-500" />
+                    <span className="text-sm font-semibold text-slate-700">Filters</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-4">
+                    {/* Office Type */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
+                        <select value={digidakOfficeType} onChange={e => handleDigidakOfficeTypeChange(e.target.value)} className={selectCls}>
+                            <option value="">All</option>
+                            <option value="HO">HO</option>
+                            <option value="RO">RO</option>
+                            <option value="TE">TE</option>
+                        </select>
+                    </div>
+
+                    {/* Location — RO/TE only */}
+                    {digidakIsRoTe && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
+                            <select value={digidakLocation} onChange={e => handleDigidakLocationChange(e.target.value)} className={selectCls}>
+                                <option value="">All Locations</option>
+                                {digidakLocations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Department */}
+                    {digidakOfficeType && digidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
+                            <select value={digidakDeptName} onChange={e => setDigidakDeptName(e.target.value)} className={selectCls}>
+                                <option value="">All Departments</option>
+                                {digidakDepartments.map(d => (
+                                    <option key={d.shortCode} value={d.name}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* From Date */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">From Date</label>
+                        <input type="date" value={digidakFromDate} onChange={e => setDigidakFromDate(e.target.value)} className={selectCls} />
+                    </div>
+
+                    {/* To Date */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">To Date</label>
+                        <input type="date" value={digidakToDate} onChange={e => setDigidakToDate(e.target.value)} className={selectCls} />
+                    </div>
+
+                    {/* Language */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Language</label>
+                        <select value={digidakLanguage} onChange={e => setDigidakLanguage(e.target.value)} className={selectCls}>
+                            <option value="">All</option>
+                            {(digidakMetadata.languages || []).map(lang => <option key={lang} value={lang}>{lang}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Mode of Dispatch */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Mode of Dispatch</label>
+                        <select value={digidakModeOfReceipt} onChange={e => setDigidakModeOfReceipt(e.target.value)} className={selectCls}>
+                            <option value="">All</option>
+                            {(digidakMetadata.mode_of_receipt || []).map(mode => <option key={mode} value={mode}>{mode}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Priority */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Priority</label>
+                        <select value={digidakPriority} onChange={e => setDigidakPriority(e.target.value)} className={selectCls}>
+                            <option value="">All</option>
+                            {(digidakMetadata.priority || []).map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Secrecy */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Secrecy</label>
+                        <select value={digidakSecrecy} onChange={e => setDigidakSecrecy(e.target.value)} className={selectCls}>
+                            <option value="">All</option>
+                            {(digidakMetadata.secrecy || []).map(sec => <option key={sec} value={sec}>{sec}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                        <select value={digidakStatus} onChange={e => setDigidakStatus(e.target.value)} className={selectCls}>
+                            <option value="">All</option>
+                            {(digidakMetadata.status || []).map(st => <option key={st} value={st}>{st}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Type Category */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Type Category</label>
+                        <select value={digidakTypeCategory} onChange={e => setDigidakTypeCategory(e.target.value)} className={selectCls}>
+                            <option value="">All</option>
+                            <option value="Information">Information</option>
+                            <option value="Actionable">Actionable</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex items-center gap-2">
+                    <button onClick={handleDigidakApply}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-[#0A66C2] hover:bg-[#094d92] text-white text-sm font-medium rounded-lg transition-colors">
+                        <Search size={15} /> Apply Filters
+                    </button>
+                    <button onClick={handleDigidakClear}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                        <X size={15} /> Clear
+                    </button>
+                    {/* Export button — only visible after results are loaded */}
+                    {filtersApplied && digidakResults.length > 0 && (
+                        <button onClick={exportDigidakToExcel} disabled={exporting}
+                            className="flex items-center gap-1.5 px-3 py-2 border border-emerald-200 text-emerald-700 bg-emerald-50 text-sm font-medium rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50 ml-auto">
+                            <Download size={13} />
+                            Export Excel
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Digidak Results */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                {loading ? (
+                    <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0A66C2]"></div>
+                    </div>
+                ) : !filtersApplied ? (
+                    <div className="px-6 py-12 text-center text-slate-400">
+                        <p className="text-sm">Apply filters to view Digidak {digidakSubTab} report</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">#</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">UID Number</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Letter Subject</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Initiator</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">File Number</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Type Category</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Language</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Mode of Dispatch</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Priority</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Secrecy</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Status</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Decision</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Date Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {digidakResults.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={13} className="px-4 py-16 text-center text-slate-400 text-sm">
+                                                No Digidak records found for the selected filters.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        digidakResults.map((item, idx) => (
+                                            <tr key={`${item.r_object_id}-${idx}`} className="hover:bg-blue-50/30 transition-colors">
+                                                <td className="px-4 py-2.5 text-slate-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
+                                                <td className="px-4 py-2.5 font-medium text-slate-900 font-mono">{item.uid_number || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 max-w-[250px] truncate" title={item.letter_subject}>{item.letter_subject || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600">{item.initiator || '-'}</td>
+                                                <td className="px-4 py-2.5 font-mono text-sm text-slate-600">{item.file_number || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.type_category || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.languages || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.mode_of_receipt || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.priority || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.secrecy || '-'}</td>
+                                                <td className="px-4 py-2.5">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                                        {item.status || '-'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2.5 text-xs">
+                                                    <span className={`px-2 py-0.5 rounded-full font-medium ${
+                                                        item.decision === 'Inward' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'
+                                                    }`}>
+                                                        {item.decision || '-'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{formatDate(item.r_creation_date)}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination */}
+                        {filtersApplied && !loading && digidakResults.length > 0 && (
+                            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                                <div className="flex items-center gap-2 text-sm text-slate-600">
+                                    <span>Rows per page:</span>
+                                    <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); fetchDigidakReport(1, Number(e.target.value)); }}
+                                        className="border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                        {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => fetchDigidakReport(1, pageSize)} disabled={page === 1}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronsLeft size={16} />
+                                    </button>
+                                    <button onClick={() => fetchDigidakReport(page - 1, pageSize)} disabled={page === 1}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronLeft size={16} />
+                                    </button>
+                                    <span className="px-3 py-1 bg-white border border-slate-200 rounded text-slate-700 font-medium min-w-[2rem] text-center">
+                                        {page}
+                                    </span>
+                                    <button onClick={() => fetchDigidakReport(page + 1, pageSize)} disabled={!hasNextPage}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {error && (
+                    <div className="px-4 py-3 bg-red-50 text-red-600 text-sm border-t border-red-100">{error}</div>
+                )}
+            </div>
+            </>
+            )}
 
             {/* Modals */}
             {detailCase   && <CaseDetailsModal      caseItem={detailCase}   onClose={() => setDetailCase(null)}   />}
