@@ -220,6 +220,12 @@ const ReportsPage = () => {
 
     // ── Clear Digidak filters on tab change ────────────────────────────────────
     useEffect(() => {
+        setDigidakOfficeType('');
+        setDigidakLocation('');
+        setDigidakDeptName('');
+        setDigidakDepartments([]);
+        setDigidakFromDate('');
+        setDigidakToDate('');
         setDigidakLanguage('');
         setDigidakModeOfReceipt('');
         setDigidakPriority('');
@@ -230,6 +236,7 @@ const ReportsPage = () => {
         setDigidakResults([]);
         setFiltersApplied(false);
         setPage(1);
+        setError('');
     }, [digidakSubTab]);
 
     // ── Cases Handlers ────────────────────────────────────────────────────────
@@ -324,10 +331,12 @@ const ReportsPage = () => {
         if (digidakStatus)            p.status = digidakStatus;
         if (digidakTypeCategory)      p.typeCategory = digidakTypeCategory;
         if (digidakInboxUsername)     p.username = digidakInboxUsername;
+        // For Outbox report, add decisionType parameter
+        if (digidakSubTab === 'outbox') p.decisionType = 'outbox';
         return p;
     }, [digidakOfficeType, digidakIsRoTe, digidakLocation, digidakDeptName,
         digidakFromDate, digidakToDate, digidakLanguage, digidakModeOfReceipt,
-        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakInboxUsername]);
+        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakInboxUsername, digidakSubTab]);
 
     const fetchDigidakReport = useCallback(async (pageNum = 1, size = 10) => {
         setLoading(true);
@@ -448,11 +457,13 @@ const ReportsPage = () => {
     const fetchAllDigidakForExport = async () => {
         setExporting(true);
         try {
-            const { data } = await axios.get('/digidak/report', {
+            const endpoint = digidakSubTab === 'inbox' ? '/digidak/inbox' : '/digidak/report';
+            const { data } = await axios.get(endpoint, {
                 params: { ...buildDigidakParams(), page: 1, size: 1000 }
             });
             return data.items || [];
-        } catch {
+        } catch (err) {
+            console.error('Error fetching Digidak for export:', err);
             return [];
         } finally {
             setExporting(false);
@@ -776,9 +787,6 @@ const ReportsPage = () => {
                     </>
                 )}
 
-                {error && (
-                    <div className="px-4 py-3 bg-red-50 text-red-600 text-sm border-t border-red-100">{error}</div>
-                )}
             </div>
             </>
             )}
@@ -842,8 +850,8 @@ const ReportsPage = () => {
                         </div>
                     )}
 
-                    {/* Department */}
-                    {digidakOfficeType && digidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (
+                    {/* Department — hide for Inbox when RO/TE */}
+                    {digidakOfficeType && digidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (digidakSubTab === 'outbox' || !digidakIsRoTe) && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
                             <select value={digidakDeptName} onChange={e => setDigidakDeptName(e.target.value)} className={selectCls}>
@@ -935,7 +943,7 @@ const ReportsPage = () => {
                 </div>
 
                 {/* Buttons */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={handleDigidakApply}
                         className="flex items-center gap-1.5 px-4 py-2 bg-[#0A66C2] hover:bg-[#094d92] text-white text-sm font-medium rounded-lg transition-colors">
                         <Search size={15} /> Apply Filters
@@ -944,6 +952,13 @@ const ReportsPage = () => {
                         className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">
                         <X size={15} /> Clear
                     </button>
+                    {/* Error message — displayed next to buttons */}
+                    {error && (
+                        <div className="text-red-600 text-sm flex items-center gap-1.5">
+                            <AlertCircle size={16} />
+                            {error}
+                        </div>
+                    )}
                     {/* Export button — only visible after results are loaded */}
                     {filtersApplied && digidakResults.length > 0 && (
                         <button onClick={exportDigidakToExcel} disabled={exporting}
@@ -1058,9 +1073,6 @@ const ReportsPage = () => {
                     </>
                 )}
 
-                {error && (
-                    <div className="px-4 py-3 bg-red-50 text-red-600 text-sm border-t border-red-100">{error}</div>
-                )}
             </div>
             </>
             )}
