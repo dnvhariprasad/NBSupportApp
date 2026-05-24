@@ -45,4 +45,32 @@ public class DigidakController {
     public Map<String, Object> getDigidakMetadata() {
         return digidakService.getDigidakMetadata();
     }
+
+    @GetMapping("/users")
+    public Map<String, Object> getDigidakUsers(
+            @RequestParam(defaultValue = "") String officeType,
+            @RequestParam(defaultValue = "") String location,
+            @RequestParam(defaultValue = "") String deptName) {
+        return digidakService.getDigidakUsers(officeType, location, deptName);
+    }
+
+    @GetMapping("/inbox")
+    public Map<String, Object> getDigidakInbox(
+            @RequestParam(defaultValue = "") String hoRo,
+            @RequestParam(defaultValue = "") String location,
+            @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String username,
+            @RequestParam(defaultValue = "") String fromDate,
+            @RequestParam(defaultValue = "") String toDate,
+            @RequestParam(defaultValue = "") String language,
+            @RequestParam(defaultValue = "") String modeOfReceipt,
+            @RequestParam(defaultValue = "") String priority,
+            @RequestParam(defaultValue = "") String secrecy,
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String typeCategory,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return digidakService.getDigidakInbox(hoRo, location, deptNames, username, fromDate, toDate,
+                language, modeOfReceipt, priority, secrecy, status, typeCategory, page, size);
+    }
 }

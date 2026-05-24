@@ -362,6 +362,186 @@ public class DigidakService {
     }
 
     @SuppressWarnings("unchecked")
+    public Map<String, Object> getDigidakUsers(String officeType, String location, String deptName) {
+        Map<String, Object> result = new HashMap<>();
+        List<String> users = new ArrayList<>();
+        try {
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            StringBuilder dql = new StringBuilder("SELECT DISTINCT user_name FROM dm_user WHERE");
+
+            if ("HO".equalsIgnoreCase(officeType)) {
+                if (deptName != null && !deptName.isBlank()) {
+                    dql.append(" user_login_name LIKE '%_").append(deptName.trim().toLowerCase()).append("_%'");
+                }
+            } else if ("RO".equalsIgnoreCase(officeType) || "TE".equalsIgnoreCase(officeType)) {
+                if (location != null && !location.isBlank()) {
+                    String locCode = getLocationShortCode(location.trim());
+                    dql.append(" user_login_name LIKE '%_").append(locCode.toLowerCase()).append("_%'");
+                }
+            } else {
+                result.put("users", users);
+                return result;
+            }
+
+            dql.append(" ORDER BY user_name");
+
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&inline=true", dql.toString())
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                            if (props != null && props.get("user_name") != null) {
+                                users.add(props.get("user_name").toString());
+                            }
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Error fetching Digidak users", e);
+        }
+        result.put("users", users);
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getDigidakInbox(String hoRo, String location, String deptNames, String username,
+                                               String fromDate, String toDate, String language, String modeOfReceipt,
+                                               String priority, String secrecy, String status, String typeCategory,
+                                               int page, int itemsPerPage) {
+        try {
+            // Query 1: Get groups for the selected username
+            List<String> groups = getWorkflowGroupsForUser(username);
+            if (groups.isEmpty()) {
+                return buildErrorResponse("No groups found for user: " + username, page, itemsPerPage);
+            }
+
+            // Query 2: Query cms_digidak_folder with workflow_groups
+            StringBuilder where = new StringBuilder();
+            where.append("is_migrated = false");
+            where.append(" AND nature_of_correspondence != 'DO Letter'");
+
+            // Status filter - use provided status if given, otherwise use mandatory list
+            if (status != null && !status.isBlank()) {
+                where.append(" AND status = '").append(status.trim()).append("'");
+            } else {
+                where.append(" AND status IN ('Unread','Opened','Assigned Head','Assigned','Closed','Reassigned','Reassign Head','Responded','Follow-Up','Inprocess','Pushback')");
+            }
+
+            // Workflow groups filter
+            where.append(" AND (");
+            for (int i = 0; i < groups.size(); i++) {
+                if (i > 0) where.append(" OR ");
+                where.append("ANY workflow_groups = '").append(groups.get(i)).append("'");
+            }
+            where.append(")");
+
+            // Optional filters
+            if (language != null && !language.isBlank()) {
+                where.append(" AND languages = '").append(language.trim()).append("'");
+            }
+            if (modeOfReceipt != null && !modeOfReceipt.isBlank()) {
+                where.append(" AND mode_of_receipt = '").append(modeOfReceipt.trim()).append("'");
+            }
+            if (priority != null && !priority.isBlank()) {
+                where.append(" AND priority = '").append(priority.trim()).append("'");
+            }
+            if (secrecy != null && !secrecy.isBlank()) {
+                where.append(" AND secrecy = '").append(secrecy.trim()).append("'");
+            }
+            if (typeCategory != null && !typeCategory.isBlank()) {
+                where.append(" AND type_category = '").append(typeCategory.trim()).append("'");
+            }
+
+            // Date range filter
+            if (fromDate != null && !fromDate.isBlank()) {
+                where.append(" AND r_creation_date >= DATE('").append(formatDateToDDMMYYYY(fromDate))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            if (toDate != null && !toDate.isBlank()) {
+                where.append(" AND r_creation_date <= DATE('").append(formatDateToDDMMYYYY(addOneDay(toDate)))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            String dql = String.format(
+                "SELECT DISTINCT r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy " +
+                "FROM cms_digidak_folder " +
+                "WHERE %s " +
+                "ORDER BY r_creation_date DESC " +
+                "ENABLE(RETURN_TOP %d)",
+                where, page * itemsPerPage
+            );
+
+            log.info("Digidak Inbox DQL — hoRo: {}, username: {}, from: {}, to: {}", hoRo, username, fromDate, toDate);
+
+            return executeDigidakDQL(dql, page, itemsPerPage);
+
+        } catch (Exception e) {
+            log.error("Error in getDigidakInbox", e);
+            return buildErrorResponse("Failed to get Digidak Inbox report: " + e.getMessage(), page, itemsPerPage);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> getWorkflowGroupsForUser(String username) {
+        List<String> groups = new ArrayList<>();
+        try {
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            String dql = String.format(
+                "SELECT group_name FROM dm_group WHERE ANY i_all_users_names = '%s' " +
+                "AND group_name NOT LIKE 'dm%%' AND group_name NOT LIKE '%%_grade_%%' " +
+                "UNION ALL SELECT user_name FROM dm_user WHERE user_name = '%s'",
+                username, username
+            );
+
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                            if (props != null) {
+                                Object groupName = props.get("group_name");
+                                Object userName = props.get("user_name");
+                                if (groupName != null) {
+                                    groups.add(groupName.toString());
+                                } else if (userName != null) {
+                                    groups.add(userName.toString());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            log.info("Found {} workflow groups for user '{}'", groups.size(), username);
+        } catch (Exception e) {
+            log.error("Error fetching workflow groups for user: {}", username, e);
+        }
+        return groups;
+    }
+
+    @SuppressWarnings("unchecked")
     public Map<String, Object> getDigidakMetadata() {
         Map<String, Object> metadata = new HashMap<>();
         try {

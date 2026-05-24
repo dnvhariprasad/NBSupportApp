@@ -1026,8 +1026,13 @@ export async function fetchDepartments(officeType, location) {
     if (location) params.location = location;
     const { data } = await api.get('/departments', { params });
     if (Array.isArray(data) && data.length > 0) {
-      _deptCache[key] = data;
-      return data;
+      // Transform API response to match our expected structure
+      const transformed = data.map(d => ({
+        name: d.object_name || d.name,
+        shortCode: d.department_short_code || d.shortCode
+      }));
+      _deptCache[key] = transformed;
+      return transformed;
     }
   } catch (e) {
     console.warn('[fetchDepartments] API failed, using fallback:', e?.message);

@@ -1,13 +1,53 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, Component } from 'react';
 import { motion } from 'framer-motion';
 import {
     FileBarChart2, Filter, X, Search, ChevronLeft, ChevronRight,
-    ChevronsLeft, FileText, ClipboardList, Download
+    ChevronsLeft, FileText, ClipboardList, Download, AlertCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import axios from '../api/axios';
 import { getLocations, fetchDepartments } from '../data/nabardMetadata';
 import { CaseDetailsModal, MovementRegisterModal } from './DelegatePage';
+
+// Error boundary class component
+class ErrorBoundary extends Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error, errorInfo) {
+        console.error('ReportsPage Error:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-6">
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-6 flex items-start gap-3">
+                        <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                        <div>
+                            <h3 className="text-red-900 font-semibold mb-2">An Error Occurred</h3>
+                            <p className="text-red-700 text-sm mb-3">{this.state.error?.message || 'Unknown error'}</p>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-3 py-1.5 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700"
+                            >
+                                Reload Page
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
+}
 
 const STATUS_OPTIONS   = ['In-Progress', 'Approved', 'Closed', 'Cancelled'];
 const PRIORITY_OPTIONS = ['Ordinary', 'Urgent'];
@@ -47,6 +87,8 @@ const ReportsPage = () => {
     const [digidakMetadata,     setDigidakMetadata]     = useState({
         languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: []
     });
+    const [digidakInboxUsername, setDigidakInboxUsername] = useState('');
+    const [digidakInboxUsers,   setDigidakInboxUsers]   = useState([]);
 
     // ── Results state ─────────────────────────────────────────────────────────
     const [cases,          setCases]          = useState([]);
@@ -79,7 +121,14 @@ const ReportsPage = () => {
         setVerticals([]);
         if (!officeType) return;
         if (isRoTe && !location) return;
-        fetchDepartments(officeType, isRoTe ? location : '').then(setDepartments);
+        fetchDepartments(officeType, isRoTe ? location : '')
+            .then(depts => {
+                setDepartments(depts || []);
+            })
+            .catch(err => {
+                console.error('Error fetching departments (Cases):', err);
+                setDepartments([]);
+            });
     }, [officeType, location, isRoTe]);
 
     // Fetch verticals for HO when department is selected
@@ -96,7 +145,10 @@ const ReportsPage = () => {
                     !g.group_name.includes('_cgm_sec')
                 ));
             })
-            .catch(() => setVerticals([]));
+            .catch(err => {
+                console.error('Error fetching verticals:', err);
+                setVerticals([]);
+            });
     }, [officeType, deptName]);
 
     // ── Digidak Departments ───────────────────────────────────────────────────
@@ -108,17 +160,63 @@ const ReportsPage = () => {
         setDigidakDepartments([]);
         if (!digidakOfficeType) return;
         if (digidakIsRoTe && !digidakLocation) return;
-        fetchDepartments(digidakOfficeType, digidakIsRoTe ? digidakLocation : '').then(setDigidakDepartments);
+        fetchDepartments(digidakOfficeType, digidakIsRoTe ? digidakLocation : '')
+            .then(depts => {
+                setDigidakDepartments(depts || []);
+            })
+            .catch(err => {
+                console.error('Error fetching departments (Digidak):', err);
+                setDigidakDepartments([]);
+            });
     }, [digidakOfficeType, digidakLocation, digidakIsRoTe]);
 
     // ── Fetch Digidak Metadata ────────────────────────────────────────────────
     useEffect(() => {
         axios.get('/digidak/metadata')
-            .then(res => setDigidakMetadata(res.data || {}))
-            .catch(() => setDigidakMetadata({
-                languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: []
-            }));
+            .then(res => {
+                setDigidakMetadata(res.data || {});
+            })
+            .catch(err => {
+                console.error('Error fetching Digidak metadata:', err);
+                setDigidakMetadata({
+                    languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: []
+                });
+            });
     }, []);
+
+    // ── Fetch Digidak Inbox Users ─────────────────────────────────────────────
+    useEffect(() => {
+        setDigidakInboxUsername('');
+        setDigidakInboxUsers([]);
+        if (!digidakOfficeType) return;
+        if (digidakIsRoTe && !digidakLocation) return;
+        if (!digidakIsRoTe && !digidakDeptName) return;
+
+        let endpoint = '';
+        let params = {};
+        if (digidakIsRoTe && digidakLocation) {
+            endpoint = '/users/by-location';
+            params = { location: digidakLocation };
+        } else if (!digidakIsRoTe && digidakDeptName) {
+            const dept = digidakDepartments.find(d => d.name === digidakDeptName);
+            if (dept && dept.shortCode) {
+                endpoint = '/users/by-dept';
+                params = { shortCode: dept.shortCode };
+            }
+        }
+
+        if (endpoint) {
+            axios.get(endpoint, { params })
+                .then(res => {
+                    const users = (res.data || []).map(u => u.object_name || u.user_name || u.user_login_name || u.name || u);
+                    setDigidakInboxUsers(users.filter(u => typeof u === 'string'));
+                })
+                .catch(err => {
+                    console.error('Error fetching Inbox users:', err);
+                    setDigidakInboxUsers([]);
+                });
+        }
+    }, [digidakOfficeType, digidakLocation, digidakDeptName, digidakDepartments, digidakIsRoTe]);
 
     // ── Clear Digidak filters on tab change ────────────────────────────────────
     useEffect(() => {
@@ -128,6 +226,7 @@ const ReportsPage = () => {
         setDigidakSecrecy('');
         setDigidakStatus('');
         setDigidakTypeCategory('');
+        setDigidakInboxUsername('');
         setDigidakResults([]);
         setFiltersApplied(false);
         setPage(1);
@@ -212,7 +311,7 @@ const ReportsPage = () => {
 
     // ── Digidak Report Functions ──────────────────────────────────────────────
     const buildDigidakParams = useCallback(() => {
-        const p = { decisionType: digidakSubTab }; // 'inbox' or 'outbox'
+        const p = {};
         if (digidakOfficeType)        p.hoRo = digidakOfficeType;
         if (digidakIsRoTe && digidakLocation) p.location = digidakLocation;
         if (digidakDeptName)          p.deptNames = digidakDeptName;
@@ -224,16 +323,18 @@ const ReportsPage = () => {
         if (digidakSecrecy)           p.secrecy = digidakSecrecy;
         if (digidakStatus)            p.status = digidakStatus;
         if (digidakTypeCategory)      p.typeCategory = digidakTypeCategory;
+        if (digidakInboxUsername)     p.username = digidakInboxUsername;
         return p;
     }, [digidakOfficeType, digidakIsRoTe, digidakLocation, digidakDeptName,
         digidakFromDate, digidakToDate, digidakLanguage, digidakModeOfReceipt,
-        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakSubTab]);
+        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakInboxUsername]);
 
     const fetchDigidakReport = useCallback(async (pageNum = 1, size = 10) => {
         setLoading(true);
         setError('');
         try {
-            const { data } = await axios.get('/digidak/report', {
+            const endpoint = digidakSubTab === 'inbox' ? '/digidak/inbox' : '/digidak/report';
+            const { data } = await axios.get(endpoint, {
                 params: { ...buildDigidakParams(), page: pageNum, size }
             });
             setDigidakResults(data.items || []);
@@ -246,9 +347,20 @@ const ReportsPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [buildDigidakParams]);
+    }, [buildDigidakParams, digidakSubTab]);
 
-    const handleDigidakApply = () => fetchDigidakReport(1, pageSize);
+    const handleDigidakApply = () => {
+        if (digidakSubTab === 'inbox' && !digidakInboxUsername) {
+            setError('Username is required for Inbox report');
+            return;
+        }
+        if (!digidakOfficeType) {
+            setError('Office Type is required');
+            return;
+        }
+        setError('');
+        fetchDigidakReport(1, pageSize);
+    };
 
     const handleDigidakClear = () => {
         setDigidakOfficeType(''); setDigidakLocation(''); setDigidakDeptName('');
@@ -256,6 +368,7 @@ const ReportsPage = () => {
         setDigidakFromDate(''); setDigidakToDate('');
         setDigidakLanguage(''); setDigidakModeOfReceipt(''); setDigidakPriority('');
         setDigidakSecrecy(''); setDigidakStatus(''); setDigidakTypeCategory('');
+        setDigidakInboxUsername('');
         setDigidakResults([]);
         setFiltersApplied(false); setError(''); setPage(1);
     };
@@ -380,6 +493,7 @@ const ReportsPage = () => {
     const selectCls = 'w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white';
 
     return (
+        <ErrorBoundary>
         <motion.div
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -741,6 +855,17 @@ const ReportsPage = () => {
                         </div>
                     )}
 
+                    {/* Username — Inbox only */}
+                    {digidakSubTab === 'inbox' && digidakOfficeType && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Username</label>
+                            <select value={digidakInboxUsername} onChange={e => setDigidakInboxUsername(e.target.value)} className={selectCls}>
+                                <option value="">Select Username</option>
+                                {(digidakInboxUsers || []).map(user => <option key={user} value={user}>{user}</option>)}
+                            </select>
+                        </div>
+                    )}
+
                     {/* From Date */}
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">From Date</label>
@@ -944,6 +1069,7 @@ const ReportsPage = () => {
             {detailCase   && <CaseDetailsModal      caseItem={detailCase}   onClose={() => setDetailCase(null)}   />}
             {movementCase && <MovementRegisterModal  caseItem={movementCase} onClose={() => setMovementCase(null)} />}
         </motion.div>
+        </ErrorBoundary>
     );
 };
 
