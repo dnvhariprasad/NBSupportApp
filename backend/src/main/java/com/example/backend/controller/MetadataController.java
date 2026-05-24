@@ -53,6 +53,26 @@ public class MetadataController {
     }
 
     /**
+     * Validate if a cms_file_number can be deleted (check if any cases use it).
+     * GET /api/metadata/file-numbers/validate-delete?hoRo=HO&deptShortCode=ddsi&fileNumber=DDSI-001&roShortCode=
+     * Returns: { canDelete: boolean, caseCount: int, message: string }
+     */
+    @GetMapping("/file-numbers/validate-delete")
+    public ResponseEntity<Map<String, Object>> validateFileNumberDelete(
+            @RequestParam String hoRo,
+            @RequestParam String deptShortCode,
+            @RequestParam String fileNumber,
+            @RequestParam(required = false) String roShortCode) {
+        try {
+            return ResponseEntity.ok(metadataService.validateFileNumberDelete(hoRo, deptShortCode, fileNumber, roShortCode));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("canDelete", false, "caseCount", 0,
+                        "message", "Validation failed: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Delete a cms_file_number object by its r_object_id.
      * DELETE /api/metadata/file-numbers/{objectId}
      */

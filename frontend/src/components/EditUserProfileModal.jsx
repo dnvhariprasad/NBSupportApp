@@ -8,6 +8,30 @@ const USER_GRADE_OPTIONS = [
     ...USER_GRADES.map(g => ({ value: g.value, label: g.label, level: g.gradeLevel })),
 ];
 
+// Designation to User Grade mapping
+const DESIGNATION_GRADE_MAPPING = {
+    'DA': 'group_b',      // Group B
+    'AM': 'grade_a',      // Grade A
+    'MGR': 'grade_b',     // Grade B
+    'AGM': 'grade_c',     // Grade C
+    'DGM': 'grade_d',     // Grade D
+    'GM': 'grade_e',      // Grade E
+    'GM(OIC)': 'grade_e(oic)', // Grade E (OIC)
+    'CGM': 'grade_f',     // Grade F
+};
+
+// User Grade to Designation mapping (reverse mapping)
+const GRADE_DESIGNATION_MAPPING = {
+    'group_b': 'DA',
+    'grade_a': 'AM',
+    'grade_b': 'MGR',
+    'grade_c': 'AGM',
+    'grade_d': 'DGM',
+    'grade_e': 'GM',
+    'grade_e(oic)': 'GM(OIC)',
+    'grade_f': 'CGM',
+};
+
 const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
 const readonlyCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 cursor-default font-mono';
 const selectCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer';
@@ -39,6 +63,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [error, setError] = useState(null);
     const [errors, setErrors] = useState({});
     const [designationChanged, setDesignationChanged] = useState(false);
+    const [gradeChanged, setGradeChanged] = useState(false);
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
     const hindiTouched = useRef({});
 
@@ -84,6 +109,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setShowLocationBlock(false);
         setDelegateTask(null);
         setDesignationChanged(false);
+        setGradeChanged(false);
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
             .catch(() => initForm(user));
@@ -97,6 +123,32 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             set('hindi_designation', designationObj.hindi);
         }
     }, [form.designation]);
+
+    // Auto-populate user_grade when designation changes
+    useEffect(() => {
+        if (!form.designation) return;
+        const mappedGrade = DESIGNATION_GRADE_MAPPING[form.designation];
+        if (mappedGrade) {
+            set('user_grade', mappedGrade);
+            const opt = USER_GRADE_OPTIONS.find(o => o.value === mappedGrade);
+            set('grade_level', opt?.level ?? '');
+            setGradeChanged(false);
+        }
+    }, [form.designation]);
+
+    // Auto-populate designation when user_grade changes
+    useEffect(() => {
+        if (!form.user_grade) return;
+        const mappedDesignation = GRADE_DESIGNATION_MAPPING[form.user_grade];
+        if (mappedDesignation) {
+            set('designation', mappedDesignation);
+            const designationObj = DESIGNATION_OPTIONS.find(opt => opt.value === mappedDesignation);
+            if (designationObj && designationObj.hindi) {
+                set('hindi_designation', designationObj.hindi);
+            }
+            setGradeChanged(true);
+        }
+    }, [form.user_grade]);
 
     const initForm = async (profile) => {
         const officeType = profile.office_type || '';
@@ -576,6 +628,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         set('user_grade', v);
         const opt = USER_GRADE_OPTIONS.find(o => o.value === v);
         set('grade_level', opt?.level ?? '');
+        // Reset to false; the useEffect will set it to true after auto-updating designation
+        setGradeChanged(false);
     };
 
     const handleSubmit = async (e) => {
@@ -1053,7 +1107,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         </select>
                                     </SelectWrapper>
                                     {errors.designation && <p className="text-xs text-red-500">{errors.designation}</p>}
-                                    {designationChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 Change user grade if required</p>}
+                                    {designationChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 User grade has been auto-updated based on designation</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>User Role</Label>
@@ -1070,6 +1124,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             ))}
                                         </select>
                                     </SelectWrapper>
+                                    {gradeChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 Designation has been auto-updated based on grade</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>Grade Level</Label>
