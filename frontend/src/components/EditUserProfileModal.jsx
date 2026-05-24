@@ -66,6 +66,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [gradeChanged, setGradeChanged] = useState(false);
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
     const hindiTouched = useRef({});
+    const lastManualChangeRef = useRef(null); // Track which field was last manually changed ('designation' or 'grade')
 
     // Pending cases / delegate state
     const [checkingInbox,       setCheckingInbox]       = useState(false);
@@ -110,6 +111,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setDelegateTask(null);
         setDesignationChanged(false);
         setGradeChanged(false);
+        lastManualChangeRef.current = null;
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
             .catch(() => initForm(user));
@@ -124,9 +126,9 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     }, [form.designation]);
 
-    // Auto-populate user_grade when designation changes
+    // Auto-populate user_grade when designation changes (only if user manually changed designation, not during initial load)
     useEffect(() => {
-        if (!form.designation) return;
+        if (!form.designation || lastManualChangeRef.current !== 'designation') return;
         const mappedGrade = DESIGNATION_GRADE_MAPPING[form.designation];
         if (mappedGrade) {
             set('user_grade', mappedGrade);
@@ -136,9 +138,9 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     }, [form.designation]);
 
-    // Auto-populate designation when user_grade changes
+    // Auto-populate designation when user_grade changes (only if user manually changed grade, not during initial load)
     useEffect(() => {
-        if (!form.user_grade) return;
+        if (!form.user_grade || lastManualChangeRef.current !== 'grade') return;
         const mappedDesignation = GRADE_DESIGNATION_MAPPING[form.user_grade];
         if (mappedDesignation) {
             set('designation', mappedDesignation);
@@ -625,6 +627,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     };
 
     const handleGradeChange = (v) => {
+        lastManualChangeRef.current = 'grade';
         set('user_grade', v);
         const opt = USER_GRADE_OPTIONS.find(o => o.value === v);
         set('grade_level', opt?.level ?? '');
@@ -1093,6 +1096,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         <select value={form.designation}
                                             onChange={e => {
                                                 const newDesignation = e.target.value;
+                                                lastManualChangeRef.current = 'designation';
                                                 set('designation', newDesignation);
                                                 setErrors(p => ({ ...p, designation: undefined }));
                                                 // Track if designation was actually changed from original
