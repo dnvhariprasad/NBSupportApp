@@ -50,7 +50,7 @@ public class DigidakService {
     @SuppressWarnings("unchecked")
     public Map<String, Object> getDigidakReport(String decisionType, String hoRo, String location, String deptNames,
                                                  String fromDate, String toDate, String language, String modeOfReceipt,
-                                                 String priority, String secrecy, String status, String typeCategory,
+                                                 String priority, String secrecy, String status, String typeCategory, String sourceVertical,
                                                  int page, int itemsPerPage) {
         try {
             // Build WHERE clause with mandatory filters
@@ -88,6 +88,9 @@ public class DigidakService {
             }
             if (typeCategory != null && !typeCategory.isBlank()) {
                 where.append(" AND type_category = '").append(typeCategory.trim()).append("'");
+            }
+            if (sourceVertical != null && !sourceVertical.isBlank()) {
+                where.append(" AND source_vertical = '").append(sourceVertical.trim()).append("'");
             }
 
             // Office type filter (HO, RO, TE)
@@ -600,5 +603,112 @@ public class DigidakService {
             }
         }
         return metadata;
+    }
+
+    /**
+     * Get Digidak movement register records for a given digidak folder.
+     * Queries cms_digidak_movement_re where i_folder_id matches the digidak folder's r_object_id.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getDigidakMovement(String digidakId) {
+        String safe = digidakId.replace("'", "''");
+        String dql = "SELECT r_object_id, type_category, letter_subject, performer, status, assigned_user, entry_type, received_date, completed_date " +
+                     "FROM cms_digidak_movement_re WHERE ANY i_folder_id = '" + safe + "' ORDER BY r_creation_date DESC";
+        log.info("Digidak movement register DQL for digidak {}", digidakId);
+
+        try {
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&items-per-page=200&page=1&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, Object>> records = new ArrayList<>();
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                            if (props != null) records.add(props);
+                        }
+                    }
+                }
+            }
+            return records;
+        } catch (Exception e) {
+            log.error("Error fetching movement register for digidak {}: {}", digidakId, e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public List<Map<String, String>> getDigidakVerticals(String officeType, String location, String deptName) {
+        String dql;
+
+        if (officeType.equalsIgnoreCase("HO") && !deptName.isEmpty()) {
+            // Get department short code from name
+            String deptCode = getDeptShortCode(deptName.trim());
+            String safe = deptCode.replace("'", "''");
+            dql = "SELECT group_display_name FROM dm_group " +
+                  "WHERE group_name LIKE 'ecm_ho_" + safe.toLowerCase() + "_%' " +
+                  "AND group_name NOT LIKE 'dm%' " +
+                  "AND group_name NOT LIKE '%_grade_%' " +
+                  "AND group_name NOT LIKE '%vertical_head%' " +
+                  "AND group_name NOT LIKE '%cgm_sec%' " +
+                  "ORDER BY group_display_name";
+        } else if ((officeType.equalsIgnoreCase("RO") || officeType.equalsIgnoreCase("TE")) && !location.isEmpty()) {
+            String locationShortCode = getLocationShortCode(location.trim());
+            String safe = locationShortCode.replace("'", "''");
+            dql = "SELECT group_display_name FROM dm_group " +
+                  "WHERE group_name LIKE 'ecm_" + safe.toLowerCase() + "_%' " +
+                  "AND group_name NOT LIKE 'dm%' " +
+                  "AND group_name NOT LIKE '%_grade_%' " +
+                  "AND group_name NOT LIKE '%vertical_head%' " +
+                  "AND group_name NOT LIKE '%cgm_sec%' " +
+                  "ORDER BY group_display_name";
+        } else {
+            return new ArrayList<>();
+        }
+
+        log.info("Digidak verticals DQL for officeType={}, location={}, deptName={}", officeType, location, deptName);
+
+        try {
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&items-per-page=200&page=1&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            List<Map<String, String>> verticals = new ArrayList<>();
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                            if (props != null) {
+                                String displayName = (String) props.get("group_display_name");
+                                if (displayName != null && !displayName.isEmpty()) {
+                                    Map<String, String> vertical = new HashMap<>();
+                                    vertical.put("name", displayName);
+                                    vertical.put("value", displayName);
+                                    verticals.add(vertical);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return verticals;
+        } catch (Exception e) {
+            log.error("Error fetching digidak verticals: {}", e.getMessage());
+            return new ArrayList<>();
+        }
     }
 }

@@ -53,6 +53,113 @@ const STATUS_OPTIONS   = ['In-Progress', 'Approved', 'Closed', 'Cancelled'];
 const PRIORITY_OPTIONS = ['Ordinary', 'Urgent'];
 const LANGUAGE_OPTIONS = ['Bilingual', 'English', 'Hindi', 'Others'];
 
+// ─── Digidak Movement Register Modal ──────────────────────────────────────────
+const DigidakMovementRegisterModal = ({ digidakItem, onClose }) => {
+    const [movement, setMovement] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!digidakItem) return;
+        setLoading(true);
+        axios.get(`/digidak/${digidakItem.r_object_id}/movement`)
+            .then(res => setMovement(Array.isArray(res.data) ? res.data : []))
+            .catch(err => {
+                console.error('Error fetching digidak movement:', err);
+                setMovement([]);
+            })
+            .finally(() => setLoading(false));
+    }, [digidakItem]);
+
+    if (!digidakItem) return null;
+
+    const movCols = [
+        { key: 'type_category', label: 'Type Category' },
+        { key: 'letter_subject', label: 'Letter Subject' },
+        { key: 'performer', label: 'Performer' },
+        { key: 'status', label: 'Status' },
+        { key: 'assigned_user', label: 'Assigned User' },
+        { key: 'entry_type', label: 'Entry Type' },
+        { key: 'received_date', label: 'Received Date' },
+        { key: 'completed_date', label: 'Completed Date' },
+    ];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-[#0A66C2] flex items-center justify-center shadow-sm">
+                            <ClipboardList size={17} className="text-white" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-slate-900">{digidakItem.letter_subject || digidakItem.uid_number}</p>
+                            <p className="text-xs text-slate-500">Digidak Movement Register</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose}
+                        className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="overflow-y-auto flex-1 p-6">
+                    <div className="flex items-center gap-2 mb-3">
+                        <ClipboardList size={14} className="text-[#0A66C2]" />
+                        <h3 className="text-sm font-bold text-slate-800">Movement Register</h3>
+                        {!loading && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
+                                {movement.length}
+                            </span>
+                        )}
+                    </div>
+
+                    {loading ? (
+                        <div className="flex items-center gap-2 py-12 justify-center text-slate-400">
+                            <div className="animate-spin text-[#0A66C2]" style={{width: '18px', height: '18px'}}>
+                                ⟳
+                            </div>
+                            <span className="text-sm">Loading movement register…</span>
+                        </div>
+                    ) : movement.length === 0 ? (
+                        <div className="py-12 text-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                            No movement register records found for this digidak.
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                            <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-3 py-2.5 font-semibold text-slate-600 w-8">#</th>
+                                        {movCols.map(col => (
+                                            <th key={col.key} className="px-3 py-2.5 font-semibold text-slate-600 whitespace-nowrap">
+                                                {col.label}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {movement.map((rec, idx) => (
+                                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                            <td className="px-3 py-2 text-slate-400 font-mono">{idx + 1}</td>
+                                            {movCols.map(col => (
+                                                <td key={col.key} className="px-3 py-2 text-slate-700 max-w-xs truncate"
+                                                    title={String(rec[col.key] ?? '')}>
+                                                    {rec[col.key] ?? '—'}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ReportsPage = () => {
     // ── Tab state ─────────────────────────────────────────────────────────────
     const [activeTab, setActiveTab] = useState('cases'); // 'cases' or 'digidak'
@@ -82,8 +189,10 @@ const ReportsPage = () => {
     const [digidakModeOfReceipt,setDigidakModeOfReceipt]= useState('');
     const [digidakPriority,     setDigidakPriority]     = useState('');
     const [digidakSecrecy,      setDigidakSecrecy]      = useState('');
-    const [digidakStatus,       setDigidakStatus]       = useState('');
-    const [digidakTypeCategory, setDigidakTypeCategory] = useState('');
+    const [digidakStatus,        setDigidakStatus]        = useState('');
+    const [digidakTypeCategory,  setDigidakTypeCategory]  = useState('');
+    const [digidakSourceVertical,setDigidakSourceVertical]= useState('');
+    const [digidakSourceVerticals,setDigidakSourceVerticals]= useState([]);
     const [digidakMetadata,     setDigidakMetadata]     = useState({
         languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: []
     });
@@ -103,8 +212,9 @@ const ReportsPage = () => {
     const [error,          setError]          = useState('');
 
     // ── Modal state ───────────────────────────────────────────────────────────
-    const [detailCase,   setDetailCase]   = useState(null);
-    const [movementCase, setMovementCase] = useState(null);
+    const [detailCase,      setDetailCase]      = useState(null);
+    const [movementCase,    setMovementCase]    = useState(null);
+    const [digidakMovement, setDigidakMovement] = useState(null);
 
     // ── Derived ───────────────────────────────────────────────────────────────
     const locations      = useMemo(() => getLocations(officeType), [officeType]);
@@ -170,6 +280,31 @@ const ReportsPage = () => {
             });
     }, [digidakOfficeType, digidakLocation, digidakIsRoTe]);
 
+    // ── Fetch Digidak Source Verticals (Outbox only) ───────────────────────────
+    useEffect(() => {
+        setDigidakSourceVertical('');
+        setDigidakSourceVerticals([]);
+        if (digidakSubTab !== 'outbox') return;
+        if (!digidakOfficeType) return;
+        if (digidakIsRoTe && !digidakLocation) return;
+        if (!digidakIsRoTe && !digidakDeptName) return;
+
+        const params = {
+            officeType: digidakOfficeType,
+            location: digidakIsRoTe ? digidakLocation : '',
+            deptName: !digidakIsRoTe ? digidakDeptName : ''
+        };
+        axios.get('/digidak/verticals', { params })
+            .then(res => {
+                const verticals = (res.data || []).map(v => v.name || v.value || v);
+                setDigidakSourceVerticals(verticals.filter(v => typeof v === 'string'));
+            })
+            .catch(err => {
+                console.error('Error fetching source verticals:', err);
+                setDigidakSourceVerticals([]);
+            });
+    }, [digidakOfficeType, digidakLocation, digidakDeptName, digidakIsRoTe, digidakSubTab]);
+
     // ── Fetch Digidak Metadata ────────────────────────────────────────────────
     useEffect(() => {
         axios.get('/digidak/metadata')
@@ -224,6 +359,8 @@ const ReportsPage = () => {
         setDigidakLocation('');
         setDigidakDeptName('');
         setDigidakDepartments([]);
+        setDigidakSourceVertical('');
+        setDigidakSourceVerticals([]);
         setDigidakFromDate('');
         setDigidakToDate('');
         setDigidakLanguage('');
@@ -331,12 +468,14 @@ const ReportsPage = () => {
         if (digidakStatus)            p.status = digidakStatus;
         if (digidakTypeCategory)      p.typeCategory = digidakTypeCategory;
         if (digidakInboxUsername)     p.username = digidakInboxUsername;
+        if (digidakSourceVertical && digidakSubTab === 'outbox') p.sourceVertical = digidakSourceVertical;
         // For Outbox report, add decisionType parameter
         if (digidakSubTab === 'outbox') p.decisionType = 'outbox';
         return p;
     }, [digidakOfficeType, digidakIsRoTe, digidakLocation, digidakDeptName,
         digidakFromDate, digidakToDate, digidakLanguage, digidakModeOfReceipt,
-        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakInboxUsername, digidakSubTab]);
+        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakInboxUsername,
+        digidakSourceVertical, digidakSubTab]);
 
     const fetchDigidakReport = useCallback(async (pageNum = 1, size = 10) => {
         setLoading(true);
@@ -874,6 +1013,17 @@ const ReportsPage = () => {
                         </div>
                     )}
 
+                    {/* Source Vertical — Outbox only */}
+                    {digidakSubTab === 'outbox' && digidakSourceVerticals.length > 0 && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Source Vertical</label>
+                            <select value={digidakSourceVertical} onChange={e => setDigidakSourceVertical(e.target.value)} className={selectCls}>
+                                <option value="">All</option>
+                                {digidakSourceVerticals.map(v => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                        </div>
+                    )}
+
                     {/* From Date */}
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">From Date</label>
@@ -999,6 +1149,7 @@ const ReportsPage = () => {
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Status</th>
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Decision</th>
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Date Created</th>
+                                        <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-600">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -1034,6 +1185,14 @@ const ReportsPage = () => {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-2.5 text-slate-600 text-xs">{formatDate(item.r_creation_date)}</td>
+                                                <td className="px-4 py-2.5">
+                                                    <div className="flex items-center justify-center">
+                                                        <button onClick={() => setDigidakMovement(item)} title="Movement Register"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                                                            <ClipboardList size={15} />
+                                                        </button>
+                                                    </div>
+                                                </td>
                                             </tr>
                                         ))
                                     )}
@@ -1080,6 +1239,7 @@ const ReportsPage = () => {
             {/* Modals */}
             {detailCase   && <CaseDetailsModal      caseItem={detailCase}   onClose={() => setDetailCase(null)}   />}
             {movementCase && <MovementRegisterModal  caseItem={movementCase} onClose={() => setMovementCase(null)} />}
+            {digidakMovement && <DigidakMovementRegisterModal  digidakItem={digidakMovement} onClose={() => setDigidakMovement(null)} />}
         </motion.div>
         </ErrorBoundary>
     );
