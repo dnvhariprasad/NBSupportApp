@@ -74,6 +74,8 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
     const [currentPage, setCurrentPage] = useState(1);
     const [filterFileNumber, setFilterFileNumber] = useState('');
     const [filterDescription, setFilterDescription] = useState('');
+    const [validating, setValidating] = useState(null); // r_object_id being validated
+    const [validationResults, setValidationResults] = useState({}); // { r_object_id: { message, caseCount, canDelete } }
     const itemsPerPage = 10;
 
     const canFetch = hoRo && deptShortCode && (hoRo === 'HO' || roShortCode);
@@ -127,6 +129,65 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleValidateDelete = async (item) => {
+        setValidating(item.r_object_id);
+        setConfirmId(null);
+        // Clear any existing validation result for this row
+        setValidationResults(prev => {
+            const updated = { ...prev };
+            delete updated[item.r_object_id];
+            return updated;
+        });
+
+        try {
+            const params = {
+                hoRo: item.ho_ro || hoRo,
+                deptShortCode: item.dept_short_code || deptShortCode,
+                fileNumber: item.object_name
+            };
+            if (item.ro_short_code) {
+                params.roShortCode = item.ro_short_code;
+            }
+            const res = await api.get(`/metadata/file-numbers/validate-delete`, { params });
+            const { canDelete, caseCount, message } = res.data || {};
+
+            // Show validation result inline (both success and failure)
+            setValidationResults(prev => ({
+                ...prev,
+                [item.r_object_id]: {
+                    message: canDelete ? 'No cases found using this file number' : `Cannot delete: ${caseCount} case(s) found using this file number`,
+                    caseCount,
+                    canDelete
+                }
+            }));
+
+            if (canDelete) {
+                // No cases found — proceed with delete confirmation after short delay
+                setTimeout(() => setConfirmId(item.r_object_id), 300);
+            }
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Validation failed';
+            setValidationResults(prev => ({
+                ...prev,
+                [item.r_object_id]: {
+                    message: `Validation error: ${msg}`,
+                    caseCount: 0,
+                    canDelete: false
+                }
+            }));
+        } finally {
+            setValidating(null);
+        }
+    };
+
+    const clearValidationResult = (itemId) => {
+        setValidationResults(prev => {
+            const updated = { ...prev };
+            delete updated[itemId];
+            return updated;
+        });
     };
 
     const handleDelete = async (item) => {
@@ -258,6 +319,7 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                 {hoRo !== 'HO' && (
                                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Location Code</th>
                                 )}
+                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-500">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -265,9 +327,11 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                 const isConfirming = confirmId === item.r_object_id;
                                 const isDeleting   = deleting  === item.r_object_id;
                                 const isEditing    = editingId === item.r_object_id;
-                                const rowBg = isEditing ? 'bg-blue-50' : isConfirming ? 'bg-red-50' : 'hover:bg-indigo-50/30';
-                                return (
-                                    <tr key={item.r_object_id || idx}
+                                const hasValidation = !!validationResults[item.r_object_id];
+                                const canDelete = validationResults[item.r_object_id]?.canDelete;
+                                const rowBg = hasValidation && !canDelete ? 'bg-red-50' : isEditing ? 'bg-blue-50' : isConfirming ? 'bg-green-50' : 'hover:bg-indigo-50/30';
+                                return [
+                                    (<tr key={item.r_object_id || idx}
                                         className={`transition-colors ${rowBg}`}>
                                         <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{startIdx + idx + 1}</td>
                                         <td className="px-4 py-2.5 font-mono text-sm font-semibold text-slate-800">
@@ -302,8 +366,76 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                                 </span>
                                             </td>
                                         )}
-                                    </tr>
-                                );
+                                        <td className="px-4 py-2.5">
+                                            <div className="flex items-center justify-center gap-1.5">
+                                                {isEditing ? (
+                                                    <>
+                                                        <button onClick={() => handleSave(item)} disabled={saving}
+                                                            className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-40 transition-colors"
+                                                            title="Save">
+                                                            <CheckCircle2 size={16} />
+                                                        </button>
+                                                        <button onClick={cancelEdit} disabled={saving}
+                                                            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                                                            title="Cancel">
+                                                            <X size={16} />
+                                                        </button>
+                                                    </>
+                                                ) : isConfirming ? (
+                                                    <>
+                                                        <button onClick={() => handleDelete(item)} disabled={isDeleting}
+                                                            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 disabled:opacity-40 transition-colors"
+                                                            title="Confirm delete">
+                                                            {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                                            Delete
+                                                        </button>
+                                                        <button onClick={() => setConfirmId(null)} disabled={isDeleting}
+                                                            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                                                            title="Cancel">
+                                                            <X size={16} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => startEdit(item)}
+                                                            className="p-1 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                            title="Edit">
+                                                            <Pencil size={16} />
+                                                        </button>
+                                                        <button onClick={() => handleValidateDelete(item)} disabled={validating === item.r_object_id}
+                                                            className="p-1 rounded text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                                                            title="Delete">
+                                                            {validating === item.r_object_id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>),
+                                    hasValidation && (
+                                        <tr key={`validation-${item.r_object_id}`} className={`border-t-0 border-b transition-colors ${canDelete ? 'bg-green-50 border-b-green-200' : 'bg-red-50 border-b-red-200'}`}>
+                                            <td colSpan={hoRo === 'HO' ? 5 : 6} className="px-4 py-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        {canDelete ? (
+                                                            <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+                                                        ) : (
+                                                            <AlertCircle size={16} className="text-red-500 shrink-0" />
+                                                        )}
+                                                        <span className={`text-sm font-medium ${canDelete ? 'text-green-700' : 'text-red-700'}`}>
+                                                            {validationResults[item.r_object_id]?.message}
+                                                        </span>
+                                                    </div>
+                                                    <button onClick={() => clearValidationResult(item.r_object_id)}
+                                                        className={`p-1 rounded transition-colors ${canDelete ? 'text-green-400 hover:text-green-600 hover:bg-green-100' : 'text-red-400 hover:text-red-600 hover:bg-red-100'}`}
+                                                        title="Dismiss">
+                                                        <X size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )
+                                ];
                             })}
                         </tbody>
                     </table>
