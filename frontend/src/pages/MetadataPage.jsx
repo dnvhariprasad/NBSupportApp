@@ -498,6 +498,7 @@ const FileNumberTab = ({ onToast }) => {
     const [form, setForm]         = useState(EMPTY_FN);
     const [errors, setErrors]     = useState({});
     const [submitting, setSubmitting] = useState(false);
+    const [checking, setChecking] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
     // Role & profile context for Local Admin
@@ -568,6 +569,36 @@ const FileNumberTab = ({ onToast }) => {
     const set = (field, val) => {
         setForm(f => ({ ...f, [field]: val }));
         if (errors[field]) setErrors(e => ({ ...e, [field]: undefined }));
+        if (field === 'fileNumber') setChecking(false); // Clear checking state when value changes
+    };
+
+    const handleFileNumberBlur = async () => {
+        const fileNum = form.fileNumber.trim();
+        if (!fileNum || !form.officeType || !form.shortCode || (!isHO && !form.locationShortCode)) {
+            return; // Not ready to check yet
+        }
+        setChecking(true);
+        try {
+            const params = {
+                hoRo: form.officeType,
+                deptShortCode: form.shortCode,
+                fileNumber: fileNum,
+            };
+            if (!isHO && form.locationShortCode) {
+                params.roShortCode = form.locationShortCode;
+            }
+            const res = await api.get('/metadata/file-numbers/check-duplicate', { params });
+            if (res.data?.exists) {
+                setErrors(e => ({ ...e, fileNumber: 'File number already exists' }));
+            } else {
+                setErrors(e => ({ ...e, fileNumber: undefined }));
+            }
+        } catch (err) {
+            // Silently fail on error — server-side will catch it
+            log.debug('Duplicate check error:', err.message);
+        } finally {
+            setChecking(false);
+        }
     };
 
     const validate = () => {
@@ -576,6 +607,7 @@ const FileNumberTab = ({ onToast }) => {
         if (!isHO && !form.location) e.location    = 'Location is required';
         if (!form.department)        e.department  = 'Department is required';
         if (!form.fileNumber.trim()) e.fileNumber  = 'File number is required';
+        if (errors.fileNumber)       e.fileNumber  = errors.fileNumber; // Preserve duplicate check error
         return e;
     };
 
@@ -705,6 +737,7 @@ const FileNumberTab = ({ onToast }) => {
                         <FieldLabel icon={FileText} label="File Number" required />
                         <input type="text" value={form.fileNumber}
                             onChange={e => set('fileNumber', e.target.value)}
+                            onBlur={handleFileNumberBlur}
                             placeholder="e.g. SMF-10"
                             className={`${inputCls(errors.fileNumber)} font-mono`} />
                         <FieldError msg={errors.fileNumber} />
@@ -739,14 +772,15 @@ const FileNumberTab = ({ onToast }) => {
                     {/* Actions */}
                     <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                         <button type="button"
-                            onClick={() => { setForm(EMPTY_FN); setErrors({}); }}
-                            className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-white transition-all">
+                            onClick={() => { setForm(EMPTY_FN); setErrors({}); setChecking(false); }}
+                            disabled={submitting || checking}
+                            className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-white transition-all disabled:opacity-40">
                             Reset
                         </button>
-                        <button type="submit" disabled={submitting}
+                        <button type="submit" disabled={submitting || checking}
                             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl shadow-sm transition-all">
-                            {submitting ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-                            {submitting ? 'Creating…' : 'Create File Number'}
+                            {submitting ? <Loader2 size={15} className="animate-spin" /> : checking ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                            {submitting ? 'Creating…' : checking ? 'Validating…' : 'Create File Number'}
                         </button>
                     </div>
                 </form>
