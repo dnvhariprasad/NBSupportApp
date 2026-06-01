@@ -87,6 +87,25 @@ public class MetadataController {
     }
 
     /**
+     * Check if a cms_file_number already exists for the given office type, department, and location.
+     * GET /api/metadata/file-numbers/check-duplicate?hoRo=HO&deptShortCode=ddsi&fileNumber=DDSI-001&roShortCode=
+     * Returns: { exists: boolean }
+     */
+    @GetMapping("/file-numbers/check-duplicate")
+    public ResponseEntity<Map<String, Object>> checkFileNumberDuplicate(
+            @RequestParam String hoRo,
+            @RequestParam String deptShortCode,
+            @RequestParam String fileNumber,
+            @RequestParam(required = false) String roShortCode) {
+        try {
+            return ResponseEntity.ok(metadataService.checkFileNumberDuplicate(hoRo, deptShortCode, fileNumber, roShortCode));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("exists", false, "error", e.getMessage()));
+        }
+    }
+
+    /**
      * List existing cms_file_number objects filtered by office type, department, and optionally location.
      * GET /api/metadata/file-numbers?hoRo=HO&deptShortCode=fsdd
      * GET /api/metadata/file-numbers?hoRo=RO&deptShortCode=bid&roShortCode=jk

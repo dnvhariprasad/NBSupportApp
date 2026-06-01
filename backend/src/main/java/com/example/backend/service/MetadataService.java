@@ -224,6 +224,52 @@ public class MetadataService {
     }
 
     /**
+     * Checks if a file number already exists for the given office type, department, and location.
+     * Returns { "exists": true/false }
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> checkFileNumberDuplicate(String hoRo, String deptShortCode, String fileNumber, String roShortCode) {
+        try {
+            String safe_hoRo = hoRo.replace("'", "''");
+            String safe_dept = deptShortCode.replace("'", "''");
+            String safe_fileName = fileNumber.replace("'", "''");
+
+            StringBuilder dql = new StringBuilder(
+                    "SELECT r_object_id FROM cms_file_number"
+                    + " WHERE ho_ro = '" + safe_hoRo + "'"
+                    + " AND dept_short_code = '" + safe_dept + "'"
+                    + " AND object_name = '" + safe_fileName + "'");
+
+            if (roShortCode != null && !roShortCode.isBlank()) {
+                String safe_ro = roShortCode.replace("'", "''");
+                dql.append(" AND ro_short_code = '").append(safe_ro).append("'");
+            }
+
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            log.info("[FileNumber] Checking duplicate: {}", dql);
+
+            Map<String, Object> resp = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&items-per-page=1&inline=true", dql.toString())
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (resp == null) {
+                return Map.of("exists", false);
+            }
+
+            List<Map<String, Object>> entries = (List<Map<String, Object>>) resp.get("entries");
+            boolean exists = entries != null && !entries.isEmpty();
+
+            return Map.of("exists", exists);
+        } catch (Exception e) {
+            log.error("[FileNumber] Duplicate check failed: {}", e.getMessage(), e);
+            return Map.of("exists", false);
+        }
+    }
+
+    /**
      * Lists existing cms_file_number objects filtered by ho_ro, dept_short_code,
      * and optionally ro_short_code (for RO/TE).
      *
