@@ -153,10 +153,12 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     }, [form.user_grade]);
 
     const initForm = async (profile) => {
+        console.log('[initForm] Profile received:', profile);
         const officeType = profile.office_type || '';
         const location   = profile.location   || '';
         const deptName   = profile.department_name || '';
         const isDDMProfile = deptName === 'DDM';
+        console.log('[initForm] Extracted values:', { officeType, location, deptName, isDDMProfile });
 
         const locs        = getLocations(officeType);
         const locObj      = locs.find(l => l.location === location);
@@ -197,7 +199,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         const gradeObj   = USER_GRADES.find(g => g.value === profile.user_grade);
         const gradeLevel = gradeObj !== undefined ? gradeObj.gradeLevel : (profile.grade_level ?? '');
 
-        setForm({
+        const finalForm = {
             object_name:                 profile.object_name            || '',
             uin:                         profile.uin                    || '',
             designation:                 profile.designation            || '',
@@ -215,7 +217,9 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             user_grade:                  profile.user_grade             || '',
             grade_level:                 gradeLevel,
             is_active:                   profile.is_active              ?? false,
-        });
+        };
+        console.log('[initForm] Final form state:', finalForm);
+        setForm(finalForm);
         setError(null);
         setErrors({});
         setPendingCases([]);
@@ -267,32 +271,23 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const pf = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
 
     const handleDelegateClick = async (task) => {
-        // Extract case location/department from case number
-        // Format for RO/TE: NB-RO/TE-{LOCATION}-{TYPE}-YEAR-QUARTER-NUMBER
-        // Format for HO:    NB-{DEPT}-{TYPE}-YEAR-QUARTER-NUMBER
         const caseNumber = pf(task, 'object_name') || task.object_name || task.case_number || task.case_id || '';
-        const caseParts = caseNumber.split('-');
-
-        const officeTypeOrDept = (caseParts[1] || '').toUpperCase();
-        const hoShortCodes = ['DDSI', 'DIT', 'FAD', 'CAC', 'DEAR', 'DFIBT', 'FNRM', 'MCIPL', 'SPPISL', 'NABCONS', 'OFDD', 'CGM'];
-
-        let caseLocOrDept = '';
-        let isCaseHO = false;
-
-        console.log('[Delegate] Case number parsed:', { caseNumber, caseParts, officeTypeOrDept });
-
-        if (officeTypeOrDept === 'RO' || officeTypeOrDept === 'TE') {
-            // RO/TE case: location is at index 2
-            caseLocOrDept = (caseParts[2] || '').toUpperCase();
-        } else {
-            // HO case: department is at index 1
-            caseLocOrDept = officeTypeOrDept;
-            isCaseHO = hoShortCodes.includes(caseLocOrDept);
-        }
-
-        console.log('[Delegate] Location/Dept code:', { caseLocOrDept, isCaseHO, officeTypeOrDept });
-
         const currentPerformer = form.object_name || '';
+
+        // Use ORIGINAL profile values (stored at load time) for delegation, not edited form values
+        // This allows users to delegate before saving profile changes
+        const originalOfficeType = originalGroupInfoRef.current.officeType;
+        const isHO = originalOfficeType === 'HO';
+        const isROTE = originalOfficeType === 'RO' || originalOfficeType === 'TE';
+
+        console.log('[Delegate] Using original profile values:', {
+            originalOfficeType,
+            isHO,
+            isROTE,
+            originalDeptCodes: originalGroupInfoRef.current.deptCodes,
+            originalRoShortCode: originalGroupInfoRef.current.roShortCode
+        });
+        console.log('[Delegate] Case number:', { caseNumber });
 
         setDelegateTask(task);
         setDelegateSelectedUser('');
@@ -300,60 +295,34 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setDelegateError(null);
         setLoadingDelegateUsers(true);
         try {
-            if (!isCaseHO) {
-                // RO/TE case: caseLocOrDept is location code (TN, KA, MH, etc.)
-                if (!caseLocOrDept) {
-                    throw new Error('Could not extract location from case number: ' + caseNumber);
+            if (isHO) {
+                // HO user: Always delegate to users in their own department
+                const userDeptCode = originalGroupInfoRef.current.deptCodes[0];
+                if (!userDeptCode || !userDeptCode.trim()) {
+                    setDelegateError('Department code is not set for this user in their profile.');
+                    setDelegateUsers([]);
+                    return;
                 }
 
-                const allLocs = [...RO_LOCATIONS, ...TE_LOCATIONS];
-                const locObj = allLocs.find(l => l.shortCode?.toUpperCase() === caseLocOrDept);
-                const location = locObj?.location;
+                console.log('[Delegate] HO user delegating:', { caseNumber, userDeptCode });
 
-                console.log('[Delegate] RO/TE case:', { caseNumber, caseLocOrDept, foundLocation: locObj?.location, allLocsCount: allLocs.length });
+                const res = await api.get('/users/by-dept', { params: { shortCode: userDeptCode.toLowerCase(), officeType: 'HO', page: 1, size: 500 } });
+                const allUsers = Array.isArray(res.data?.users) ? res.data.users : (Array.isArray(res.data) ? res.data : []);
 
-                if (!location) {
-                    throw new Error(`Location not found for shortCode: ${caseLocOrDept}. Make sure RO_LOCATIONS or TE_LOCATIONS has this location.`);
+                console.log('[Delegate] Fetched HO users from user dept:', { userDeptCode, count: allUsers.length });
+
+                if (allUsers.length === 0) {
+                    setDelegateError(`No users found in department ${userDeptCode.toUpperCase()}.`);
+                    setDelegateUsers([]);
+                    return;
                 }
-
-                const res = await api.get('/users/by-location', { params: { location, page: 1, size: 500 } });
-                const allUsers = res.data?.users || res.data || [];
-
-                console.log('[Delegate] Fetched users:', { count: allUsers.length, sample: allUsers[0] });
 
                 const filteredUsers = allUsers
                     .filter(u => {
-                        // Ensure user has a valid object_name
                         const displayName = u.object_name || u.name || '';
                         return displayName.trim().length > 0;
                     })
                     .filter(u => {
-                        // Filter out current performer
-                        const userName = u.name?.trim().toLowerCase() || '';
-                        const userObjName = u.object_name?.trim().toLowerCase() || '';
-                        const currentName = currentPerformer?.trim().toLowerCase() || '';
-                        return userName !== currentName && userObjName !== currentName;
-                    });
-
-                console.log('[Delegate] Filtered users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
-                setDelegateUsers(filteredUsers);
-            } else {
-                // HO case: caseLocOrDept is department code (DDSI, DIT, FAD, etc.)
-                console.log('[Delegate] HO case:', { caseNumber, caseLocOrDept });
-
-                const res = await api.get('/users/by-dept', { params: { shortCode: caseLocOrDept.toLowerCase(), officeType: 'HO', page: 1, size: 500 } });
-                const allUsers = res.data?.users || res.data || [];
-
-                console.log('[Delegate] Fetched HO users:', { count: allUsers.length, sample: allUsers[0] });
-
-                const filteredUsers = allUsers
-                    .filter(u => {
-                        // Ensure user has a valid object_name
-                        const displayName = u.object_name || u.name || '';
-                        return displayName.trim().length > 0;
-                    })
-                    .filter(u => {
-                        // Filter out current performer
                         const userName = u.name?.trim().toLowerCase() || '';
                         const userObjName = u.object_name?.trim().toLowerCase() || '';
                         const currentName = currentPerformer?.trim().toLowerCase() || '';
@@ -362,10 +331,61 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
                 console.log('[Delegate] Filtered HO users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
                 setDelegateUsers(filteredUsers);
+            } else if (isROTE) {
+                // RO/TE user: Always delegate to users in their own location
+                const roShortCode = originalGroupInfoRef.current.roShortCode;
+                if (!roShortCode) {
+                    setDelegateError('Location code is not set for this user in their profile.');
+                    setDelegateUsers([]);
+                    return;
+                }
+
+                // Convert ro_short_code back to location name
+                const allLocs = [...RO_LOCATIONS, ...TE_LOCATIONS];
+                const locObj = allLocs.find(l => l.shortCode?.toUpperCase() === roShortCode.toUpperCase());
+                const userLocation = locObj?.location;
+
+                if (!userLocation) {
+                    setDelegateError(`Location not found for code: ${roShortCode}`);
+                    setDelegateUsers([]);
+                    return;
+                }
+
+                console.log('[Delegate] RO/TE user delegating:', { caseNumber, roShortCode, userLocation, originalOfficeType });
+
+                const res = await api.get('/users/by-location', { params: { location: userLocation, page: 1, size: 500 } });
+                const allUsers = Array.isArray(res.data?.users) ? res.data.users : (Array.isArray(res.data) ? res.data : []);
+
+                console.log('[Delegate] Fetched RO/TE users from user location:', { userLocation, count: allUsers.length });
+
+                if (allUsers.length === 0) {
+                    setDelegateError(`No users found in location ${userLocation}.`);
+                    setDelegateUsers([]);
+                    return;
+                }
+
+                const filteredUsers = allUsers
+                    .filter(u => {
+                        const displayName = u.object_name || u.name || '';
+                        return displayName.trim().length > 0;
+                    })
+                    .filter(u => {
+                        const userName = u.name?.trim().toLowerCase() || '';
+                        const userObjName = u.object_name?.trim().toLowerCase() || '';
+                        const currentName = currentPerformer?.trim().toLowerCase() || '';
+                        return userName !== currentName && userObjName !== currentName;
+                    });
+
+                console.log('[Delegate] Filtered RO/TE users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
+                setDelegateUsers(filteredUsers);
+            } else {
+                setDelegateError('Could not determine office type for this user.');
+                setDelegateUsers([]);
             }
         } catch (err) {
-            console.error('[Delegate] Failed to load users:', { error: err.message, caseNumber, caseLocOrDept, isCaseHO });
-            setDelegateError('Failed to load users.');
+            console.error('[Delegate] Failed to load users:', { error: err.message, caseNumber, originalOfficeType, status: err.response?.status, data: err.response?.data });
+            const errorMsg = err.response?.data?.message || err.message || 'Failed to load users. Please check the console for details.';
+            setDelegateError(errorMsg);
         } finally {
             setLoadingDelegateUsers(false);
         }
