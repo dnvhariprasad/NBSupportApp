@@ -45,8 +45,12 @@ public class CaseController {
             @RequestParam(defaultValue = "") String hoRo,
             @RequestParam(defaultValue = "") String roShortCode,
             @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String departmentShortCode,
+            @RequestParam(defaultValue = "") String functions,
+            @RequestParam(defaultValue = "") String fromDate,
+            @RequestParam(defaultValue = "") String toDate,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return caseService.searchCases(caseNumber, hoRo, roShortCode, deptNames, page, size);
+        return caseService.searchCases(caseNumber, hoRo, roShortCode, deptNames, departmentShortCode, functions, fromDate, toDate, page, size);
     }
 }
