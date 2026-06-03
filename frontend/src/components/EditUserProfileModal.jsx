@@ -180,20 +180,23 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             // For DDM users: store empty deptCodes so standard group logic doesn't process district names
             originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: isDDMProfile ? [] : multiCodes, designation: profile.designation || '' };
         } else {
-            // For HO users: try to get department_short_code from multiple sources
-            const deptObj = depts.find(d => d.name === deptName);
+            // For HO users: support multi-select departments
+            const multiCodes = Array.isArray(profile.department_short_code_multi)
+                ? profile.department_short_code_multi
+                : (profile.department_short_code ? [profile.department_short_code] : []);
+            deptShortCodeMulti = multiCodes;
+            deptShortCode = multiCodes[0] || '';
 
-            // Try: 1) match by name, 2) first code from multi array, 3) direct department_short_code
-            if (deptObj) {
-                deptShortCode = deptObj.shortCode;
-            } else if (Array.isArray(profile.department_short_code_multi) && profile.department_short_code_multi.length > 0) {
-                deptShortCode = profile.department_short_code_multi[0];
-                deptShortCodeMulti = profile.department_short_code_multi;
-            } else {
-                deptShortCode = profile.department_short_code || '';
+            // If no multi codes but have department_name, try to find by name
+            if (multiCodes.length === 0 && deptName) {
+                const deptObj = depts.find(d => d.name === deptName);
+                if (deptObj) {
+                    deptShortCode = deptObj.shortCode;
+                    deptShortCodeMulti = [deptObj.shortCode];
+                }
             }
 
-            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: deptShortCode ? [deptShortCode] : [], designation: profile.designation || '' };
+            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: deptShortCodeMulti, designation: profile.designation || '' };
         }
 
         const gradeObj   = USER_GRADES.find(g => g.value === profile.user_grade);
@@ -640,6 +643,51 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     };
 
+    // Handle multi-select department changes for HO users
+    const handleHODepartmentChange = (deptShortCode, isAdding) => {
+        const currentCodes = form.department_short_code_multi || [];
+        const newCodes = isAdding
+            ? [...currentCodes, deptShortCode]
+            : currentCodes.filter(c => c !== deptShortCode);
+
+        const firstDept = deptOptions.find(dept => dept.shortCode === newCodes[0]);
+        set('department_short_code', newCodes[0] || '');
+        set('department_short_code_multi', newCodes);
+        set('department_name', firstDept?.name || '');
+
+        // Check inbox for departments removed vs original
+        const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
+        const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
+        if (removedCodes.length > 0) {
+            checkDeptInbox(removedCodes);
+        } else {
+            setShowDeptBlock(false);
+            setDeptPendingCases([]);
+        }
+    };
+
+    // Handle select/deselect all for HO departments
+    const handleHODepartmentSelectAll = () => {
+        const currentCodes = form.department_short_code_multi || [];
+        const allSelected = currentCodes.length === deptOptions.length;
+        const newCodes = allSelected ? [] : deptOptions.map(d => d.shortCode);
+        const firstDept = deptOptions.find(dept => dept.shortCode === newCodes[0]);
+
+        set('department_short_code', newCodes[0] || '');
+        set('department_short_code_multi', newCodes);
+        set('department_name', firstDept?.name || '');
+
+        // Check inbox for departments removed vs original
+        const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
+        const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
+        if (removedCodes.length > 0) {
+            checkDeptInbox(removedCodes);
+        } else {
+            setShowDeptBlock(false);
+            setDeptPendingCases([]);
+        }
+    };
+
     const handleDDMDistrictChange = (district) => {
         set('department_short_code', district);
         set('department_short_code_multi', district ? [district] : []);
@@ -675,13 +723,21 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setError(null);
         try {
             const isROTE = ['RO', 'TE'].includes(form.office_type);
+            const isHO = form.office_type === 'HO';
             const { department_short_code_multi, ...rest } = form;
             const payload = {
                 ...rest,
+                ...(isHO && { department_short_code_multi: form.department_short_code_multi || [] }),
                 ...(isROTE && !isDDMUser && { department_short_code_multi }),
                 ...(isDDMUser && { department_short_code_multi: form.department_short_code ? [form.department_short_code] : [] }),
             };
+
             await api.patch(`/users/profiles/${user.r_object_id}`, payload);
+
+            // Use payload's department codes as single source of truth for group management
+            const payloadDeptCodes = isHO
+                ? (payload.department_short_code_multi || [])
+                : (payload.department_short_code_multi || []);
 
             const getGroups = (offType, roCode, codes) => {
                 const groups = [];
@@ -829,12 +885,18 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         });
                     }
                 }
-                const newDeptCodes = isROTE
-                    ? (form.department_short_code_multi || [])
-                    : (form.department_short_code ? [form.department_short_code] : []);
+
+                // Use payloadDeptCodes as single source of truth (exact data sent to backend)
+                const newDeptCodes = payloadDeptCodes;
 
                 const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
                 const newGroups = getGroups(form.office_type, newRoShortCode, newDeptCodes);
+
+                // Compute which departments were removed and which were added
+                const oldDeptCodesLower = old.deptCodes.map(c => c.toLowerCase());
+                const newDeptCodesLower = newDeptCodes.map(c => c.toLowerCase());
+                const removedDepts = oldDeptCodesLower.filter(d => !newDeptCodesLower.includes(d));
+                const addedDepts = newDeptCodesLower.filter(d => !oldDeptCodesLower.includes(d));
 
                 console.log('Group Management Debug:', {
                     memberName,
@@ -846,21 +908,48 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                     newRoCode: newRoShortCode,
                     newDeptCodes,
                     newGroups,
+                    removedDepts,
+                    addedDepts,
                     groupsToRemove: oldGroups.filter(g => !newGroups.includes(g)),
                     groupsToAdd: newGroups.filter(g => !oldGroups.includes(g))
                 });
 
+                // Only remove groups for departments that were actually removed
                 for (const g of oldGroups) {
-                    if (!newGroups.includes(g)) {
-                        console.log(`Removing user from group: ${g}`);
+                    const deptMatch = g.match(/ecm_ho_([a-z]+)/) || g.match(/ecm_([a-z]+)_([a-z]+)/);
+                    let shouldRemove = false;
+
+                    if (form.office_type === 'HO' && deptMatch) {
+                        const dept = deptMatch[1];
+                        shouldRemove = removedDepts.includes(dept);
+                    } else if (['RO', 'TE'].includes(form.office_type) && deptMatch) {
+                        const dept = deptMatch[2];
+                        shouldRemove = removedDepts.includes(dept);
+                    }
+
+                    if (shouldRemove) {
+                        console.log(`Removing user from group (dept removed): ${g}`);
                         api.delete(`/groups/${g}/members/${encodeURIComponent(memberName)}`).catch(err => {
                             console.error(`Failed to remove ${g}:`, err.response?.data || err.message);
                         });
                     }
                 }
+
+                // Only add groups for departments that were actually added
                 for (const g of newGroups) {
-                    if (!oldGroups.includes(g)) {
-                        console.log(`Adding user to group: ${g}`);
+                    const deptMatch = g.match(/ecm_ho_([a-z]+)/) || g.match(/ecm_([a-z]+)_([a-z]+)/);
+                    let shouldAdd = false;
+
+                    if (form.office_type === 'HO' && deptMatch) {
+                        const dept = deptMatch[1];
+                        shouldAdd = addedDepts.includes(dept);
+                    } else if (['RO', 'TE'].includes(form.office_type) && deptMatch) {
+                        const dept = deptMatch[2];
+                        shouldAdd = addedDepts.includes(dept);
+                    }
+
+                    if (shouldAdd) {
+                        console.log(`Adding user to group (new dept): ${g}`);
                         api.post(`/groups/${g}/members`, { memberName, memberType: 'user' }).catch(err => {
                             console.error(`Failed to add ${g}:`, err.response?.data || err.message);
                         });
@@ -880,9 +969,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                     return '';
                 };
 
-                const newDeptCodes = isROTE
-                    ? (form.department_short_code_multi || [])
-                    : (form.department_short_code ? [form.department_short_code] : []);
+                // Use payloadDeptCodes as single source of truth (exact data sent to backend)
+                const newDeptCodes = payloadDeptCodes;
 
                 const oldDesignation = (old.designation || '').toUpperCase();
                 const newDesignation = (form.designation || '').toUpperCase();
@@ -1375,19 +1463,42 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                 )}
                                             </div>
                                         ) : (
-                                            <SelectWrapper>
-                                                <select value={form.department_name}
-                                                    onChange={e => handleDepartmentChange(e.target.value)}
-                                                    disabled={!form.office_type || (isLocalAdmin && isHO)}
-                                                    className={!form.office_type || (isLocalAdmin && isHO) ? disabledSelectCls : selectCls}>
-                                                    <option value="">
-                                                        {!form.office_type ? '— Select office type first —' : (isLocalAdmin && isHO) ? '— Not editable —' : '— Select department —'}
-                                                    </option>
-                                                    {depts.map(d => (
-                                                        <option key={d.name} value={d.name}>{d.name}</option>
-                                                    ))}
-                                                </select>
-                                            </SelectWrapper>
+                                            // HO: Department checkboxes (multi-select)
+                                            <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                                {!form.office_type ? (
+                                                    <p className="px-3 py-2 text-sm text-slate-400">— Select office type first —</p>
+                                                ) : (isLocalAdmin && isHO) ? (
+                                                    <p className="px-3 py-2 text-sm text-slate-400">— Not editable —</p>
+                                                ) : (
+                                                    <>
+                                                        {deptOptions.length > 0 && (
+                                                            <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 border-b border-slate-100 bg-slate-50 font-semibold">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={(form.department_short_code_multi || []).length === deptOptions.length && deptOptions.length > 0}
+                                                                    indeterminate={(form.department_short_code_multi || []).length > 0 && (form.department_short_code_multi || []).length < deptOptions.length}
+                                                                    onChange={handleHODepartmentSelectAll}
+                                                                    className="rounded accent-[#0A66C2]"
+                                                                />
+                                                                <span className="text-sm text-slate-700">{(form.department_short_code_multi || []).length === deptOptions.length && deptOptions.length > 0 ? 'Deselect All' : 'Select All'}</span>
+                                                            </label>
+                                                        )}
+                                                        <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                                            {deptOptions.map(d => (
+                                                                <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={(form.department_short_code_multi || []).includes(d.shortCode)}
+                                                                        onChange={(e) => handleHODepartmentChange(d.shortCode, e.target.checked)}
+                                                                        className="rounded accent-[#0A66C2]"
+                                                                    />
+                                                                    <span className="text-sm text-slate-700">{d.name}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                     <div className="space-y-1">

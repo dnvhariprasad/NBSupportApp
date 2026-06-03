@@ -484,7 +484,7 @@ public class UserService {
 
     /**
      * Handle department change:
-     * - HO users: Remove from all groups except dm_superusers_dynamic
+     * - HO users: Remove only groups for departments that were actually removed (smart cleanup)
      * - RO/TE users: Remove only department-related groups, ensure dm_superusers_dynamic exists
      */
     private void handleDepartmentChange(String objectId, String dmUserName, Map<String, Object> properties) {
@@ -506,15 +506,37 @@ public class UserService {
             log.info("[DeptChange] User '{}' is member of {} groups", dmUserName, allGroups.size());
 
             if (isHO) {
-                // HO users: Remove from all groups except dm_superusers_dynamic
+                // HO users: Smart cleanup — only remove groups for departments no longer selected
+                // Extract new department codes from payload
+                @SuppressWarnings("unchecked")
+                List<String> newDeptCodes = (List<String>) properties.get("department_short_code_multi");
+                if (newDeptCodes == null) {
+                    String singleDept = (String) properties.get("department_short_code");
+                    newDeptCodes = singleDept != null && !singleDept.isBlank()
+                            ? List.of(singleDept)
+                            : List.of();
+                }
+
+                // Convert new dept codes to lowercase for comparison
+                List<String> newDeptCodesLower = newDeptCodes.stream()
+                        .filter(d -> d != null && !d.isBlank())
+                        .map(String::toLowerCase)
+                        .toList();
+
+                // Only remove groups for departments NOT in the new selection
                 for (Map<String, String> group : allGroups) {
                     String groupName = group.get("group_name");
                     if (groupName != null && !groupName.equals("dm_superusers_dynamic")) {
-                        try {
-                            log.info("[DeptChange-HO] Removing user '{}' from group '{}'", dmUserName, groupName);
-                            groupService.removeMember(groupName, dmUserName, "user");
-                        } catch (Exception e) {
-                            log.warn("[DeptChange-HO] Failed to remove '{}' from group '{}': {}", dmUserName, groupName, e.getMessage());
+                        // Extract department code from group name (e.g., ecm_ho_ddsi → ddsi)
+                        String deptCode = extractDeptCodeFromHOGroup(groupName);
+
+                        if (deptCode != null && !newDeptCodesLower.contains(deptCode)) {
+                            try {
+                                log.info("[DeptChange-HO] Removing user '{}' from group '{}' (dept no longer selected)", dmUserName, groupName);
+                                groupService.removeMember(groupName, dmUserName, "user");
+                            } catch (Exception e) {
+                                log.warn("[DeptChange-HO] Failed to remove '{}' from group '{}': {}", dmUserName, groupName, e.getMessage());
+                            }
                         }
                     }
                 }
@@ -571,6 +593,30 @@ public class UserService {
             return (String) singleRaw;
         }
         return null;
+    }
+
+    /**
+     * Extract department code from HO group name.
+     * Handles groups with suffixes like: ecm_ho_ddsi, ecm_ho_ddsi_bpe, ecm_ho_ddsi_dtv_grade_e
+     * Returns only the department code part: "ddsi" in all cases
+     */
+    private String extractDeptCodeFromHOGroup(String groupName) {
+        if (groupName == null || !groupName.startsWith("ecm_ho_")) {
+            return null;
+        }
+        // Remove "ecm_ho_" prefix
+        String afterPrefix = groupName.substring(7); // length of "ecm_ho_"
+        if (afterPrefix.isEmpty()) {
+            return null;
+        }
+
+        // Extract only the first segment (department code) before any underscore
+        // e.g., "ddsi_bpe" → "ddsi", "ddsi" → "ddsi", "ddsi_dtv_grade_e" → "ddsi"
+        int nextUnderscore = afterPrefix.indexOf('_');
+        if (nextUnderscore > 0) {
+            return afterPrefix.substring(0, nextUnderscore);
+        }
+        return afterPrefix;
     }
 
     /**
