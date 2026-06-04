@@ -71,6 +71,8 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
     const [editingId, setEditingId] = useState(null);
     const [editValues, setEditValues] = useState({ object_name: '', description: '' });
     const [saving, setSaving]       = useState(false);
+    const [editValidating, setEditValidating] = useState(null); // r_object_id being validated for edit
+    const [editValidationMsg, setEditValidationMsg] = useState(null); // validation message for edit
     const [currentPage, setCurrentPage] = useState(1);
     const [filterFileNumber, setFilterFileNumber] = useState('');
     const [filterDescription, setFilterDescription] = useState('');
@@ -104,16 +106,36 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
         setEditingId(item.r_object_id);
         setEditValues({ object_name: item.object_name || '', description: item.description || '' });
         setConfirmId(null);
+        setEditValidationMsg(null);
     };
 
     const cancelEdit = () => {
         setEditingId(null);
         setEditValues({ object_name: '', description: '' });
+        setEditValidationMsg(null);
     };
 
     const handleSave = async (item) => {
-        setSaving(true);
+        setEditValidating(item.r_object_id);
         try {
+            const params = {
+                hoRo: item.ho_ro || hoRo,
+                deptShortCode: item.dept_short_code || deptShortCode,
+                fileNumber: item.object_name
+            };
+            if (item.ro_short_code) {
+                params.roShortCode = item.ro_short_code;
+            }
+            const res = await api.get(`/metadata/file-numbers/validate-delete`, { params });
+            const { canDelete, caseCount } = res.data || {};
+
+            if (!canDelete) {
+                setEditValidationMsg(`Cannot edit: ${caseCount} case(s) found using this file number`);
+                setEditValidating(null);
+                return;
+            }
+
+            setSaving(true);
             await api.put(`/metadata/file-numbers/${item.r_object_id}`, {
                 object_name: editValues.object_name.trim(),
                 description: editValues.description.trim(),
@@ -123,11 +145,13 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                 ? { ...i, object_name: editValues.object_name.trim(), description: editValues.description.trim() }
                 : i));
             cancelEdit();
+            setEditValidationMsg(null);
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Update failed';
             onToast({ type: 'error', message: msg });
         } finally {
             setSaving(false);
+            setEditValidating(null);
         }
     };
 
@@ -370,12 +394,12 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                             <div className="flex items-center justify-center gap-1.5">
                                                 {isEditing ? (
                                                     <>
-                                                        <button onClick={() => handleSave(item)} disabled={saving}
+                                                        <button onClick={() => handleSave(item)} disabled={saving || editValidating === item.r_object_id}
                                                             className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-40 transition-colors"
                                                             title="Save">
-                                                            <CheckCircle2 size={16} />
+                                                            {saving || editValidating === item.r_object_id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
                                                         </button>
-                                                        <button onClick={cancelEdit} disabled={saving}
+                                                        <button onClick={cancelEdit} disabled={saving || editValidating === item.r_object_id}
                                                             className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
                                                             title="Cancel">
                                                             <X size={16} />
@@ -412,6 +436,23 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                             </div>
                                         </td>
                                     </tr>),
+                                    editValidationMsg && isEditing && (
+                                        <tr key={`edit-validation-${item.r_object_id}`} className="border-t-0 border-b transition-colors bg-red-50 border-b-red-200">
+                                            <td colSpan={hoRo === 'HO' ? 5 : 6} className="px-4 py-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <AlertCircle size={16} className="text-red-500 shrink-0" />
+                                                        <span className="text-sm font-medium text-red-700">{editValidationMsg}</span>
+                                                    </div>
+                                                    <button onClick={cancelEdit}
+                                                        className="p-1 rounded transition-colors text-red-400 hover:text-red-600 hover:bg-red-100"
+                                                        title="Dismiss">
+                                                        <X size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ),
                                     hasValidation && (
                                         <tr key={`validation-${item.r_object_id}`} className={`border-t-0 border-b transition-colors ${canDelete ? 'bg-green-50 border-b-green-200' : 'bg-red-50 border-b-red-200'}`}>
                                             <td colSpan={hoRo === 'HO' ? 5 : 6} className="px-4 py-3">
