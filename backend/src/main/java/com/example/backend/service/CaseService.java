@@ -47,7 +47,8 @@ public class CaseService {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> searchCases(String caseNumber, String hoRo, String roShortCode,
-                                            String deptNames, int page, int itemsPerPage) {
+                                            String deptNames, String departmentShortCode, String functions,
+                                            String fromDate, String toDate, int page, int itemsPerPage) {
         try {
             StringBuilder where = new StringBuilder();
 
@@ -84,6 +85,28 @@ public class CaseService {
                 }
                 inClause.append(")");
                 where.append(inClause);
+            }
+
+            // Department short code filter
+            if (departmentShortCode != null && !departmentShortCode.isBlank()) {
+                where.append(" AND LOWER(department_short_code) = '").append(departmentShortCode.trim().toLowerCase().replace("'", "''")).append("'");
+            }
+
+            // Vertical (functions) filter
+            if (functions != null && !functions.isBlank()) {
+                where.append(" AND functions = '").append(functions.trim().replace("'", "''")).append("'");
+            }
+
+            // Date range filter
+            if (fromDate != null && !fromDate.isBlank()) {
+                where.append(" AND r_creation_date >= DATE('").append(fromDate.trim()).append("', 'yyyy-mm-dd')");
+            }
+
+            if (toDate != null && !toDate.isBlank()) {
+                // Add 1 day to include all records until 11:59 PM of the selected date
+                LocalDate endDate = LocalDate.parse(toDate.trim(), DateTimeFormatter.ISO_LOCAL_DATE).plusDays(1);
+                String endDateStr = endDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                where.append(" AND r_creation_date < DATE('").append(endDateStr).append("', 'yyyy-mm-dd')");
             }
 
             // Exclude migrated cases

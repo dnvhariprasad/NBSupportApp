@@ -699,7 +699,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
                         <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)} className={selectCls}>
-                            <option value="">All</option>
+                            <option value="">Select</option>
                             <option value="HO">HO</option>
                             <option value="RO">RO</option>
                             <option value="TE">TE</option>
@@ -711,7 +711,7 @@ const ReportsPage = () => {
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
                             <select value={location} onChange={e => handleLocationChange(e.target.value)} className={selectCls}>
-                                <option value="">All Locations</option>
+                                <option value="">Select Location</option>
                                 {locations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
                             </select>
                         </div>
@@ -722,7 +722,7 @@ const ReportsPage = () => {
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
                             <select value={deptName} onChange={e => setDeptName(e.target.value)} className={selectCls}>
-                                <option value="">All Departments</option>
+                                <option value="">Select Department</option>
                                 {departments.map(d => <option key={d.shortCode} value={d.name}>{d.name}</option>)}
                             </select>
                         </div>
@@ -733,7 +733,7 @@ const ReportsPage = () => {
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Vertical</label>
                             <select value={vertical} onChange={e => setVertical(e.target.value)} className={selectCls}>
-                                <option value="">All Verticals</option>
+                                <option value="">Select Vertical</option>
                                 {verticals.map(g => (
                                     <option key={g.group_name} value={g.object_name || g.group_name}>
                                         {g.object_name || g.group_name}
@@ -761,7 +761,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
                         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={selectCls}>
-                            <option value="">All Status</option>
+                            <option value="">Select Status</option>
                             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </div>
@@ -770,7 +770,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Priority</label>
                         <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)} className={selectCls}>
-                            <option value="">All Priority</option>
+                            <option value="">Select Priority</option>
                             {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                     </div>
@@ -779,7 +779,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Language</label>
                         <select value={languageFilter} onChange={e => setLanguageFilter(e.target.value)} className={selectCls}>
-                            <option value="">All Languages</option>
+                            <option value="">Select Language</option>
                             {LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
                         </select>
                     </div>
@@ -971,7 +971,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
                         <select value={digidakOfficeType} onChange={e => handleDigidakOfficeTypeChange(e.target.value)} className={selectCls}>
-                            <option value="">All</option>
+                            <option value="">Select</option>
                             <option value="HO">HO</option>
                             <option value="RO">RO</option>
                             <option value="TE">TE</option>
@@ -983,7 +983,7 @@ const ReportsPage = () => {
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
                             <select value={digidakLocation} onChange={e => handleDigidakLocationChange(e.target.value)} className={selectCls}>
-                                <option value="">All Locations</option>
+                                <option value="">Select Location</option>
                                 {digidakLocations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
                             </select>
                         </div>
@@ -994,7 +994,7 @@ const ReportsPage = () => {
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
                             <select value={digidakDeptName} onChange={e => setDigidakDeptName(e.target.value)} className={selectCls}>
-                                <option value="">All Departments</option>
+                                <option value="">Select Department</option>
                                 {digidakDepartments.map(d => (
                                     <option key={d.shortCode} value={d.name}>{d.name}</option>
                                 ))}
@@ -1018,7 +1018,7 @@ const ReportsPage = () => {
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Source Vertical</label>
                             <select value={digidakSourceVertical} onChange={e => setDigidakSourceVertical(e.target.value)} className={selectCls}>
-                                <option value="">All</option>
+                                <option value="">Select</option>
                                 {digidakSourceVerticals.map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
                         </div>
@@ -1040,7 +1040,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Language</label>
                         <select value={digidakLanguage} onChange={e => setDigidakLanguage(e.target.value)} className={selectCls}>
-                            <option value="">All</option>
+                            <option value="">Select</option>
                             {(digidakMetadata.languages || []).map(lang => <option key={lang} value={lang}>{lang}</option>)}
                         </select>
                     </div>
@@ -1049,7 +1049,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Mode of Dispatch</label>
                         <select value={digidakModeOfReceipt} onChange={e => setDigidakModeOfReceipt(e.target.value)} className={selectCls}>
-                            <option value="">All</option>
+                            <option value="">Select</option>
                             {(digidakMetadata.mode_of_receipt || []).map(mode => <option key={mode} value={mode}>{mode}</option>)}
                         </select>
                     </div>
@@ -1058,7 +1058,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Priority</label>
                         <select value={digidakPriority} onChange={e => setDigidakPriority(e.target.value)} className={selectCls}>
-                            <option value="">All</option>
+                            <option value="">Select</option>
                             {(digidakMetadata.priority || []).map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                     </div>
@@ -1067,7 +1067,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Secrecy</label>
                         <select value={digidakSecrecy} onChange={e => setDigidakSecrecy(e.target.value)} className={selectCls}>
-                            <option value="">All</option>
+                            <option value="">Select</option>
                             {(digidakMetadata.secrecy || []).map(sec => <option key={sec} value={sec}>{sec}</option>)}
                         </select>
                     </div>
@@ -1076,7 +1076,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
                         <select value={digidakStatus} onChange={e => setDigidakStatus(e.target.value)} className={selectCls}>
-                            <option value="">All</option>
+                            <option value="">Select</option>
                             {(digidakMetadata.status || []).map(st => <option key={st} value={st}>{st}</option>)}
                         </select>
                     </div>
@@ -1085,7 +1085,7 @@ const ReportsPage = () => {
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Type Category</label>
                         <select value={digidakTypeCategory} onChange={e => setDigidakTypeCategory(e.target.value)} className={selectCls}>
-                            <option value="">All</option>
+                            <option value="">Select</option>
                             <option value="Information">Information</option>
                             <option value="Actionable">Actionable</option>
                         </select>
@@ -1095,7 +1095,12 @@ const ReportsPage = () => {
                 {/* Buttons */}
                 <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={handleDigidakApply}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-[#0A66C2] hover:bg-[#094d92] text-white text-sm font-medium rounded-lg transition-colors">
+                        disabled={!digidakOfficeType || !digidakDeptName}
+                        className={`flex items-center gap-1.5 px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors ${
+                            !digidakOfficeType || !digidakDeptName
+                                ? 'bg-slate-300 cursor-not-allowed'
+                                : 'bg-[#0A66C2] hover:bg-[#094d92]'
+                        }`}>
                         <Search size={15} /> Apply Filters
                     </button>
                     <button onClick={handleDigidakClear}
