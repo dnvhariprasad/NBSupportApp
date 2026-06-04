@@ -2216,6 +2216,8 @@ const UserAccessTab = ({ onToast }) => {
     const fetchIdRef = useRef(0); // guard against stale fetches
     const [cgmSects,      setCgmSects]      = useState(new Set()); // set of object_names in cgm_sec groups
     const [loadingCgm,    setLoadingCgm]    = useState(false);
+    const [alternateCgms, setAlternateCgms] = useState(new Set()); // set of object_names in alternate_cgm groups
+    const [loadingAltCgm, setLoadingAltCgm] = useState(false);
     const PAGE_SIZE = 15;
 
     // ─── Local Admin role & profile context ──────────────────────────────────
@@ -2321,6 +2323,38 @@ const UserAccessTab = ({ onToast }) => {
             }
             setCgmSects(allMembers);
             setLoadingCgm(false);
+        });
+    }, [users]);
+
+    // Fetch alternate_cgm group members when users load — derive group names from user profiles
+    useEffect(() => {
+        if (users.length === 0) { setAlternateCgms(new Set()); setLoadingAltCgm(false); return; }
+        const groupNames = new Set();
+        for (const u of users) {
+            const ot = (u.office_type || '').toUpperCase();
+            if (ot === 'HO') {
+                const dsc = (u.department_short_code || '').toLowerCase();
+                if (dsc) groupNames.add(`ecm_${dsc}_alternate_cgm`);
+            } else if (ot === 'RO' || ot === 'TE') {
+                const rsc = (u.ro_short_code || '').toLowerCase();
+                if (rsc) groupNames.add(`ecm_${rsc}_alternate_cgm`);
+            }
+        }
+        if (groupNames.size === 0) { setAlternateCgms(new Set()); setLoadingAltCgm(false); return; }
+        setLoadingAltCgm(true);
+        Promise.allSettled(
+            [...groupNames].map(g => api.get(`/groups/${g}/members`))
+        ).then(results => {
+            const allMembers = new Set();
+            for (const r of results) {
+                if (r.status === 'fulfilled') {
+                    for (const m of (r.value.data?.users || [])) {
+                        allMembers.add(m.name);
+                    }
+                }
+            }
+            setAlternateCgms(allMembers);
+            setLoadingAltCgm(false);
         });
     }, [users]);
 
@@ -2478,6 +2512,63 @@ const UserAccessTab = ({ onToast }) => {
             onToast({ type: 'success', message: `CGM Sect. removed from '${user.object_name}'.` });
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Failed to remove CGM Sect.';
+            onToast({ type: 'error', message: msg });
+        } finally {
+            setActionInProgress(null);
+        }
+    };
+
+    // Alternate CGM — derive group names based on user's office type
+    const getAlternateCgmGroups = (user) => {
+        const ot  = (user.office_type || '').toUpperCase();
+        const dsc = (user.department_short_code || '').toLowerCase();
+        const rsc = (user.ro_short_code || '').toLowerCase();
+        if (ot === 'HO' && dsc) {
+            return [`ecm_${dsc}_alternate_cgm`];
+        } else if ((ot === 'RO' || ot === 'TE') && rsc) {
+            return [`ecm_${rsc}_alternate_cgm`];
+        }
+        return [];
+    };
+
+    const handleMarkAlternateCGM = async (user) => {
+        const groups = getAlternateCgmGroups(user);
+        if (groups.length === 0) {
+            onToast({ type: 'error', message: 'Cannot determine Alternate CGM group for this user.' });
+            return;
+        }
+        setActionInProgress({ user: user.object_name, action: 'markAltCgm' });
+        try {
+            await Promise.all(groups.map(g =>
+                api.post(`/groups/${g}/members`, { memberName: user.object_name, memberType: 'user' })
+            ));
+            setAlternateCgms(prev => new Set([...prev, user.object_name]));
+            onToast({ type: 'success', message: `'${user.object_name}' marked as Alternate CGM.` });
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to mark as Alternate CGM.';
+            onToast({ type: 'error', message: msg });
+        } finally {
+            setActionInProgress(null);
+        }
+    };
+
+    const handleRemoveAlternateCGM = async (user) => {
+        const groups = getAlternateCgmGroups(user);
+        if (groups.length === 0) {
+            onToast({ type: 'error', message: 'Cannot determine Alternate CGM group for this user.' });
+            return;
+        }
+        setActionInProgress({ user: user.object_name, action: 'removeAltCgm' });
+        try {
+            await Promise.all(groups.map(g =>
+                api.delete(`/groups/${g}/members/${encodeURIComponent(user.object_name)}`, {
+                    params: { memberType: 'user' },
+                })
+            ));
+            setAlternateCgms(prev => { const s = new Set(prev); s.delete(user.object_name); return s; });
+            onToast({ type: 'success', message: `Alternate CGM removed from '${user.object_name}'.` });
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to remove Alternate CGM.';
             onToast({ type: 'error', message: msg });
         } finally {
             setActionInProgress(null);
@@ -2660,14 +2751,17 @@ const UserAccessTab = ({ onToast }) => {
                                         {isRoTe && <th className="px-4 py-3 font-semibold text-slate-600">Location</th>}
                                         {!isLocalAdmin && <th className="px-4 py-3 font-semibold text-slate-600 text-center">Local Admin</th>}
                                         <th className="px-4 py-3 font-semibold text-slate-600 text-center">CGM Sect.</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-600 text-center">Alternate CGM</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {paged.map((u, idx) => {
                                         const isAdmin    = localAdmins.has(u.object_name);
                                         const isCgmSect  = cgmSects.has(u.object_name);
+                                        const isAltCgm   = alternateCgms.has(u.object_name);
                                         const adminInProgress = actionInProgress?.user === u.object_name && (actionInProgress?.action === 'markAdmin' || actionInProgress?.action === 'removeAdmin');
                                         const cgmInProgress   = actionInProgress?.user === u.object_name && (actionInProgress?.action === 'markCgm' || actionInProgress?.action === 'removeCgm');
+                                        const altCgmInProgress = actionInProgress?.user === u.object_name && (actionInProgress?.action === 'markAltCgm' || actionInProgress?.action === 'removeAltCgm');
                                         const inProgress      = actionInProgress?.user === u.object_name;
                                         return (
                                         <tr key={u.user_login_name || idx} className="hover:bg-slate-50 transition-colors">
@@ -2685,6 +2779,11 @@ const UserAccessTab = ({ onToast }) => {
                                                     {isCgmSect && (
                                                         <span className="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded font-medium flex items-center gap-1">
                                                             <Shield size={10} /> CGM Sect.
+                                                        </span>
+                                                    )}
+                                                    {isAltCgm && (
+                                                        <span className="px-1.5 py-0.5 text-xs bg-cyan-100 text-cyan-700 rounded font-medium flex items-center gap-1">
+                                                            <Shield size={10} /> Alt CGM
                                                         </span>
                                                     )}
                                                 </div>
@@ -2745,6 +2844,36 @@ const UserAccessTab = ({ onToast }) => {
                                                         {cgmInProgress
                                                             ? <><Loader2 size={12} className="animate-spin" /> Marking…</>
                                                             : <><Shield size={12} /> Mark as CGM Sect.</>
+                                                        }
+                                                    </button>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                {loadingAltCgm ? (
+                                                    <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
+                                                        <Loader2 size={12} className="animate-spin" />
+                                                    </div>
+                                                ) : isAltCgm ? (
+                                                    <button
+                                                        onClick={() => handleRemoveAlternateCGM(u)}
+                                                        disabled={inProgress}
+                                                        title="Remove from Alternate CGM group"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed mx-auto"
+                                                    >
+                                                        {altCgmInProgress
+                                                            ? <><Loader2 size={12} className="animate-spin" /> Removing…</>
+                                                            : <><X size={12} /> Remove Alternate CGM</>
+                                                        }
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleMarkAlternateCGM(u)}
+                                                        disabled={inProgress}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0A66C2] hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed mx-auto"
+                                                    >
+                                                        {altCgmInProgress
+                                                            ? <><Loader2 size={12} className="animate-spin" /> Marking…</>
+                                                            : <><Shield size={12} /> Mark to Alternate CGM</>
                                                         }
                                                     </button>
                                                 )}
