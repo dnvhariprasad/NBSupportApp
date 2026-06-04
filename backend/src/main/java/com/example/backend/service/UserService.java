@@ -43,7 +43,7 @@ public class UserService {
         StringBuilder dqlBuilder = new StringBuilder();
         dqlBuilder.append("SELECT r_object_id, object_name, uin, department_name, department_short_code, ro_short_code, user_grade, designation, ");
         dqlBuilder.append("user_email_address, user_login_name, primary_mobile_number, location, office_type, ");
-        dqlBuilder.append("is_active, hindi_user_name, hindi_designation, user_role ");
+        dqlBuilder.append("is_active, hindi_user_name, hindi_designation, user_role, department_short_code_multi ");
         dqlBuilder.append("FROM cms_user_profile WHERE object_name IS NOT NULL AND object_name != ' ' ");
 
         // Local Admin office type restriction
@@ -58,13 +58,14 @@ public class UserService {
             dqlBuilder.append("AND location = '").append(locationFilter.trim().replace("'", "''")).append("' ");
         }
 
-        // Multi-department filter (for HO Local Admin)
+        // Multi-department filter (for HO Local Admin) — filter by department_short_code_multi repeating attribute
         if (deptNames != null && !deptNames.isBlank()) {
             String[] names = deptNames.split(",");
-            dqlBuilder.append("AND department_name IN (");
+            dqlBuilder.append("AND (");
             for (int i = 0; i < names.length; i++) {
-                if (i > 0) dqlBuilder.append(", ");
-                dqlBuilder.append("'").append(names[i].trim().replace("'", "''")).append("'");
+                if (i > 0) dqlBuilder.append(" OR ");
+                String shortCode = names[i].trim().toLowerCase().replace("'", "''");
+                dqlBuilder.append("ANY department_short_code_multi = '").append(shortCode).append("'");
             }
             dqlBuilder.append(") ");
         }

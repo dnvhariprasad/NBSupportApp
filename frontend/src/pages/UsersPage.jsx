@@ -2489,7 +2489,7 @@ const UserAccessTab = ({ onToast }) => {
         const matchesSearch = (u.object_name || '').toLowerCase().includes(q)
             || (u.user_login_name || '').toLowerCase().includes(q)
             || (u.designation || '').toLowerCase().includes(q)
-            || (u.department_name || '').toLowerCase().includes(q)
+            || (Array.isArray(u.department_short_code_multi) && u.department_short_code_multi.some(d => (d || '').toLowerCase().includes(q)))
             || (u.location || '').toLowerCase().includes(q);
         if (!matchesSearch) return false;
         if (roleFilter === 'localAdmin') return localAdmins.has(u.object_name);
@@ -2564,7 +2564,7 @@ const UserAccessTab = ({ onToast }) => {
                             >
                                 <option value="">— All departments —</option>
                                 {filterDepartments.map(d => (
-                                    <option key={d.shortCode} value={d.name}>{d.name}</option>
+                                    <option key={d.shortCode} value={d.shortCode}>{d.name}</option>
                                 ))}
                             </select>
                             <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
