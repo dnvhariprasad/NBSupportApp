@@ -7,7 +7,7 @@ export const DESIGNATION_OPTIONS = [
     { value: '',         hindi: '',              label: '— Select designation —' },
     { value: 'DA',       hindi: 'विस',           label: 'DA' },
     { value: 'AM',       hindi: 'सप्र',          label: 'AM' },
-    { value: 'MGR',      hindi: 'प्र',           label: 'MGR' },
+    { value: 'MGR',      hindi: 'प्रबंधक',       label: 'MGR' },
     { value: 'AGM',      hindi: 'समप्र',         label: 'AGM' },
     { value: 'DGM',      hindi: 'उमप्र',         label: 'DGM' },
     { value: 'GM',       hindi: 'मप्र',          label: 'GM' },
