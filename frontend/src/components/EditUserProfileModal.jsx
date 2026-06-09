@@ -1506,9 +1506,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         <input type="text" readOnly
                                             value={isDDMUser
                                                 ? (form.department_short_code || '')
-                                                : (isROTE
-                                                    ? (form.department_short_code_multi || []).join(',')
-                                                    : (form.department_short_code || ''))}
+                                                : (form.department_short_code_multi || []).join(',')}
                                             placeholder="Auto-filled"
                                             className={readonlyCls} />
                                         {isDDMUser && errors.department_short_code && <p className="text-xs text-red-500">{errors.department_short_code}</p>}
