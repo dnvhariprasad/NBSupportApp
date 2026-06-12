@@ -52,6 +52,18 @@ const CasesPage = () => {
     const [location, setLocation]     = useState('');
     const [allDepartments, setAllDepartments] = useState([]);
 
+    // ─── Case Filters ──────────────────────────────────────────────────────────
+    const [filterOfficeType,   setFilterOfficeType]   = useState('');
+    const [filterLocation,     setFilterLocation]     = useState('');
+    const [filterDeptName,     setFilterDeptName]     = useState('');
+    const [filterDeptShortCode, setFilterDeptShortCode] = useState('');
+    const [filterVertical,     setFilterVertical]     = useState('');
+    const [filterFromDate,     setFilterFromDate]     = useState('');
+    const [filterToDate,       setFilterToDate]       = useState('');
+    const [filterDeptOptions,  setFilterDeptOptions]  = useState([]);
+    const [filterVerticals,    setFilterVerticals]    = useState([]);
+    const [loadingFilterVerts, setLoadingFilterVerts] = useState(false);
+
     useEffect(() => {
         if (!isLocalAdmin || !loginUsername) return;
         axios.get('/users/profile-context', { params: { username: loginUsername } })
@@ -93,6 +105,72 @@ const CasesPage = () => {
 
     // ─── End Local Admin ─────────────────────────────────────────────────────────
 
+    // ─── Filter Derived State ──────────────────────────────────────────────────────
+    const filterLocs = getLocations(filterOfficeType);
+    const filterLocationShortCode = filterLocation
+        ? (filterLocs.find(l => l.location === filterLocation)?.shortCode || '')
+        : '';
+
+    // ─── Filter Handlers ───────────────────────────────────────────────────────────
+    const handleFilterOfficeTypeChange = useCallback((v) => {
+        setFilterOfficeType(v);
+        setFilterLocation('');
+        setFilterDeptName('');
+        setFilterDeptShortCode('');
+        setFilterVertical('');
+        setFilterVerticals([]);
+        if (v === 'HO') {
+            fetchDepartments('HO').then(setFilterDeptOptions);
+        } else {
+            setFilterDeptOptions([]);
+        }
+    }, []);
+
+    const handleFilterLocationChange = useCallback((v) => {
+        setFilterLocation(v);
+        setFilterDeptName('');
+        setFilterDeptShortCode('');
+        setFilterVertical('');
+        setFilterVerticals([]);
+        if (v && filterOfficeType) {
+            fetchDepartments(filterOfficeType, v).then(setFilterDeptOptions);
+        }
+    }, [filterOfficeType]);
+
+    const handleFilterDeptChange = useCallback((v) => {
+        const deptObj = filterDeptOptions.find(d => d.name === v);
+        setFilterDeptName(v);
+        setFilterDeptShortCode(deptObj?.shortCode || '');
+        setFilterVertical('');
+        setFilterVerticals([]);
+        if (filterOfficeType === 'HO' && deptObj) {
+            setLoadingFilterVerts(true);
+            axios.get('/groups/verticals', { params: { officeType: 'HO', deptName: deptObj.name } })
+                .then(res => {
+                    const verts = res.data || [];
+                    setFilterVerticals(verts);
+                })
+                .catch(() => setFilterVerticals([]))
+                .finally(() => setLoadingFilterVerts(false));
+        }
+    }, [filterOfficeType, filterDeptOptions]);
+
+    const handleFilterVerticalChange = useCallback((v) => {
+        setFilterVertical(v);
+    }, []);
+
+    const handleClearFilters = useCallback(() => {
+        setFilterOfficeType('');
+        setFilterLocation('');
+        setFilterDeptName('');
+        setFilterDeptShortCode('');
+        setFilterVertical('');
+        setFilterFromDate('');
+        setFilterToDate('');
+        setFilterVerticals([]);
+        setFilterDeptOptions([]);
+    }, []);
+
     const fetchCases = useCallback(async (searchTerm, pageNum, size = pageSize) => {
         setLoading(true);
         setHasSearched(true);
@@ -114,6 +192,14 @@ const CasesPage = () => {
                 }
             }
 
+            // Case filters
+            if (filterOfficeType) params.hoRo = filterOfficeType;
+            if (filterDeptShortCode) params.departmentShortCode = filterDeptShortCode.toLowerCase();
+            if (filterLocationShortCode) params.roShortCode = filterLocationShortCode;
+            if (filterVertical) params.functions = filterVertical;
+            if (filterFromDate) params.fromDate = filterFromDate;
+            if (filterToDate) params.toDate = filterToDate;
+
             const response = await axios.get('/cases/search', { params });
 
             const data = response.data;
@@ -130,7 +216,7 @@ const CasesPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [pageSize, isLocalAdmin, officeType, locationShortCode, localAdminDeptNames]);
+    }, [pageSize, isLocalAdmin, officeType, locationShortCode, localAdminDeptNames, filterOfficeType, filterLocation, filterDeptShortCode, filterLocationShortCode, filterVertical, filterFromDate, filterToDate]);
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -157,6 +243,13 @@ const CasesPage = () => {
         }
         fetchCases('', 1);
     }, [fetchCases, isLocalAdmin, profileCtx, officeType, locationShortCode, localAdminDeptNames]);
+
+    // Trigger fetch when case filters change
+    useEffect(() => {
+        if (filterOfficeType || filterLocation || filterDeptShortCode || filterVertical || filterFromDate || filterToDate) {
+            fetchCases(activeSearch, 1);
+        }
+    }, [filterOfficeType, filterLocation, filterDeptShortCode, filterVertical, filterFromDate, filterToDate, fetchCases, activeSearch]);
 
     const handleSearch = (e) => {
         e.preventDefault();
@@ -326,6 +419,115 @@ const CasesPage = () => {
             {/* Cases Tab */}
             {activeTab === 'cases' && (
             <>
+            {/* Filters */}
+            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+                    {/* Office Type Filter */}
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Office Type</label>
+                        <select
+                            value={filterOfficeType}
+                            onChange={(e) => handleFilterOfficeTypeChange(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2]"
+                        >
+                            <option value="">All</option>
+                            <option value="HO">HO</option>
+                            <option value="RO">RO</option>
+                            <option value="TE">TE</option>
+                        </select>
+                    </div>
+
+                    {/* Location Filter (RO/TE only) */}
+                    {(filterOfficeType === 'RO' || filterOfficeType === 'TE') && (
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Location</label>
+                            <select
+                                value={filterLocation}
+                                onChange={(e) => handleFilterLocationChange(e.target.value)}
+                                disabled={!filterOfficeType}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                <option value="">Select location</option>
+                                {filterLocs.map(l => (
+                                    <option key={l.location} value={l.location}>{l.location}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Department Filter */}
+                    {filterOfficeType && (filterOfficeType === 'HO' || filterLocation) && (
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Department</label>
+                            <select
+                                value={filterDeptName}
+                                onChange={(e) => handleFilterDeptChange(e.target.value)}
+                                disabled={!filterDeptOptions.length}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                <option value="">Select dept</option>
+                                {filterDeptOptions.map(d => (
+                                    <option key={d.shortCode} value={d.name}>{d.name} ({d.shortCode})</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Vertical Filter (HO + Dept only) */}
+                    {filterOfficeType === 'HO' && filterDeptName && (
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Vertical</label>
+                            <select
+                                value={filterVertical}
+                                onChange={(e) => handleFilterVerticalChange(e.target.value)}
+                                disabled={loadingFilterVerts || !filterVerticals.length}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                <option value="">{loadingFilterVerts ? 'Loading...' : 'Select vertical'}</option>
+                                {filterVerticals.map(v => (
+                                    <option key={v.object_name} value={v.object_name}>{v.object_name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* From Date Filter */}
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">From Date</label>
+                        <input
+                            type="date"
+                            value={filterFromDate}
+                            onChange={(e) => setFilterFromDate(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2]"
+                        />
+                    </div>
+
+                    {/* To Date Filter */}
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">To Date</label>
+                        <input
+                            type="date"
+                            value={filterToDate}
+                            onChange={(e) => setFilterToDate(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2]"
+                        />
+                    </div>
+
+                    {/* Clear Filters Button */}
+                    {(filterOfficeType || filterLocation || filterDeptName || filterVertical || filterFromDate || filterToDate) && (
+                        <div className="flex items-end">
+                            <button
+                                onClick={handleClearFilters}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center justify-center gap-1 transition-all"
+                            >
+                                <X size={14} />
+                                Clear
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* Search */}
             <div className="flex items-center justify-end gap-4 mb-6">
                 <div>

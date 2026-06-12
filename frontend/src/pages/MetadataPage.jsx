@@ -71,9 +71,13 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
     const [editingId, setEditingId] = useState(null);
     const [editValues, setEditValues] = useState({ object_name: '', description: '' });
     const [saving, setSaving]       = useState(false);
+    const [editValidating, setEditValidating] = useState(null); // r_object_id being validated for edit
+    const [editValidationMsg, setEditValidationMsg] = useState(null); // validation message for edit
     const [currentPage, setCurrentPage] = useState(1);
     const [filterFileNumber, setFilterFileNumber] = useState('');
     const [filterDescription, setFilterDescription] = useState('');
+    const [validating, setValidating] = useState(null); // r_object_id being validated
+    const [validationResults, setValidationResults] = useState({}); // { r_object_id: { message, caseCount, canDelete } }
     const itemsPerPage = 10;
 
     const canFetch = hoRo && deptShortCode && (hoRo === 'HO' || roShortCode);
@@ -102,16 +106,36 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
         setEditingId(item.r_object_id);
         setEditValues({ object_name: item.object_name || '', description: item.description || '' });
         setConfirmId(null);
+        setEditValidationMsg(null);
     };
 
     const cancelEdit = () => {
         setEditingId(null);
         setEditValues({ object_name: '', description: '' });
+        setEditValidationMsg(null);
     };
 
     const handleSave = async (item) => {
-        setSaving(true);
+        setEditValidating(item.r_object_id);
         try {
+            const params = {
+                hoRo: item.ho_ro || hoRo,
+                deptShortCode: item.dept_short_code || deptShortCode,
+                fileNumber: item.object_name
+            };
+            if (item.ro_short_code) {
+                params.roShortCode = item.ro_short_code;
+            }
+            const res = await api.get(`/metadata/file-numbers/validate-delete`, { params });
+            const { canDelete, caseCount } = res.data || {};
+
+            if (!canDelete) {
+                setEditValidationMsg(`Cannot edit: ${caseCount} case(s) found using this file number`);
+                setEditValidating(null);
+                return;
+            }
+
+            setSaving(true);
             await api.put(`/metadata/file-numbers/${item.r_object_id}`, {
                 object_name: editValues.object_name.trim(),
                 description: editValues.description.trim(),
@@ -121,12 +145,73 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                 ? { ...i, object_name: editValues.object_name.trim(), description: editValues.description.trim() }
                 : i));
             cancelEdit();
+            setEditValidationMsg(null);
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Update failed';
             onToast({ type: 'error', message: msg });
         } finally {
             setSaving(false);
+            setEditValidating(null);
         }
+    };
+
+    const handleValidateDelete = async (item) => {
+        setValidating(item.r_object_id);
+        setConfirmId(null);
+        // Clear any existing validation result for this row
+        setValidationResults(prev => {
+            const updated = { ...prev };
+            delete updated[item.r_object_id];
+            return updated;
+        });
+
+        try {
+            const params = {
+                hoRo: item.ho_ro || hoRo,
+                deptShortCode: item.dept_short_code || deptShortCode,
+                fileNumber: item.object_name
+            };
+            if (item.ro_short_code) {
+                params.roShortCode = item.ro_short_code;
+            }
+            const res = await api.get(`/metadata/file-numbers/validate-delete`, { params });
+            const { canDelete, caseCount, message } = res.data || {};
+
+            // Show validation result inline (both success and failure)
+            setValidationResults(prev => ({
+                ...prev,
+                [item.r_object_id]: {
+                    message: canDelete ? 'No cases found using this file number' : `Cannot delete: ${caseCount} case(s) found using this file number`,
+                    caseCount,
+                    canDelete
+                }
+            }));
+
+            if (canDelete) {
+                // No cases found — proceed with delete confirmation after short delay
+                setTimeout(() => setConfirmId(item.r_object_id), 300);
+            }
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Validation failed';
+            setValidationResults(prev => ({
+                ...prev,
+                [item.r_object_id]: {
+                    message: `Validation error: ${msg}`,
+                    caseCount: 0,
+                    canDelete: false
+                }
+            }));
+        } finally {
+            setValidating(null);
+        }
+    };
+
+    const clearValidationResult = (itemId) => {
+        setValidationResults(prev => {
+            const updated = { ...prev };
+            delete updated[itemId];
+            return updated;
+        });
     };
 
     const handleDelete = async (item) => {
@@ -258,6 +343,7 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                 {hoRo !== 'HO' && (
                                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Location Code</th>
                                 )}
+                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-500">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -265,9 +351,11 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                 const isConfirming = confirmId === item.r_object_id;
                                 const isDeleting   = deleting  === item.r_object_id;
                                 const isEditing    = editingId === item.r_object_id;
-                                const rowBg = isEditing ? 'bg-blue-50' : isConfirming ? 'bg-red-50' : 'hover:bg-indigo-50/30';
-                                return (
-                                    <tr key={item.r_object_id || idx}
+                                const hasValidation = !!validationResults[item.r_object_id];
+                                const canDelete = validationResults[item.r_object_id]?.canDelete;
+                                const rowBg = hasValidation && !canDelete ? 'bg-red-50' : isEditing ? 'bg-blue-50' : isConfirming ? 'bg-green-50' : 'hover:bg-indigo-50/30';
+                                return [
+                                    (<tr key={item.r_object_id || idx}
                                         className={`transition-colors ${rowBg}`}>
                                         <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{startIdx + idx + 1}</td>
                                         <td className="px-4 py-2.5 font-mono text-sm font-semibold text-slate-800">
@@ -302,8 +390,93 @@ const FileNumberList = ({ hoRo, deptShortCode, roShortCode, refreshKey, onToast 
                                                 </span>
                                             </td>
                                         )}
-                                    </tr>
-                                );
+                                        <td className="px-4 py-2.5">
+                                            <div className="flex items-center justify-center gap-1.5">
+                                                {isEditing ? (
+                                                    <>
+                                                        <button onClick={() => handleSave(item)} disabled={saving || editValidating === item.r_object_id}
+                                                            className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-40 transition-colors"
+                                                            title="Save">
+                                                            {saving || editValidating === item.r_object_id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                                                        </button>
+                                                        <button onClick={cancelEdit} disabled={saving || editValidating === item.r_object_id}
+                                                            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                                                            title="Cancel">
+                                                            <X size={16} />
+                                                        </button>
+                                                    </>
+                                                ) : isConfirming ? (
+                                                    <>
+                                                        <button onClick={() => handleDelete(item)} disabled={isDeleting}
+                                                            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 disabled:opacity-40 transition-colors"
+                                                            title="Confirm delete">
+                                                            {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                                            Delete
+                                                        </button>
+                                                        <button onClick={() => setConfirmId(null)} disabled={isDeleting}
+                                                            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                                                            title="Cancel">
+                                                            <X size={16} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => startEdit(item)}
+                                                            className="p-1 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                            title="Edit">
+                                                            <Pencil size={16} />
+                                                        </button>
+                                                        <button onClick={() => handleValidateDelete(item)} disabled={validating === item.r_object_id}
+                                                            className="p-1 rounded text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                                                            title="Delete">
+                                                            {validating === item.r_object_id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>),
+                                    editValidationMsg && isEditing && (
+                                        <tr key={`edit-validation-${item.r_object_id}`} className="border-t-0 border-b transition-colors bg-red-50 border-b-red-200">
+                                            <td colSpan={hoRo === 'HO' ? 5 : 6} className="px-4 py-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <AlertCircle size={16} className="text-red-500 shrink-0" />
+                                                        <span className="text-sm font-medium text-red-700">{editValidationMsg}</span>
+                                                    </div>
+                                                    <button onClick={cancelEdit}
+                                                        className="p-1 rounded transition-colors text-red-400 hover:text-red-600 hover:bg-red-100"
+                                                        title="Dismiss">
+                                                        <X size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ),
+                                    hasValidation && (
+                                        <tr key={`validation-${item.r_object_id}`} className={`border-t-0 border-b transition-colors ${canDelete ? 'bg-green-50 border-b-green-200' : 'bg-red-50 border-b-red-200'}`}>
+                                            <td colSpan={hoRo === 'HO' ? 5 : 6} className="px-4 py-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        {canDelete ? (
+                                                            <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+                                                        ) : (
+                                                            <AlertCircle size={16} className="text-red-500 shrink-0" />
+                                                        )}
+                                                        <span className={`text-sm font-medium ${canDelete ? 'text-green-700' : 'text-red-700'}`}>
+                                                            {validationResults[item.r_object_id]?.message}
+                                                        </span>
+                                                    </div>
+                                                    <button onClick={() => clearValidationResult(item.r_object_id)}
+                                                        className={`p-1 rounded transition-colors ${canDelete ? 'text-green-400 hover:text-green-600 hover:bg-green-100' : 'text-red-400 hover:text-red-600 hover:bg-red-100'}`}
+                                                        title="Dismiss">
+                                                        <X size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )
+                                ];
                             })}
                         </tbody>
                     </table>
@@ -366,6 +539,7 @@ const FileNumberTab = ({ onToast }) => {
     const [form, setForm]         = useState(EMPTY_FN);
     const [errors, setErrors]     = useState({});
     const [submitting, setSubmitting] = useState(false);
+    const [checking, setChecking] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
     // Role & profile context for Local Admin
@@ -436,6 +610,36 @@ const FileNumberTab = ({ onToast }) => {
     const set = (field, val) => {
         setForm(f => ({ ...f, [field]: val }));
         if (errors[field]) setErrors(e => ({ ...e, [field]: undefined }));
+        if (field === 'fileNumber') setChecking(false); // Clear checking state when value changes
+    };
+
+    const handleFileNumberBlur = async () => {
+        const fileNum = form.fileNumber.trim();
+        if (!fileNum || !form.officeType || !form.shortCode || (!isHO && !form.locationShortCode)) {
+            return; // Not ready to check yet
+        }
+        setChecking(true);
+        try {
+            const params = {
+                hoRo: form.officeType,
+                deptShortCode: form.shortCode,
+                fileNumber: fileNum,
+            };
+            if (!isHO && form.locationShortCode) {
+                params.roShortCode = form.locationShortCode;
+            }
+            const res = await api.get('/metadata/file-numbers/check-duplicate', { params });
+            if (res.data?.exists) {
+                setErrors(e => ({ ...e, fileNumber: 'File number already exists' }));
+            } else {
+                setErrors(e => ({ ...e, fileNumber: undefined }));
+            }
+        } catch (err) {
+            // Silently fail on error — server-side will catch it
+            log.debug('Duplicate check error:', err.message);
+        } finally {
+            setChecking(false);
+        }
     };
 
     const validate = () => {
@@ -444,6 +648,7 @@ const FileNumberTab = ({ onToast }) => {
         if (!isHO && !form.location) e.location    = 'Location is required';
         if (!form.department)        e.department  = 'Department is required';
         if (!form.fileNumber.trim()) e.fileNumber  = 'File number is required';
+        if (errors.fileNumber)       e.fileNumber  = errors.fileNumber; // Preserve duplicate check error
         return e;
     };
 
@@ -573,6 +778,7 @@ const FileNumberTab = ({ onToast }) => {
                         <FieldLabel icon={FileText} label="File Number" required />
                         <input type="text" value={form.fileNumber}
                             onChange={e => set('fileNumber', e.target.value)}
+                            onBlur={handleFileNumberBlur}
                             placeholder="e.g. SMF-10"
                             className={`${inputCls(errors.fileNumber)} font-mono`} />
                         <FieldError msg={errors.fileNumber} />
@@ -607,14 +813,15 @@ const FileNumberTab = ({ onToast }) => {
                     {/* Actions */}
                     <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                         <button type="button"
-                            onClick={() => { setForm(EMPTY_FN); setErrors({}); }}
-                            className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-white transition-all">
+                            onClick={() => { setForm(EMPTY_FN); setErrors({}); setChecking(false); }}
+                            disabled={submitting || checking}
+                            className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-white transition-all disabled:opacity-40">
                             Reset
                         </button>
-                        <button type="submit" disabled={submitting}
+                        <button type="submit" disabled={submitting || checking}
                             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl shadow-sm transition-all">
-                            {submitting ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-                            {submitting ? 'Creating…' : 'Create File Number'}
+                            {submitting ? <Loader2 size={15} className="animate-spin" /> : checking ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                            {submitting ? 'Creating…' : checking ? 'Validating…' : 'Create File Number'}
                         </button>
                     </div>
                 </form>

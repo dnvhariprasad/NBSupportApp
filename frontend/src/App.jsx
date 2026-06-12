@@ -14,6 +14,7 @@ import InboxPage from './pages/InboxPage';
 import MetadataPage from './pages/MetadataPage';
 import DelegatePage from './pages/DelegatePage';
 import CaseInbox2Page from './pages/CaseInbox2Page';
+import ReportsPage from './pages/ReportsPage';
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
             <Route path="departments" element={<DepartmentPage />} />
             <Route path="metadata" element={<MetadataPage />} />
             <Route path="query" element={<QueryPage />} />
+            <Route path="reports" element={<ReportsPage />} />
             <Route path="delegate" element={<Navigate to="/dashboard/cases" replace />} />
             <Route path="inbox2" element={<Navigate to="/dashboard/cases" replace />} />
         </Route>

@@ -1,0 +1,1250 @@
+import { useState, useEffect, useMemo, useCallback, Component } from 'react';
+import { motion } from 'framer-motion';
+import {
+    FileBarChart2, Filter, X, Search, ChevronLeft, ChevronRight,
+    ChevronsLeft, FileText, ClipboardList, Download, AlertCircle
+} from 'lucide-react';
+import * as XLSX from 'xlsx';
+import axios from '../api/axios';
+import { getLocations, fetchDepartments } from '../data/nabardMetadata';
+import { CaseDetailsModal, MovementRegisterModal } from './DelegatePage';
+import MultiSelectDropdown from '../components/MultiSelectDropdown';
+
+// Error boundary class component
+class ErrorBoundary extends Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error, errorInfo) {
+        console.error('ReportsPage Error:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-6">
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-6 flex items-start gap-3">
+                        <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                        <div>
+                            <h3 className="text-red-900 font-semibold mb-2">An Error Occurred</h3>
+                            <p className="text-red-700 text-sm mb-3">{this.state.error?.message || 'Unknown error'}</p>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-3 py-1.5 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700"
+                            >
+                                Reload Page
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
+}
+
+const STATUS_OPTIONS   = ['In-Progress', 'Approved', 'Closed', 'Cancelled'];
+const PRIORITY_OPTIONS = ['Ordinary', 'Urgent'];
+const LANGUAGE_OPTIONS = ['Bilingual', 'English', 'Hindi', 'Others'];
+
+// ─── Digidak Movement Register Modal ──────────────────────────────────────────
+const DigidakMovementRegisterModal = ({ digidakItem, onClose }) => {
+    const [movement, setMovement] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!digidakItem) return;
+        setLoading(true);
+        axios.get(`/digidak/${digidakItem.r_object_id}/movement`)
+            .then(res => setMovement(Array.isArray(res.data) ? res.data : []))
+            .catch(err => {
+                console.error('Error fetching digidak movement:', err);
+                setMovement([]);
+            })
+            .finally(() => setLoading(false));
+    }, [digidakItem]);
+
+    if (!digidakItem) return null;
+
+    const movCols = [
+        { key: 'type_category', label: 'Type Category' },
+        { key: 'letter_subject', label: 'Letter Subject' },
+        { key: 'performer', label: 'Performer' },
+        { key: 'status', label: 'Status' },
+        { key: 'assigned_user', label: 'Assigned User' },
+        { key: 'entry_type', label: 'Entry Type' },
+        { key: 'received_date', label: 'Received Date' },
+        { key: 'completed_date', label: 'Completed Date' },
+    ];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-[#0A66C2] flex items-center justify-center shadow-sm">
+                            <ClipboardList size={17} className="text-white" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-slate-900">{digidakItem.letter_subject || digidakItem.uid_number}</p>
+                            <p className="text-xs text-slate-500">Digidak Movement Register</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose}
+                        className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="overflow-y-auto flex-1 p-6">
+                    <div className="flex items-center gap-2 mb-3">
+                        <ClipboardList size={14} className="text-[#0A66C2]" />
+                        <h3 className="text-sm font-bold text-slate-800">Movement Register</h3>
+                        {!loading && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
+                                {movement.length}
+                            </span>
+                        )}
+                    </div>
+
+                    {loading ? (
+                        <div className="flex items-center gap-2 py-12 justify-center text-slate-400">
+                            <div className="animate-spin text-[#0A66C2]" style={{width: '18px', height: '18px'}}>
+                                ⟳
+                            </div>
+                            <span className="text-sm">Loading movement register…</span>
+                        </div>
+                    ) : movement.length === 0 ? (
+                        <div className="py-12 text-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                            No movement register records found for this digidak.
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                            <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-3 py-2.5 font-semibold text-slate-600 w-8">#</th>
+                                        {movCols.map(col => (
+                                            <th key={col.key} className="px-3 py-2.5 font-semibold text-slate-600 whitespace-nowrap">
+                                                {col.label}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {movement.map((rec, idx) => (
+                                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                            <td className="px-3 py-2 text-slate-400 font-mono">{idx + 1}</td>
+                                            {movCols.map(col => (
+                                                <td key={col.key} className="px-3 py-2 text-slate-700 max-w-xs truncate"
+                                                    title={String(rec[col.key] ?? '')}>
+                                                    {rec[col.key] ?? '—'}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ReportsPage = () => {
+    // ── Tab state ─────────────────────────────────────────────────────────────
+    const [activeTab, setActiveTab] = useState('cases'); // 'cases' or 'digidak'
+    const [digidakSubTab, setDigidakSubTab] = useState('inbox'); // 'inbox' or 'outbox'
+
+    // ── Cases Report Filter state ─────────────────────────────────────────────
+    const [officeType,   setOfficeType]   = useState('');
+    const [location,     setLocation]     = useState('');
+    const [deptName,     setDeptName]     = useState('');
+    const [departments,  setDepartments]  = useState([]);
+    const [vertical,     setVertical]     = useState([]);
+    const [verticals,    setVerticals]    = useState([]);
+    const [fromDate,     setFromDate]     = useState('');
+    const [toDate,       setToDate]       = useState('');
+    const [statusFilter,   setStatusFilter]   = useState([]);
+    const [priorityFilter, setPriorityFilter] = useState([]);
+    const [languageFilter, setLanguageFilter] = useState([]);
+
+    // ── Digidak Report Filter state ───────────────────────────────────────────
+    const [digidakOfficeType,   setDigidakOfficeType]   = useState('');
+    const [digidakLocation,     setDigidakLocation]     = useState('');
+    const [digidakDeptName,     setDigidakDeptName]     = useState('');
+    const [digidakDepartments,  setDigidakDepartments]  = useState([]);
+    const [digidakFromDate,     setDigidakFromDate]     = useState('');
+    const [digidakToDate,       setDigidakToDate]       = useState('');
+    const [digidakLanguage,     setDigidakLanguage]     = useState([]);
+    const [digidakModeOfReceipt,setDigidakModeOfReceipt]= useState([]);
+    const [digidakPriority,     setDigidakPriority]     = useState([]);
+    const [digidakSecrecy,      setDigidakSecrecy]      = useState([]);
+    const [digidakStatus,        setDigidakStatus]        = useState([]);
+    const [digidakTypeCategory,  setDigidakTypeCategory]  = useState([]);
+    const [digidakSourceVertical,setDigidakSourceVertical]= useState([]);
+    const [digidakSourceVerticals,setDigidakSourceVerticals]= useState([]);
+    const [digidakMetadata,     setDigidakMetadata]     = useState({
+        languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], source_vertical: []
+    });
+    const [digidakInboxUsername, setDigidakInboxUsername] = useState('');
+    const [digidakInboxUsers,   setDigidakInboxUsers]   = useState([]);
+
+    // ── Results state ─────────────────────────────────────────────────────────
+    const [cases,          setCases]          = useState([]);
+    const [allCases,       setAllCases]       = useState([]); // holds full export dataset
+    const [digidakResults, setDigidakResults] = useState([]);
+    const [loading,        setLoading]        = useState(false);
+    const [exporting,      setExporting]      = useState(false);
+    const [page,           setPage]           = useState(1);
+    const [pageSize,       setPageSize]       = useState(10);
+    const [hasNextPage,    setHasNextPage]    = useState(false);
+    const [filtersApplied, setFiltersApplied] = useState(false);
+    const [error,          setError]          = useState('');
+
+    // ── Modal state ───────────────────────────────────────────────────────────
+    const [detailCase,      setDetailCase]      = useState(null);
+    const [movementCase,    setMovementCase]    = useState(null);
+    const [digidakMovement, setDigidakMovement] = useState(null);
+
+    // ── Derived ───────────────────────────────────────────────────────────────
+    const locations      = useMemo(() => getLocations(officeType), [officeType]);
+    const isRoTe         = officeType === 'RO' || officeType === 'TE';
+    const locationShortCode = useMemo(
+        () => locations.find(l => l.location === location)?.shortCode || '',
+        [locations, location]
+    );
+
+    useEffect(() => {
+        setDeptName('');
+        setDepartments([]);
+        setVertical('');
+        setVerticals([]);
+        if (!officeType) return;
+        if (isRoTe && !location) return;
+        fetchDepartments(officeType, isRoTe ? location : '')
+            .then(depts => {
+                setDepartments(depts || []);
+            })
+            .catch(err => {
+                console.error('Error fetching departments (Cases):', err);
+                setDepartments([]);
+            });
+    }, [officeType, location, isRoTe]);
+
+    // Fetch verticals for HO when department is selected
+    useEffect(() => {
+        setVertical('');
+        setVerticals([]);
+        if (officeType !== 'HO' || !deptName) return;
+        axios.get('/groups/verticals', { params: { officeType: 'HO', deptName } })
+            .then(res => {
+                const all = res.data || [];
+                setVerticals(all.filter(g =>
+                    !g.group_name.includes('vertical_head') &&
+                    !g.group_name.includes('_grade_') &&
+                    !g.group_name.includes('_cgm_sec')
+                ));
+            })
+            .catch(err => {
+                console.error('Error fetching verticals:', err);
+                setVerticals([]);
+            });
+    }, [officeType, deptName]);
+
+    // ── Digidak Departments ───────────────────────────────────────────────────
+    const digidakLocations = useMemo(() => getLocations(digidakOfficeType), [digidakOfficeType]);
+    const digidakIsRoTe = digidakOfficeType === 'RO' || digidakOfficeType === 'TE';
+
+    useEffect(() => {
+        setDigidakDeptName('');
+        setDigidakDepartments([]);
+        if (!digidakOfficeType) return;
+        if (digidakIsRoTe && !digidakLocation) return;
+        fetchDepartments(digidakOfficeType, digidakIsRoTe ? digidakLocation : '')
+            .then(depts => {
+                setDigidakDepartments(depts || []);
+            })
+            .catch(err => {
+                console.error('Error fetching departments (Digidak):', err);
+                setDigidakDepartments([]);
+            });
+    }, [digidakOfficeType, digidakLocation, digidakIsRoTe]);
+
+    // ── Fetch Digidak Source Verticals (Outbox only) ───────────────────────────
+    useEffect(() => {
+        setDigidakSourceVertical('');
+        setDigidakSourceVerticals([]);
+        if (digidakSubTab !== 'outbox') return;
+        if (!digidakOfficeType) return;
+        if (digidakIsRoTe && !digidakLocation) return;
+        if (!digidakIsRoTe && !digidakDeptName) return;
+
+        const params = {
+            officeType: digidakOfficeType,
+            location: digidakIsRoTe ? digidakLocation : '',
+            deptName: !digidakIsRoTe ? digidakDeptName : ''
+        };
+        axios.get('/digidak/verticals', { params })
+            .then(res => {
+                const verticals = (res.data || []).map(v => v.name || v.value || v);
+                setDigidakSourceVerticals(verticals.filter(v => typeof v === 'string'));
+            })
+            .catch(err => {
+                console.error('Error fetching source verticals:', err);
+                setDigidakSourceVerticals([]);
+            });
+    }, [digidakOfficeType, digidakLocation, digidakDeptName, digidakIsRoTe, digidakSubTab]);
+
+    // ── Fetch Digidak Metadata ────────────────────────────────────────────────
+    useEffect(() => {
+        axios.get('/metadata/digidak/filter-options')
+            .then(res => {
+                setDigidakMetadata(res.data || {});
+            })
+            .catch(err => {
+                console.error('Error fetching Digidak metadata:', err);
+                setDigidakMetadata({
+                    languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], source_vertical: []
+                });
+            });
+    }, []);
+
+    // ── Fetch Digidak Inbox Users ─────────────────────────────────────────────
+    useEffect(() => {
+        setDigidakInboxUsername('');
+        setDigidakInboxUsers([]);
+        if (!digidakOfficeType) return;
+        if (digidakIsRoTe && !digidakLocation) return;
+        if (!digidakIsRoTe && !digidakDeptName) return;
+
+        let endpoint = '';
+        let params = {};
+        if (digidakIsRoTe && digidakLocation) {
+            endpoint = '/users/by-location';
+            params = { location: digidakLocation };
+        } else if (!digidakIsRoTe && digidakDeptName) {
+            const dept = digidakDepartments.find(d => d.name === digidakDeptName);
+            if (dept && dept.shortCode) {
+                endpoint = '/users/by-dept';
+                params = { shortCode: dept.shortCode };
+            }
+        }
+
+        if (endpoint) {
+            axios.get(endpoint, { params })
+                .then(res => {
+                    const users = (res.data || []).map(u => u.object_name || u.user_name || u.user_login_name || u.name || u);
+                    setDigidakInboxUsers(users.filter(u => typeof u === 'string'));
+                })
+                .catch(err => {
+                    console.error('Error fetching Inbox users:', err);
+                    setDigidakInboxUsers([]);
+                });
+        }
+    }, [digidakOfficeType, digidakLocation, digidakDeptName, digidakDepartments, digidakIsRoTe]);
+
+    // ── Clear Digidak filters on tab change ────────────────────────────────────
+    useEffect(() => {
+        setDigidakOfficeType('');
+        setDigidakLocation('');
+        setDigidakDeptName('');
+        setDigidakDepartments([]);
+        setDigidakSourceVertical([]);
+        setDigidakSourceVerticals([]);
+        setDigidakFromDate('');
+        setDigidakToDate('');
+        setDigidakLanguage([]);
+        setDigidakModeOfReceipt([]);
+        setDigidakPriority([]);
+        setDigidakSecrecy([]);
+        setDigidakStatus([]);
+        setDigidakTypeCategory([]);
+        setDigidakInboxUsername('');
+        setDigidakResults([]);
+        setFiltersApplied(false);
+        setPage(1);
+        setError('');
+    }, [digidakSubTab]);
+
+    // ── Cases Handlers ────────────────────────────────────────────────────────
+    const handleOfficeTypeChange = (val) => {
+        setOfficeType(val);
+        setLocation('');
+        setDeptName('');
+        setDepartments([]);
+        setVertical('');
+        setVerticals([]);
+    };
+
+    const handleLocationChange = (val) => {
+        setLocation(val);
+        setDeptName('');
+        setDepartments([]);
+        setVertical('');
+        setVerticals([]);
+    };
+
+    // ── Digidak Handlers ──────────────────────────────────────────────────────
+    const handleDigidakOfficeTypeChange = (val) => {
+        setDigidakOfficeType(val);
+        setDigidakLocation('');
+        setDigidakDeptName('');
+        setDigidakDepartments([]);
+    };
+
+    const handleDigidakLocationChange = (val) => {
+        setDigidakLocation(val);
+        setDigidakDeptName('');
+        setDigidakDepartments([]);
+    };
+
+    const buildParams = useCallback(() => {
+        const p = {};
+        if (officeType)            p.hoRo      = officeType;
+        if (isRoTe && location)    p.location  = location;
+        if (deptName)              p.deptNames = deptName;
+        if (vertical && vertical.length > 0)              p.functions = vertical.join(',');
+        if (fromDate)              p.fromDate  = fromDate;
+        if (toDate)                p.toDate    = toDate;
+        if (statusFilter && statusFilter.length > 0)          p.status    = statusFilter.join(',');
+        if (priorityFilter && priorityFilter.length > 0)        p.priority  = priorityFilter.join(',');
+        if (languageFilter && languageFilter.length > 0)        p.language  = languageFilter.join(',');
+        return p;
+    }, [officeType, isRoTe, location, deptName, vertical, fromDate, toDate,
+        statusFilter, priorityFilter, languageFilter]);
+
+    const fetchReport = useCallback(async (pageNum, size) => {
+        setLoading(true);
+        setError('');
+        try {
+            const { data } = await axios.get('/cases/report', {
+                params: { ...buildParams(), page: pageNum, size }
+            });
+            setCases(data.cases || []);
+            setHasNextPage(data.hasNext || false);
+            setFiltersApplied(true);
+            setPage(pageNum);
+        } catch {
+            setError('Failed to load report. Please try again.');
+            setCases([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [buildParams]);
+
+    const handleApply = () => fetchReport(1, pageSize);
+
+    const handleClear = () => {
+        setOfficeType(''); setLocation(''); setDeptName(''); setDepartments([]);
+        setVertical([]); setVerticals([]);
+        setFromDate(''); setToDate('');
+        setStatusFilter([]); setPriorityFilter([]); setLanguageFilter([]);
+        setCases([]); setAllCases([]);
+        setFiltersApplied(false); setError(''); setPage(1);
+    };
+
+    // ── Digidak Report Functions ──────────────────────────────────────────────
+    const buildDigidakParams = useCallback(() => {
+        const p = {};
+        if (digidakOfficeType)        p.hoRo = digidakOfficeType;
+        if (digidakIsRoTe && digidakLocation) p.location = digidakLocation;
+        if (digidakDeptName)          p.deptNames = digidakDeptName;
+        if (digidakFromDate)          p.fromDate = digidakFromDate;
+        if (digidakToDate)            p.toDate = digidakToDate;
+        if (digidakLanguage && digidakLanguage.length > 0)          p.language = digidakLanguage.join(',');
+        if (digidakModeOfReceipt && digidakModeOfReceipt.length > 0)     p.modeOfReceipt = digidakModeOfReceipt.join(',');
+        if (digidakPriority && digidakPriority.length > 0)          p.priority = digidakPriority.join(',');
+        if (digidakSecrecy && digidakSecrecy.length > 0)           p.secrecy = digidakSecrecy.join(',');
+        if (digidakStatus && digidakStatus.length > 0)            p.status = digidakStatus.join(',');
+        if (digidakTypeCategory && digidakTypeCategory.length > 0)      p.typeCategory = digidakTypeCategory.join(',');
+        if (digidakInboxUsername)     p.username = digidakInboxUsername;
+        if (digidakSourceVertical && digidakSourceVertical.length > 0 && digidakSubTab === 'outbox') p.sourceVertical = digidakSourceVertical.join(',');
+        // For Outbox report, add decisionType parameter
+        if (digidakSubTab === 'outbox') p.decisionType = 'outbox';
+        return p;
+    }, [digidakOfficeType, digidakIsRoTe, digidakLocation, digidakDeptName,
+        digidakFromDate, digidakToDate, digidakLanguage, digidakModeOfReceipt,
+        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakInboxUsername,
+        digidakSourceVertical, digidakSubTab]);
+
+    const fetchDigidakReport = useCallback(async (pageNum = 1, size = 10) => {
+        setLoading(true);
+        setError('');
+        try {
+            const endpoint = digidakSubTab === 'inbox' ? '/digidak/inbox' : '/digidak/report';
+            const { data } = await axios.get(endpoint, {
+                params: { ...buildDigidakParams(), page: pageNum, size }
+            });
+            setDigidakResults(data.items || []);
+            setHasNextPage(data.hasNext || false);
+            setFiltersApplied(true);
+            setPage(pageNum);
+        } catch {
+            setError('Failed to load Digidak report. Please try again.');
+            setDigidakResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [buildDigidakParams, digidakSubTab]);
+
+    const handleDigidakApply = () => {
+        if (digidakSubTab === 'inbox' && !digidakInboxUsername) {
+            setError('Username is required for Inbox report');
+            return;
+        }
+        if (!digidakOfficeType) {
+            setError('Office Type is required');
+            return;
+        }
+        setError('');
+        fetchDigidakReport(1, pageSize);
+    };
+
+    const handleDigidakClear = () => {
+        setDigidakOfficeType(''); setDigidakLocation(''); setDigidakDeptName('');
+        setDigidakDepartments([]);
+        setDigidakFromDate(''); setDigidakToDate('');
+        setDigidakLanguage([]); setDigidakModeOfReceipt([]); setDigidakPriority([]);
+        setDigidakSecrecy([]); setDigidakStatus([]); setDigidakTypeCategory([]); setDigidakSourceVertical([]);
+        setDigidakInboxUsername('');
+        setDigidakResults([]);
+        setFiltersApplied(false); setError(''); setPage(1);
+    };
+
+    const handlePageSizeChange = (newSize) => {
+        setPageSize(newSize);
+        fetchReport(1, newSize);
+    };
+
+    // ── Export ────────────────────────────────────────────────────────────────
+    const fetchAllForExport = async () => {
+        setExporting(true);
+        try {
+            // Fetch up to 1000 records for export (single large page)
+            const { data } = await axios.get('/cases/report', {
+                params: { ...buildParams(), page: 1, size: 1000 }
+            });
+            return data.cases || [];
+        } catch {
+            return [];
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const exportToCSV = async () => {
+        const rows = await fetchAllForExport();
+        if (!rows.length) return;
+        const cols = ['object_name', 'description', 'ho_ro', 'department_name',
+                      'status', 'task_priority', 'language_type', 'r_creation_date',
+                      'r_creator_name', 'case_nature', 'disposal_level', 'file_number',
+                      'types', 'functions'];
+        const headers = ['Case Number', 'Description', 'Office Type', 'Department',
+                         'Status', 'Priority', 'Language', 'Date Created',
+                         'Created By', 'Case Nature', 'Disposal Level', 'File No',
+                         'Types', 'Functions'];
+        const csvRows = [headers.join(',')];
+        rows.forEach(r => {
+            csvRows.push(cols.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','));
+        });
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `cases_report_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const exportToExcel = async () => {
+        const rows = await fetchAllForExport();
+        if (!rows.length) return;
+        const sheetData = rows.map((r, i) => ({
+            '#':               i + 1,
+            'Case Number':     r.object_name      ?? '',
+            'Description':     r.description      ?? '',
+            'Office Type':     r.ho_ro            ?? '',
+            'Department':      r.department_name  ?? '',
+            'Status':          r.status           ?? '',
+            'Priority':        r.task_priority    ?? '',
+            'Language':        r.language_type    ?? '',
+            'Date Created':    r.r_creation_date  ?? '',
+            'Created By':      r.r_creator_name   ?? '',
+            'Case Nature':     r.case_nature      ?? '',
+            'Disposal Level':  r.disposal_level   ?? '',
+            'File No':         r.file_number      ?? '',
+            'Types':           r.types            ?? '',
+            'Functions':       r.functions        ?? '',
+        }));
+        const ws = XLSX.utils.json_to_sheet(sheetData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Cases Report');
+        XLSX.writeFile(wb, `cases_report_${new Date().toISOString().slice(0,10)}.xlsx`);
+    };
+
+    // ── Digidak Export Functions ──────────────────────────────────────────────
+    const fetchAllDigidakForExport = async () => {
+        setExporting(true);
+        try {
+            const endpoint = digidakSubTab === 'inbox' ? '/digidak/inbox' : '/digidak/report';
+            const { data } = await axios.get(endpoint, {
+                params: { ...buildDigidakParams(), page: 1, size: 1000 }
+            });
+            return data.items || [];
+        } catch (err) {
+            console.error('Error fetching Digidak for export:', err);
+            return [];
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const exportDigidakToExcel = async () => {
+        const rows = await fetchAllDigidakForExport();
+        if (!rows.length) return;
+        const sheetData = rows.map((r, i) => ({
+            '#':               i + 1,
+            'UID Number':      r.uid_number       ?? '',
+            'Letter Subject':  r.letter_subject   ?? '',
+            'Initiator':       r.initiator        ?? '',
+            'File Number':     r.file_number      ?? '',
+            'Type Category':   r.type_category    ?? '',
+            'Language':        r.languages        ?? '',
+            'Mode of Dispatch':r.mode_of_receipt  ?? '',
+            'Priority':        r.priority         ?? '',
+            'Secrecy':         r.secrecy          ?? '',
+            'Status':          r.status           ?? '',
+            'Source Vertical': Array.isArray(r.source_vertical) ? r.source_vertical.join(', ') : (r.source_vertical ?? ''),
+            'Decision':        r.decision         ?? '',
+            'Date Created':    r.r_creation_date  ?? '',
+        }));
+        const ws = XLSX.utils.json_to_sheet(sheetData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `${digidakSubTab.charAt(0).toUpperCase() + digidakSubTab.slice(1)} Report`);
+        XLSX.writeFile(wb, `digidak_${digidakSubTab}_report_${new Date().toISOString().slice(0,10)}.xlsx`);
+    };
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    const formatDate = (d) => {
+        if (!d) return '-';
+        try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
+        catch { return d; }
+    };
+
+    const selectCls = 'w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white';
+
+    return (
+        <ErrorBoundary>
+        <motion.div
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="p-6"
+        >
+            {/* Header */}
+            <div className="mb-6 flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#0A66C2] rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
+                    <FileBarChart2 className="text-white" size={20} />
+                </div>
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
+                    <p className="text-sm text-slate-500">Generate case reports with custom filters</p>
+                </div>
+            </div>
+
+            {/* Tab Bar */}
+            <div className="border-b border-slate-200 mb-6 flex gap-1">
+                <button
+                    onClick={() => setActiveTab('cases')}
+                    className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                        activeTab === 'cases'
+                            ? 'border-b-2 border-[#0A66C2] text-[#0A66C2]'
+                            : 'border-b-2 border-transparent text-slate-600 hover:text-slate-800'
+                    }`}
+                >
+                    Cases Report
+                </button>
+                <button
+                    onClick={() => setActiveTab('digidak')}
+                    className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                        activeTab === 'digidak'
+                            ? 'border-b-2 border-[#0A66C2] text-[#0A66C2]'
+                            : 'border-b-2 border-transparent text-slate-600 hover:text-slate-800'
+                    }`}
+                >
+                    Digidak
+                </button>
+            </div>
+
+            {/* Cases Report Section */}
+            {activeTab === 'cases' && (
+            <>
+            {/* Filter Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Filter size={16} className="text-slate-500" />
+                    <span className="text-sm font-semibold text-slate-700">Filters</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-4">
+                    {/* Office Type */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
+                        <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)} className={selectCls}>
+                            <option value="">Select</option>
+                            <option value="HO">HO</option>
+                            <option value="RO">RO</option>
+                            <option value="TE">TE</option>
+                        </select>
+                    </div>
+
+                    {/* Location — RO/TE only */}
+                    {isRoTe && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
+                            <select value={location} onChange={e => handleLocationChange(e.target.value)} className={selectCls}>
+                                <option value="">Select Location</option>
+                                {locations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Department */}
+                    {officeType && departments.length > 0 && (!isRoTe || location) && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
+                            <select value={deptName} onChange={e => setDeptName(e.target.value)} className={selectCls}>
+                                <option value="">Select Department</option>
+                                {departments.map(d => <option key={d.shortCode} value={d.name}>{d.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Vertical — HO only, shown when dept is selected and verticals loaded */}
+                    {officeType === 'HO' && deptName && verticals.length > 0 && (
+                        <MultiSelectDropdown
+                            label="Vertical"
+                            options={verticals.map(g => g.object_name || g.group_name)}
+                            selectedValues={vertical}
+                            onChange={setVertical}
+                            placeholder="Select Vertical"
+                        />
+                    )}
+
+                    {/* From Date */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">From Date</label>
+                        <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+                            className={selectCls} />
+                    </div>
+
+                    {/* To Date */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">To Date</label>
+                        <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+                            className={selectCls} />
+                    </div>
+
+                    {/* Status */}
+                    <MultiSelectDropdown
+                        label="Status"
+                        options={STATUS_OPTIONS}
+                        selectedValues={statusFilter}
+                        onChange={setStatusFilter}
+                        placeholder="Select Status"
+                    />
+
+                    {/* Priority */}
+                    <MultiSelectDropdown
+                        label="Priority"
+                        options={PRIORITY_OPTIONS}
+                        selectedValues={priorityFilter}
+                        onChange={setPriorityFilter}
+                        placeholder="Select Priority"
+                    />
+
+                    {/* Language */}
+                    <MultiSelectDropdown
+                        label="Language"
+                        options={LANGUAGE_OPTIONS}
+                        selectedValues={languageFilter}
+                        onChange={setLanguageFilter}
+                        placeholder="Select Language"
+                    />
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <button onClick={handleApply} disabled={loading}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#0A66C2] text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        <Search size={14} />
+                        Apply Filters
+                    </button>
+                    <button onClick={handleClear} disabled={loading}
+                        className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors">
+                        <X size={14} />
+                        Clear
+                    </button>
+
+                    {/* Export buttons — only visible after results are loaded */}
+                    {filtersApplied && cases.length > 0 && (
+                        <div className="ml-auto">
+                            <button onClick={exportToExcel} disabled={exporting}
+                                className="flex items-center gap-1.5 px-3 py-2 border border-emerald-200 text-emerald-700 bg-emerald-50 text-sm font-medium rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50">
+                                <Download size={13} />
+                                Export Excel
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Results Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                {!filtersApplied && !loading ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                        <FileBarChart2 size={48} className="mb-3 opacity-30" />
+                        <p className="text-sm">Apply filters to view the report</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Case Number</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Office / Dept</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Date Created</th>
+                                        <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {loading ? (
+                                        Array.from({ length: 5 }).map((_, i) => (
+                                            <tr key={i} className="animate-pulse">
+                                                {Array.from({ length: 8 }).map((__, j) => (
+                                                    <td key={j} className="px-4 py-3">
+                                                        <div className="h-3 bg-slate-200 rounded w-full" />
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))
+                                    ) : cases.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={8} className="px-4 py-16 text-center text-slate-400 text-sm">
+                                                No cases found for the selected filters.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        cases.map((c, idx) => (
+                                            <tr key={c.r_object_id || idx} className="hover:bg-blue-50/30 transition-colors group">
+                                                <td className="px-4 py-2.5 text-slate-400 text-xs">
+                                                    {(page - 1) * pageSize + idx + 1}
+                                                </td>
+                                                <td className="px-4 py-2.5 font-medium text-slate-900">{c.object_name}</td>
+                                                <td className="px-4 py-2.5 text-slate-500 max-w-[200px] truncate" title={c.description}>
+                                                    {c.description || c.subject || '-'}
+                                                </td>
+                                                <td className="px-4 py-2.5 text-slate-600">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">{c.ho_ro}</span>
+                                                        {c.department_name && <span className="text-xs text-slate-400">{c.department_name}</span>}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-2.5">
+                                                    {c.status ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                                            {c.status}
+                                                        </span>
+                                                    ) : '-'}
+                                                </td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{c.task_priority || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{formatDate(c.r_creation_date)}</td>
+                                                <td className="px-4 py-2.5">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <button onClick={() => setDetailCase(c)} title="Case Details"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#0A66C2] hover:bg-blue-50 transition-all">
+                                                            <FileText size={15} />
+                                                        </button>
+                                                        <button onClick={() => setMovementCase(c)} title="Movement Register"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                                                            <ClipboardList size={15} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination */}
+                        {filtersApplied && !loading && cases.length > 0 && (
+                            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                                <div className="flex items-center gap-2 text-sm text-slate-600">
+                                    <span>Rows per page:</span>
+                                    <select value={pageSize} onChange={e => handlePageSizeChange(Number(e.target.value))}
+                                        className="border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                        {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => fetchReport(1, pageSize)} disabled={page === 1}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronsLeft size={16} />
+                                    </button>
+                                    <button onClick={() => fetchReport(page - 1, pageSize)} disabled={page === 1}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronLeft size={16} />
+                                    </button>
+                                    <span className="px-3 py-1 bg-white border border-slate-200 rounded text-slate-700 font-medium min-w-[2rem] text-center">
+                                        {page}
+                                    </span>
+                                    <button onClick={() => fetchReport(page + 1, pageSize)} disabled={!hasNextPage}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+
+            </div>
+            </>
+            )}
+
+            {/* Digidak Report Section */}
+            {activeTab === 'digidak' && (
+            <>
+            {/* Digidak Sub-tabs */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6">
+                <div className="flex gap-4 border-b border-slate-200">
+                    <button
+                        onClick={() => setDigidakSubTab('inbox')}
+                        className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            digidakSubTab === 'inbox'
+                                ? 'border-[#0A66C2] text-[#0A66C2]'
+                                : 'border-transparent text-slate-600 hover:text-slate-800'
+                        }`}
+                    >
+                        Inbox Report
+                    </button>
+                    <button
+                        onClick={() => setDigidakSubTab('outbox')}
+                        className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            digidakSubTab === 'outbox'
+                                ? 'border-[#0A66C2] text-[#0A66C2]'
+                                : 'border-transparent text-slate-600 hover:text-slate-800'
+                        }`}
+                    >
+                        Outbox Report
+                    </button>
+                </div>
+            </div>
+
+            {/* Digidak Filter Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Filter size={16} className="text-slate-500" />
+                    <span className="text-sm font-semibold text-slate-700">Filters</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-4">
+                    {/* Office Type */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
+                        <select value={digidakOfficeType} onChange={e => handleDigidakOfficeTypeChange(e.target.value)} className={selectCls}>
+                            <option value="">Select</option>
+                            <option value="HO">HO</option>
+                            <option value="RO">RO</option>
+                            <option value="TE">TE</option>
+                        </select>
+                    </div>
+
+                    {/* Location — RO/TE only */}
+                    {digidakIsRoTe && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
+                            <select value={digidakLocation} onChange={e => handleDigidakLocationChange(e.target.value)} className={selectCls}>
+                                <option value="">Select Location</option>
+                                {digidakLocations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Department — hide in Outbox when RO/TE */}
+                    {digidakOfficeType && digidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (digidakSubTab === 'inbox' || !digidakIsRoTe) && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
+                            <select value={digidakDeptName} onChange={e => setDigidakDeptName(e.target.value)} className={selectCls}>
+                                <option value="">Select Department</option>
+                                {digidakDepartments.map(d => (
+                                    <option key={d.shortCode} value={d.name}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Username — Inbox only */}
+                    {digidakSubTab === 'inbox' && digidakOfficeType && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Username</label>
+                            <select value={digidakInboxUsername} onChange={e => setDigidakInboxUsername(e.target.value)} className={selectCls}>
+                                <option value="">Select Username</option>
+                                {(digidakInboxUsers || []).map(user => <option key={user} value={user}>{user}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Source Vertical — Outbox only */}
+                    {digidakSubTab === 'outbox' && digidakSourceVerticals.length > 0 && (
+                        <MultiSelectDropdown
+                            label="Source Vertical"
+                            options={digidakSourceVerticals || []}
+                            selectedValues={digidakSourceVertical}
+                            onChange={setDigidakSourceVertical}
+                            placeholder="Select Source Vertical"
+                        />
+                    )}
+
+                    {/* From Date */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">From Date</label>
+                        <input type="date" value={digidakFromDate} onChange={e => setDigidakFromDate(e.target.value)} className={selectCls} />
+                    </div>
+
+                    {/* To Date */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">To Date</label>
+                        <input type="date" value={digidakToDate} onChange={e => setDigidakToDate(e.target.value)} className={selectCls} />
+                    </div>
+
+                    {/* Language */}
+                    <MultiSelectDropdown
+                        label="Language"
+                        options={digidakMetadata.languages || []}
+                        selectedValues={digidakLanguage}
+                        onChange={setDigidakLanguage}
+                        placeholder="Select Language"
+                    />
+
+                    {/* Mode of Dispatch */}
+                    <MultiSelectDropdown
+                        label="Mode of Dispatch"
+                        options={digidakMetadata.mode_of_receipt || []}
+                        selectedValues={digidakModeOfReceipt}
+                        onChange={setDigidakModeOfReceipt}
+                        placeholder="Select Mode"
+                    />
+
+                    {/* Priority */}
+                    <MultiSelectDropdown
+                        label="Priority"
+                        options={digidakMetadata.priority || []}
+                        selectedValues={digidakPriority}
+                        onChange={setDigidakPriority}
+                        placeholder="Select Priority"
+                    />
+
+                    {/* Secrecy */}
+                    <MultiSelectDropdown
+                        label="Secrecy"
+                        options={digidakMetadata.secrecy || []}
+                        selectedValues={digidakSecrecy}
+                        onChange={setDigidakSecrecy}
+                        placeholder="Select Secrecy"
+                    />
+
+                    {/* Status */}
+                    <MultiSelectDropdown
+                        label="Status"
+                        options={digidakMetadata.status || []}
+                        selectedValues={digidakStatus}
+                        onChange={setDigidakStatus}
+                        placeholder="Select Status"
+                    />
+
+                    {/* Type Category */}
+                    <MultiSelectDropdown
+                        label="Type Category"
+                        options={digidakMetadata.type_category || []}
+                        selectedValues={digidakTypeCategory}
+                        onChange={setDigidakTypeCategory}
+                        placeholder="Select Type Category"
+                    />
+                </div>
+
+                {/* Buttons */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={handleDigidakApply}
+                        disabled={!digidakOfficeType || (digidakSubTab === 'outbox' && !digidakIsRoTe && !digidakDeptName) || (digidakSubTab === 'outbox' && digidakIsRoTe && !digidakLocation) || (digidakSubTab === 'inbox' && !digidakDeptName && !digidakIsRoTe)}
+                        className={`flex items-center gap-1.5 px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors ${
+                            !digidakOfficeType || (digidakSubTab === 'outbox' && !digidakIsRoTe && !digidakDeptName) || (digidakSubTab === 'outbox' && digidakIsRoTe && !digidakLocation) || (digidakSubTab === 'inbox' && !digidakDeptName && !digidakIsRoTe)
+                                ? 'bg-slate-300 cursor-not-allowed'
+                                : 'bg-[#0A66C2] hover:bg-[#094d92]'
+                        }`}>
+                        <Search size={15} /> Apply Filters
+                    </button>
+                    <button onClick={handleDigidakClear}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                        <X size={15} /> Clear
+                    </button>
+                    {/* Error message — displayed next to buttons */}
+                    {error && (
+                        <div className="text-red-600 text-sm flex items-center gap-1.5">
+                            <AlertCircle size={16} />
+                            {error}
+                        </div>
+                    )}
+                    {/* Export button — only visible after results are loaded */}
+                    {filtersApplied && digidakResults.length > 0 && (
+                        <button onClick={exportDigidakToExcel} disabled={exporting}
+                            className="flex items-center gap-1.5 px-3 py-2 border border-emerald-200 text-emerald-700 bg-emerald-50 text-sm font-medium rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50 ml-auto">
+                            <Download size={13} />
+                            Export Excel
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Digidak Results */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                {loading ? (
+                    <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0A66C2]"></div>
+                    </div>
+                ) : !filtersApplied ? (
+                    <div className="px-6 py-12 text-center text-slate-400">
+                        <p className="text-sm">Apply filters to view Digidak {digidakSubTab} report</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">#</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">UID Number</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Letter Subject</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Initiator</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">File Number</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Type Category</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Language</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Mode of Dispatch</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Priority</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Secrecy</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Status</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Decision</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Date Created</th>
+                                        <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-600">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {digidakResults.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={13} className="px-4 py-16 text-center text-slate-400 text-sm">
+                                                No Digidak records found for the selected filters.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        digidakResults.map((item, idx) => (
+                                            <tr key={`${item.r_object_id}-${idx}`} className="hover:bg-blue-50/30 transition-colors">
+                                                <td className="px-4 py-2.5 text-slate-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
+                                                <td className="px-4 py-2.5 font-medium text-slate-900 font-mono">{item.uid_number || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 max-w-[250px] truncate" title={item.letter_subject}>{item.letter_subject || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600">{item.initiator || '-'}</td>
+                                                <td className="px-4 py-2.5 font-mono text-sm text-slate-600">{item.file_number || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.type_category || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.languages || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.mode_of_receipt || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.priority || '-'}</td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{item.secrecy || '-'}</td>
+                                                <td className="px-4 py-2.5">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                                        {item.status || '-'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2.5 text-xs">
+                                                    <span className={`px-2 py-0.5 rounded-full font-medium ${
+                                                        item.decision === 'Inward' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'
+                                                    }`}>
+                                                        {item.decision || '-'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2.5 text-slate-600 text-xs">{formatDate(item.r_creation_date)}</td>
+                                                <td className="px-4 py-2.5">
+                                                    <div className="flex items-center justify-center">
+                                                        <button onClick={() => setDigidakMovement(item)} title="Movement Register"
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                                                            <ClipboardList size={15} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination */}
+                        {filtersApplied && !loading && digidakResults.length > 0 && (
+                            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                                <div className="flex items-center gap-2 text-sm text-slate-600">
+                                    <span>Rows per page:</span>
+                                    <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); fetchDigidakReport(1, Number(e.target.value)); }}
+                                        className="border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                        {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => fetchDigidakReport(1, pageSize)} disabled={page === 1}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronsLeft size={16} />
+                                    </button>
+                                    <button onClick={() => fetchDigidakReport(page - 1, pageSize)} disabled={page === 1}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronLeft size={16} />
+                                    </button>
+                                    <span className="px-3 py-1 bg-white border border-slate-200 rounded text-slate-700 font-medium min-w-[2rem] text-center">
+                                        {page}
+                                    </span>
+                                    <button onClick={() => fetchDigidakReport(page + 1, pageSize)} disabled={!hasNextPage}
+                                        className="p-1.5 border border-slate-200 rounded bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-600">
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+
+            </div>
+            </>
+            )}
+
+            {/* Modals */}
+            {detailCase   && <CaseDetailsModal      caseItem={detailCase}   onClose={() => setDetailCase(null)}   />}
+            {movementCase && <MovementRegisterModal  caseItem={movementCase} onClose={() => setMovementCase(null)} />}
+            {digidakMovement && <DigidakMovementRegisterModal  digidakItem={digidakMovement} onClose={() => setDigidakMovement(null)} />}
+        </motion.div>
+        </ErrorBoundary>
+    );
+};
+
+export default ReportsPage;

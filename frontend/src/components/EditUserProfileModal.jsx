@@ -8,6 +8,30 @@ const USER_GRADE_OPTIONS = [
     ...USER_GRADES.map(g => ({ value: g.value, label: g.label, level: g.gradeLevel })),
 ];
 
+// Designation to User Grade mapping
+const DESIGNATION_GRADE_MAPPING = {
+    'DA': 'group_b',      // Group B
+    'AM': 'grade_a',      // Grade A
+    'MGR': 'grade_b',     // Grade B
+    'AGM': 'grade_c',     // Grade C
+    'DGM': 'grade_d',     // Grade D
+    'GM': 'grade_e',      // Grade E
+    'GM(OIC)': 'grade_e(oic)', // Grade E (OIC)
+    'CGM': 'grade_f',     // Grade F
+};
+
+// User Grade to Designation mapping (reverse mapping)
+const GRADE_DESIGNATION_MAPPING = {
+    'group_b': 'DA',
+    'grade_a': 'AM',
+    'grade_b': 'MGR',
+    'grade_c': 'AGM',
+    'grade_d': 'DGM',
+    'grade_e': 'GM',
+    'grade_e(oic)': 'GM(OIC)',
+    'grade_f': 'CGM',
+};
+
 const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
 const readonlyCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 cursor-default font-mono';
 const selectCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer';
@@ -39,8 +63,10 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [error, setError] = useState(null);
     const [errors, setErrors] = useState({});
     const [designationChanged, setDesignationChanged] = useState(false);
+    const [gradeChanged, setGradeChanged] = useState(false);
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
     const hindiTouched = useRef({});
+    const lastManualChangeRef = useRef(null); // Track which field was last manually changed ('designation' or 'grade')
 
     // Pending cases / delegate state
     const [checkingInbox,       setCheckingInbox]       = useState(false);
@@ -84,6 +110,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setShowLocationBlock(false);
         setDelegateTask(null);
         setDesignationChanged(false);
+        setGradeChanged(false);
+        lastManualChangeRef.current = null;
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
             .catch(() => initForm(user));
@@ -98,11 +126,39 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     }, [form.designation]);
 
+    // Auto-populate user_grade when designation changes (only if user manually changed designation, not during initial load)
+    useEffect(() => {
+        if (!form.designation || lastManualChangeRef.current !== 'designation') return;
+        const mappedGrade = DESIGNATION_GRADE_MAPPING[form.designation];
+        if (mappedGrade) {
+            set('user_grade', mappedGrade);
+            const opt = USER_GRADE_OPTIONS.find(o => o.value === mappedGrade);
+            set('grade_level', opt?.level ?? '');
+            setGradeChanged(false);
+        }
+    }, [form.designation]);
+
+    // Auto-populate designation when user_grade changes (only if user manually changed grade, not during initial load)
+    useEffect(() => {
+        if (!form.user_grade || lastManualChangeRef.current !== 'grade') return;
+        const mappedDesignation = GRADE_DESIGNATION_MAPPING[form.user_grade];
+        if (mappedDesignation) {
+            set('designation', mappedDesignation);
+            const designationObj = DESIGNATION_OPTIONS.find(opt => opt.value === mappedDesignation);
+            if (designationObj && designationObj.hindi) {
+                set('hindi_designation', designationObj.hindi);
+            }
+            setGradeChanged(true);
+        }
+    }, [form.user_grade]);
+
     const initForm = async (profile) => {
+        console.log('[initForm] Profile received:', profile);
         const officeType = profile.office_type || '';
         const location   = profile.location   || '';
         const deptName   = profile.department_name || '';
         const isDDMProfile = deptName === 'DDM';
+        console.log('[initForm] Extracted values:', { officeType, location, deptName, isDDMProfile });
 
         const locs        = getLocations(officeType);
         const locObj      = locs.find(l => l.location === location);
@@ -124,26 +180,29 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             // For DDM users: store empty deptCodes so standard group logic doesn't process district names
             originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: isDDMProfile ? [] : multiCodes, designation: profile.designation || '' };
         } else {
-            // For HO users: try to get department_short_code from multiple sources
-            const deptObj = depts.find(d => d.name === deptName);
+            // For HO users: support multi-select departments
+            const multiCodes = Array.isArray(profile.department_short_code_multi)
+                ? profile.department_short_code_multi
+                : (profile.department_short_code ? [profile.department_short_code] : []);
+            deptShortCodeMulti = multiCodes;
+            deptShortCode = multiCodes[0] || '';
 
-            // Try: 1) match by name, 2) first code from multi array, 3) direct department_short_code
-            if (deptObj) {
-                deptShortCode = deptObj.shortCode;
-            } else if (Array.isArray(profile.department_short_code_multi) && profile.department_short_code_multi.length > 0) {
-                deptShortCode = profile.department_short_code_multi[0];
-                deptShortCodeMulti = profile.department_short_code_multi;
-            } else {
-                deptShortCode = profile.department_short_code || '';
+            // If no multi codes but have department_name, try to find by name
+            if (multiCodes.length === 0 && deptName) {
+                const deptObj = depts.find(d => d.name === deptName);
+                if (deptObj) {
+                    deptShortCode = deptObj.shortCode;
+                    deptShortCodeMulti = [deptObj.shortCode];
+                }
             }
 
-            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: deptShortCode ? [deptShortCode] : [], designation: profile.designation || '' };
+            originalGroupInfoRef.current = { officeType, roShortCode, deptCodes: deptShortCodeMulti, designation: profile.designation || '' };
         }
 
         const gradeObj   = USER_GRADES.find(g => g.value === profile.user_grade);
         const gradeLevel = gradeObj !== undefined ? gradeObj.gradeLevel : (profile.grade_level ?? '');
 
-        setForm({
+        const finalForm = {
             object_name:                 profile.object_name            || '',
             uin:                         profile.uin                    || '',
             designation:                 profile.designation            || '',
@@ -161,7 +220,9 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             user_grade:                  profile.user_grade             || '',
             grade_level:                 gradeLevel,
             is_active:                   profile.is_active              ?? false,
-        });
+        };
+        console.log('[initForm] Final form state:', finalForm);
+        setForm(finalForm);
         setError(null);
         setErrors({});
         setPendingCases([]);
@@ -213,32 +274,23 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const pf = (task, f) => task[`packagescase_folder${f}`] || task[f] || '';
 
     const handleDelegateClick = async (task) => {
-        // Extract case location/department from case number
-        // Format for RO/TE: NB-RO/TE-{LOCATION}-{TYPE}-YEAR-QUARTER-NUMBER
-        // Format for HO:    NB-{DEPT}-{TYPE}-YEAR-QUARTER-NUMBER
         const caseNumber = pf(task, 'object_name') || task.object_name || task.case_number || task.case_id || '';
-        const caseParts = caseNumber.split('-');
-
-        const officeTypeOrDept = (caseParts[1] || '').toUpperCase();
-        const hoShortCodes = ['DDSI', 'DIT', 'FAD', 'CAC', 'DEAR', 'DFIBT', 'FNRM', 'MCIPL', 'SPPISL', 'NABCONS', 'OFDD', 'CGM'];
-
-        let caseLocOrDept = '';
-        let isCaseHO = false;
-
-        console.log('[Delegate] Case number parsed:', { caseNumber, caseParts, officeTypeOrDept });
-
-        if (officeTypeOrDept === 'RO' || officeTypeOrDept === 'TE') {
-            // RO/TE case: location is at index 2
-            caseLocOrDept = (caseParts[2] || '').toUpperCase();
-        } else {
-            // HO case: department is at index 1
-            caseLocOrDept = officeTypeOrDept;
-            isCaseHO = hoShortCodes.includes(caseLocOrDept);
-        }
-
-        console.log('[Delegate] Location/Dept code:', { caseLocOrDept, isCaseHO, officeTypeOrDept });
-
         const currentPerformer = form.object_name || '';
+
+        // Use ORIGINAL profile values (stored at load time) for delegation, not edited form values
+        // This allows users to delegate before saving profile changes
+        const originalOfficeType = originalGroupInfoRef.current.officeType;
+        const isHO = originalOfficeType === 'HO';
+        const isROTE = originalOfficeType === 'RO' || originalOfficeType === 'TE';
+
+        console.log('[Delegate] Using original profile values:', {
+            originalOfficeType,
+            isHO,
+            isROTE,
+            originalDeptCodes: originalGroupInfoRef.current.deptCodes,
+            originalRoShortCode: originalGroupInfoRef.current.roShortCode
+        });
+        console.log('[Delegate] Case number:', { caseNumber });
 
         setDelegateTask(task);
         setDelegateSelectedUser('');
@@ -246,60 +298,34 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setDelegateError(null);
         setLoadingDelegateUsers(true);
         try {
-            if (!isCaseHO) {
-                // RO/TE case: caseLocOrDept is location code (TN, KA, MH, etc.)
-                if (!caseLocOrDept) {
-                    throw new Error('Could not extract location from case number: ' + caseNumber);
+            if (isHO) {
+                // HO user: Always delegate to users in their own department
+                const userDeptCode = originalGroupInfoRef.current.deptCodes[0];
+                if (!userDeptCode || !userDeptCode.trim()) {
+                    setDelegateError('Department code is not set for this user in their profile.');
+                    setDelegateUsers([]);
+                    return;
                 }
 
-                const allLocs = [...RO_LOCATIONS, ...TE_LOCATIONS];
-                const locObj = allLocs.find(l => l.shortCode?.toUpperCase() === caseLocOrDept);
-                const location = locObj?.location;
+                console.log('[Delegate] HO user delegating:', { caseNumber, userDeptCode });
 
-                console.log('[Delegate] RO/TE case:', { caseNumber, caseLocOrDept, foundLocation: locObj?.location, allLocsCount: allLocs.length });
+                const res = await api.get('/users/by-dept', { params: { shortCode: userDeptCode.toLowerCase(), officeType: 'HO', page: 1, size: 500 } });
+                const allUsers = Array.isArray(res.data?.users) ? res.data.users : (Array.isArray(res.data) ? res.data : []);
 
-                if (!location) {
-                    throw new Error(`Location not found for shortCode: ${caseLocOrDept}. Make sure RO_LOCATIONS or TE_LOCATIONS has this location.`);
+                console.log('[Delegate] Fetched HO users from user dept:', { userDeptCode, count: allUsers.length });
+
+                if (allUsers.length === 0) {
+                    setDelegateError(`No users found in department ${userDeptCode.toUpperCase()}.`);
+                    setDelegateUsers([]);
+                    return;
                 }
-
-                const res = await api.get('/users/by-location', { params: { location, page: 1, size: 500 } });
-                const allUsers = res.data?.users || res.data || [];
-
-                console.log('[Delegate] Fetched users:', { count: allUsers.length, sample: allUsers[0] });
 
                 const filteredUsers = allUsers
                     .filter(u => {
-                        // Ensure user has a valid object_name
                         const displayName = u.object_name || u.name || '';
                         return displayName.trim().length > 0;
                     })
                     .filter(u => {
-                        // Filter out current performer
-                        const userName = u.name?.trim().toLowerCase() || '';
-                        const userObjName = u.object_name?.trim().toLowerCase() || '';
-                        const currentName = currentPerformer?.trim().toLowerCase() || '';
-                        return userName !== currentName && userObjName !== currentName;
-                    });
-
-                console.log('[Delegate] Filtered users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
-                setDelegateUsers(filteredUsers);
-            } else {
-                // HO case: caseLocOrDept is department code (DDSI, DIT, FAD, etc.)
-                console.log('[Delegate] HO case:', { caseNumber, caseLocOrDept });
-
-                const res = await api.get('/users/by-dept', { params: { shortCode: caseLocOrDept.toLowerCase(), officeType: 'HO', page: 1, size: 500 } });
-                const allUsers = res.data?.users || res.data || [];
-
-                console.log('[Delegate] Fetched HO users:', { count: allUsers.length, sample: allUsers[0] });
-
-                const filteredUsers = allUsers
-                    .filter(u => {
-                        // Ensure user has a valid object_name
-                        const displayName = u.object_name || u.name || '';
-                        return displayName.trim().length > 0;
-                    })
-                    .filter(u => {
-                        // Filter out current performer
                         const userName = u.name?.trim().toLowerCase() || '';
                         const userObjName = u.object_name?.trim().toLowerCase() || '';
                         const currentName = currentPerformer?.trim().toLowerCase() || '';
@@ -308,10 +334,61 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
                 console.log('[Delegate] Filtered HO users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
                 setDelegateUsers(filteredUsers);
+            } else if (isROTE) {
+                // RO/TE user: Always delegate to users in their own location
+                const roShortCode = originalGroupInfoRef.current.roShortCode;
+                if (!roShortCode) {
+                    setDelegateError('Location code is not set for this user in their profile.');
+                    setDelegateUsers([]);
+                    return;
+                }
+
+                // Convert ro_short_code back to location name
+                const allLocs = [...RO_LOCATIONS, ...TE_LOCATIONS];
+                const locObj = allLocs.find(l => l.shortCode?.toUpperCase() === roShortCode.toUpperCase());
+                const userLocation = locObj?.location;
+
+                if (!userLocation) {
+                    setDelegateError(`Location not found for code: ${roShortCode}`);
+                    setDelegateUsers([]);
+                    return;
+                }
+
+                console.log('[Delegate] RO/TE user delegating:', { caseNumber, roShortCode, userLocation, originalOfficeType });
+
+                const res = await api.get('/users/by-location', { params: { location: userLocation, page: 1, size: 500 } });
+                const allUsers = Array.isArray(res.data?.users) ? res.data.users : (Array.isArray(res.data) ? res.data : []);
+
+                console.log('[Delegate] Fetched RO/TE users from user location:', { userLocation, count: allUsers.length });
+
+                if (allUsers.length === 0) {
+                    setDelegateError(`No users found in location ${userLocation}.`);
+                    setDelegateUsers([]);
+                    return;
+                }
+
+                const filteredUsers = allUsers
+                    .filter(u => {
+                        const displayName = u.object_name || u.name || '';
+                        return displayName.trim().length > 0;
+                    })
+                    .filter(u => {
+                        const userName = u.name?.trim().toLowerCase() || '';
+                        const userObjName = u.object_name?.trim().toLowerCase() || '';
+                        const currentName = currentPerformer?.trim().toLowerCase() || '';
+                        return userName !== currentName && userObjName !== currentName;
+                    });
+
+                console.log('[Delegate] Filtered RO/TE users:', { count: filteredUsers.length, names: filteredUsers.map(u => u.object_name || u.name) });
+                setDelegateUsers(filteredUsers);
+            } else {
+                setDelegateError('Could not determine office type for this user.');
+                setDelegateUsers([]);
             }
         } catch (err) {
-            console.error('[Delegate] Failed to load users:', { error: err.message, caseNumber, caseLocOrDept, isCaseHO });
-            setDelegateError('Failed to load users.');
+            console.error('[Delegate] Failed to load users:', { error: err.message, caseNumber, originalOfficeType, status: err.response?.status, data: err.response?.data });
+            const errorMsg = err.response?.data?.message || err.message || 'Failed to load users. Please check the console for details.';
+            setDelegateError(errorMsg);
         } finally {
             setLoadingDelegateUsers(false);
         }
@@ -566,6 +643,51 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         }
     };
 
+    // Handle multi-select department changes for HO users
+    const handleHODepartmentChange = (deptShortCode, isAdding) => {
+        const currentCodes = form.department_short_code_multi || [];
+        const newCodes = isAdding
+            ? [...currentCodes, deptShortCode]
+            : currentCodes.filter(c => c !== deptShortCode);
+
+        const firstDept = deptOptions.find(dept => dept.shortCode === newCodes[0]);
+        set('department_short_code', newCodes[0] || '');
+        set('department_short_code_multi', newCodes);
+        set('department_name', firstDept?.name || '');
+
+        // Check inbox for departments removed vs original
+        const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
+        const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
+        if (removedCodes.length > 0) {
+            checkDeptInbox(removedCodes);
+        } else {
+            setShowDeptBlock(false);
+            setDeptPendingCases([]);
+        }
+    };
+
+    // Handle select/deselect all for HO departments
+    const handleHODepartmentSelectAll = () => {
+        const currentCodes = form.department_short_code_multi || [];
+        const allSelected = currentCodes.length === deptOptions.length;
+        const newCodes = allSelected ? [] : deptOptions.map(d => d.shortCode);
+        const firstDept = deptOptions.find(dept => dept.shortCode === newCodes[0]);
+
+        set('department_short_code', newCodes[0] || '');
+        set('department_short_code_multi', newCodes);
+        set('department_name', firstDept?.name || '');
+
+        // Check inbox for departments removed vs original
+        const originalCodes = originalGroupInfoRef.current.deptCodes.map(c => c.toLowerCase());
+        const removedCodes = originalCodes.filter(c => !newCodes.map(n => n.toLowerCase()).includes(c));
+        if (removedCodes.length > 0) {
+            checkDeptInbox(removedCodes);
+        } else {
+            setShowDeptBlock(false);
+            setDeptPendingCases([]);
+        }
+    };
+
     const handleDDMDistrictChange = (district) => {
         set('department_short_code', district);
         set('department_short_code_multi', district ? [district] : []);
@@ -573,9 +695,12 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     };
 
     const handleGradeChange = (v) => {
+        lastManualChangeRef.current = 'grade';
         set('user_grade', v);
         const opt = USER_GRADE_OPTIONS.find(o => o.value === v);
         set('grade_level', opt?.level ?? '');
+        // Reset to false; the useEffect will set it to true after auto-updating designation
+        setGradeChanged(false);
     };
 
     const handleSubmit = async (e) => {
@@ -598,13 +723,21 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setError(null);
         try {
             const isROTE = ['RO', 'TE'].includes(form.office_type);
+            const isHO = form.office_type === 'HO';
             const { department_short_code_multi, ...rest } = form;
             const payload = {
                 ...rest,
+                ...(isHO && { department_short_code_multi: form.department_short_code_multi || [] }),
                 ...(isROTE && !isDDMUser && { department_short_code_multi }),
                 ...(isDDMUser && { department_short_code_multi: form.department_short_code ? [form.department_short_code] : [] }),
             };
+
             await api.patch(`/users/profiles/${user.r_object_id}`, payload);
+
+            // Use payload's department codes as single source of truth for group management
+            const payloadDeptCodes = isHO
+                ? (payload.department_short_code_multi || [])
+                : (payload.department_short_code_multi || []);
 
             const getGroups = (offType, roCode, codes) => {
                 const groups = [];
@@ -752,12 +885,18 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         });
                     }
                 }
-                const newDeptCodes = isROTE
-                    ? (form.department_short_code_multi || [])
-                    : (form.department_short_code ? [form.department_short_code] : []);
+
+                // Use payloadDeptCodes as single source of truth (exact data sent to backend)
+                const newDeptCodes = payloadDeptCodes;
 
                 const oldGroups = getGroups(old.officeType, old.roShortCode, old.deptCodes);
                 const newGroups = getGroups(form.office_type, newRoShortCode, newDeptCodes);
+
+                // Compute which departments were removed and which were added
+                const oldDeptCodesLower = old.deptCodes.map(c => c.toLowerCase());
+                const newDeptCodesLower = newDeptCodes.map(c => c.toLowerCase());
+                const removedDepts = oldDeptCodesLower.filter(d => !newDeptCodesLower.includes(d));
+                const addedDepts = newDeptCodesLower.filter(d => !oldDeptCodesLower.includes(d));
 
                 console.log('Group Management Debug:', {
                     memberName,
@@ -769,21 +908,48 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                     newRoCode: newRoShortCode,
                     newDeptCodes,
                     newGroups,
+                    removedDepts,
+                    addedDepts,
                     groupsToRemove: oldGroups.filter(g => !newGroups.includes(g)),
                     groupsToAdd: newGroups.filter(g => !oldGroups.includes(g))
                 });
 
+                // Only remove groups for departments that were actually removed
                 for (const g of oldGroups) {
-                    if (!newGroups.includes(g)) {
-                        console.log(`Removing user from group: ${g}`);
+                    const deptMatch = g.match(/ecm_ho_([a-z]+)/) || g.match(/ecm_([a-z]+)_([a-z]+)/);
+                    let shouldRemove = false;
+
+                    if (form.office_type === 'HO' && deptMatch) {
+                        const dept = deptMatch[1];
+                        shouldRemove = removedDepts.includes(dept);
+                    } else if (['RO', 'TE'].includes(form.office_type) && deptMatch) {
+                        const dept = deptMatch[2];
+                        shouldRemove = removedDepts.includes(dept);
+                    }
+
+                    if (shouldRemove) {
+                        console.log(`Removing user from group (dept removed): ${g}`);
                         api.delete(`/groups/${g}/members/${encodeURIComponent(memberName)}`).catch(err => {
                             console.error(`Failed to remove ${g}:`, err.response?.data || err.message);
                         });
                     }
                 }
+
+                // Only add groups for departments that were actually added
                 for (const g of newGroups) {
-                    if (!oldGroups.includes(g)) {
-                        console.log(`Adding user to group: ${g}`);
+                    const deptMatch = g.match(/ecm_ho_([a-z]+)/) || g.match(/ecm_([a-z]+)_([a-z]+)/);
+                    let shouldAdd = false;
+
+                    if (form.office_type === 'HO' && deptMatch) {
+                        const dept = deptMatch[1];
+                        shouldAdd = addedDepts.includes(dept);
+                    } else if (['RO', 'TE'].includes(form.office_type) && deptMatch) {
+                        const dept = deptMatch[2];
+                        shouldAdd = addedDepts.includes(dept);
+                    }
+
+                    if (shouldAdd) {
+                        console.log(`Adding user to group (new dept): ${g}`);
                         api.post(`/groups/${g}/members`, { memberName, memberType: 'user' }).catch(err => {
                             console.error(`Failed to add ${g}:`, err.response?.data || err.message);
                         });
@@ -803,9 +969,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                     return '';
                 };
 
-                const newDeptCodes = isROTE
-                    ? (form.department_short_code_multi || [])
-                    : (form.department_short_code ? [form.department_short_code] : []);
+                // Use payloadDeptCodes as single source of truth (exact data sent to backend)
+                const newDeptCodes = payloadDeptCodes;
 
                 const oldDesignation = (old.designation || '').toUpperCase();
                 const newDesignation = (form.designation || '').toUpperCase();
@@ -1039,6 +1204,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         <select value={form.designation}
                                             onChange={e => {
                                                 const newDesignation = e.target.value;
+                                                lastManualChangeRef.current = 'designation';
                                                 set('designation', newDesignation);
                                                 setErrors(p => ({ ...p, designation: undefined }));
                                                 // Track if designation was actually changed from original
@@ -1053,7 +1219,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         </select>
                                     </SelectWrapper>
                                     {errors.designation && <p className="text-xs text-red-500">{errors.designation}</p>}
-                                    {designationChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 Change user grade if required</p>}
+                                    {designationChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 User grade has been auto-updated based on designation</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>User Role</Label>
@@ -1070,6 +1236,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             ))}
                                         </select>
                                     </SelectWrapper>
+                                    {gradeChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 Designation has been auto-updated based on grade</p>}
                                 </div>
                                 <div className="space-y-1">
                                     <Label>Grade Level</Label>
@@ -1296,19 +1463,42 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                 )}
                                             </div>
                                         ) : (
-                                            <SelectWrapper>
-                                                <select value={form.department_name}
-                                                    onChange={e => handleDepartmentChange(e.target.value)}
-                                                    disabled={!form.office_type || (isLocalAdmin && isHO)}
-                                                    className={!form.office_type || (isLocalAdmin && isHO) ? disabledSelectCls : selectCls}>
-                                                    <option value="">
-                                                        {!form.office_type ? '— Select office type first —' : (isLocalAdmin && isHO) ? '— Not editable —' : '— Select department —'}
-                                                    </option>
-                                                    {depts.map(d => (
-                                                        <option key={d.name} value={d.name}>{d.name}</option>
-                                                    ))}
-                                                </select>
-                                            </SelectWrapper>
+                                            // HO: Department checkboxes (multi-select)
+                                            <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                                {!form.office_type ? (
+                                                    <p className="px-3 py-2 text-sm text-slate-400">— Select office type first —</p>
+                                                ) : (isLocalAdmin && isHO) ? (
+                                                    <p className="px-3 py-2 text-sm text-slate-400">— Not editable —</p>
+                                                ) : (
+                                                    <>
+                                                        {deptOptions.length > 0 && (
+                                                            <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 border-b border-slate-100 bg-slate-50 font-semibold">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={(form.department_short_code_multi || []).length === deptOptions.length && deptOptions.length > 0}
+                                                                    indeterminate={(form.department_short_code_multi || []).length > 0 && (form.department_short_code_multi || []).length < deptOptions.length}
+                                                                    onChange={handleHODepartmentSelectAll}
+                                                                    className="rounded accent-[#0A66C2]"
+                                                                />
+                                                                <span className="text-sm text-slate-700">{(form.department_short_code_multi || []).length === deptOptions.length && deptOptions.length > 0 ? 'Deselect All' : 'Select All'}</span>
+                                                            </label>
+                                                        )}
+                                                        <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                                            {deptOptions.map(d => (
+                                                                <label key={d.name} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={(form.department_short_code_multi || []).includes(d.shortCode)}
+                                                                        onChange={(e) => handleHODepartmentChange(d.shortCode, e.target.checked)}
+                                                                        className="rounded accent-[#0A66C2]"
+                                                                    />
+                                                                    <span className="text-sm text-slate-700">{d.name}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                     <div className="space-y-1">
@@ -1316,9 +1506,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         <input type="text" readOnly
                                             value={isDDMUser
                                                 ? (form.department_short_code || '')
-                                                : (isROTE
-                                                    ? (form.department_short_code_multi || []).join(',')
-                                                    : (form.department_short_code || ''))}
+                                                : (form.department_short_code_multi || []).join(',')}
                                             placeholder="Auto-filled"
                                             className={readonlyCls} />
                                         {isDDMUser && errors.department_short_code && <p className="text-xs text-red-500">{errors.department_short_code}</p>}
