@@ -176,7 +176,13 @@ public class CaseService {
             }
 
             if (functions != null && !functions.isBlank()) {
-                where.append(" AND functions = '").append(functions.trim().replace("'", "''")).append("'");
+                String[] funcs = functions.split(",");
+                where.append(" AND functions IN (");
+                for (int i = 0; i < funcs.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(funcs[i].trim().replace("'", "''")).append("'");
+                }
+                where.append(")");
             }
 
             if (fromDate != null && !fromDate.isBlank()) {
@@ -188,15 +194,33 @@ public class CaseService {
             }
 
             if (status != null && !status.isBlank()) {
-                where.append(" AND status = '").append(status.trim().replace("'", "''")).append("'");
+                String[] statuses = status.split(",");
+                where.append(" AND status IN (");
+                for (int i = 0; i < statuses.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(statuses[i].trim().replace("'", "''")).append("'");
+                }
+                where.append(")");
             }
 
             if (priority != null && !priority.isBlank()) {
-                where.append(" AND task_priority = '").append(priority.trim().replace("'", "''")).append("'");
+                String[] priorities = priority.split(",");
+                where.append(" AND task_priority IN (");
+                for (int i = 0; i < priorities.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(priorities[i].trim().replace("'", "''")).append("'");
+                }
+                where.append(")");
             }
 
             if (language != null && !language.isBlank()) {
-                where.append(" AND language_type = '").append(language.trim().replace("'", "''")).append("'");
+                String[] languages = language.split(",");
+                where.append(" AND language_type IN (");
+                for (int i = 0; i < languages.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(languages[i].trim().replace("'", "''")).append("'");
+                }
+                where.append(")");
             }
 
             String dql = String.format(
