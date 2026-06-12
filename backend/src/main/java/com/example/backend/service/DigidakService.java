@@ -68,29 +68,71 @@ public class DigidakService {
 
             // Status filter - use provided status if given, otherwise use mandatory list
             if (status != null && !status.isBlank()) {
-                where.append(" AND status = '").append(status.trim()).append("'");
+                String[] statuses = status.split(",");
+                where.append(" AND status IN (");
+                for (int i = 0; i < statuses.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(statuses[i].trim()).append("'");
+                }
+                where.append(")");
             } else {
                 where.append(" AND status IN ('Unread','Opened','Assigned Head','Assigned','Closed','Reassigned','Reassign Head','Responded','Follow-Up','Inprocess','Pushback')");
             }
 
-            // Optional filters
+            // Optional filters - support comma-separated values with IN operator
             if (language != null && !language.isBlank()) {
-                where.append(" AND languages = '").append(language.trim()).append("'");
+                String[] langs = language.split(",");
+                where.append(" AND languages IN (");
+                for (int i = 0; i < langs.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(langs[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (modeOfReceipt != null && !modeOfReceipt.isBlank()) {
-                where.append(" AND mode_of_receipt = '").append(modeOfReceipt.trim()).append("'");
+                String[] modes = modeOfReceipt.split(",");
+                where.append(" AND mode_of_receipt IN (");
+                for (int i = 0; i < modes.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(modes[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (priority != null && !priority.isBlank()) {
-                where.append(" AND priority = '").append(priority.trim()).append("'");
+                String[] priorities = priority.split(",");
+                where.append(" AND priority IN (");
+                for (int i = 0; i < priorities.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(priorities[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (secrecy != null && !secrecy.isBlank()) {
-                where.append(" AND secrecy = '").append(secrecy.trim()).append("'");
+                String[] secrecies = secrecy.split(",");
+                where.append(" AND secrecy IN (");
+                for (int i = 0; i < secrecies.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(secrecies[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (typeCategory != null && !typeCategory.isBlank()) {
-                where.append(" AND type_category = '").append(typeCategory.trim()).append("'");
+                String[] categories = typeCategory.split(",");
+                where.append(" AND type_category IN (");
+                for (int i = 0; i < categories.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(categories[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (sourceVertical != null && !sourceVertical.isBlank()) {
-                where.append(" AND source_vertical = '").append(sourceVertical.trim()).append("'");
+                String[] verticals = sourceVertical.split(",");
+                where.append(" AND source_vertical IN (");
+                for (int i = 0; i < verticals.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(verticals[i].trim()).append("'");
+                }
+                where.append(")");
             }
 
             // Office type filter (HO, RO, TE)
@@ -155,7 +197,7 @@ public class DigidakService {
 
             String dql = String.format(
                 "SELECT DISTINCT r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
-                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, source_vertical " +
                 "FROM cms_digidak_folder " +
                 "WHERE %s " +
                 "ORDER BY r_creation_date DESC " +
@@ -436,7 +478,13 @@ public class DigidakService {
 
             // Status filter - use provided status if given, otherwise use mandatory list
             if (status != null && !status.isBlank()) {
-                where.append(" AND status = '").append(status.trim()).append("'");
+                String[] statuses = status.split(",");
+                where.append(" AND status IN (");
+                for (int i = 0; i < statuses.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(statuses[i].trim()).append("'");
+                }
+                where.append(")");
             } else {
                 where.append(" AND status IN ('Unread','Opened','Assigned Head','Assigned','Closed','Reassigned','Reassign Head','Responded','Follow-Up','Inprocess','Pushback')");
             }
@@ -449,21 +497,51 @@ public class DigidakService {
             }
             where.append(")");
 
-            // Optional filters
+            // Optional filters - support comma-separated values with IN operator
             if (language != null && !language.isBlank()) {
-                where.append(" AND languages = '").append(language.trim()).append("'");
+                String[] langs = language.split(",");
+                where.append(" AND languages IN (");
+                for (int i = 0; i < langs.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(langs[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (modeOfReceipt != null && !modeOfReceipt.isBlank()) {
-                where.append(" AND mode_of_receipt = '").append(modeOfReceipt.trim()).append("'");
+                String[] modes = modeOfReceipt.split(",");
+                where.append(" AND mode_of_receipt IN (");
+                for (int i = 0; i < modes.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(modes[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (priority != null && !priority.isBlank()) {
-                where.append(" AND priority = '").append(priority.trim()).append("'");
+                String[] priorities = priority.split(",");
+                where.append(" AND priority IN (");
+                for (int i = 0; i < priorities.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(priorities[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (secrecy != null && !secrecy.isBlank()) {
-                where.append(" AND secrecy = '").append(secrecy.trim()).append("'");
+                String[] secrecies = secrecy.split(",");
+                where.append(" AND secrecy IN (");
+                for (int i = 0; i < secrecies.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(secrecies[i].trim()).append("'");
+                }
+                where.append(")");
             }
             if (typeCategory != null && !typeCategory.isBlank()) {
-                where.append(" AND type_category = '").append(typeCategory.trim()).append("'");
+                String[] categories = typeCategory.split(",");
+                where.append(" AND type_category IN (");
+                for (int i = 0; i < categories.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(categories[i].trim()).append("'");
+                }
+                where.append(")");
             }
 
             // Date range filter
@@ -479,7 +557,7 @@ public class DigidakService {
 
             String dql = String.format(
                 "SELECT DISTINCT r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
-                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, source_vertical " +
                 "FROM cms_digidak_folder " +
                 "WHERE %s " +
                 "ORDER BY r_creation_date DESC " +

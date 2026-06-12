@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx';
 import axios from '../api/axios';
 import { getLocations, fetchDepartments } from '../data/nabardMetadata';
 import { CaseDetailsModal, MovementRegisterModal } from './DelegatePage';
+import MultiSelectDropdown from '../components/MultiSelectDropdown';
 
 // Error boundary class component
 class ErrorBoundary extends Component {
@@ -170,13 +171,13 @@ const ReportsPage = () => {
     const [location,     setLocation]     = useState('');
     const [deptName,     setDeptName]     = useState('');
     const [departments,  setDepartments]  = useState([]);
-    const [vertical,     setVertical]     = useState('');
+    const [vertical,     setVertical]     = useState([]);
     const [verticals,    setVerticals]    = useState([]);
     const [fromDate,     setFromDate]     = useState('');
     const [toDate,       setToDate]       = useState('');
-    const [statusFilter,   setStatusFilter]   = useState('');
-    const [priorityFilter, setPriorityFilter] = useState('');
-    const [languageFilter, setLanguageFilter] = useState('');
+    const [statusFilter,   setStatusFilter]   = useState([]);
+    const [priorityFilter, setPriorityFilter] = useState([]);
+    const [languageFilter, setLanguageFilter] = useState([]);
 
     // ── Digidak Report Filter state ───────────────────────────────────────────
     const [digidakOfficeType,   setDigidakOfficeType]   = useState('');
@@ -185,16 +186,16 @@ const ReportsPage = () => {
     const [digidakDepartments,  setDigidakDepartments]  = useState([]);
     const [digidakFromDate,     setDigidakFromDate]     = useState('');
     const [digidakToDate,       setDigidakToDate]       = useState('');
-    const [digidakLanguage,     setDigidakLanguage]     = useState('');
-    const [digidakModeOfReceipt,setDigidakModeOfReceipt]= useState('');
-    const [digidakPriority,     setDigidakPriority]     = useState('');
-    const [digidakSecrecy,      setDigidakSecrecy]      = useState('');
-    const [digidakStatus,        setDigidakStatus]        = useState('');
-    const [digidakTypeCategory,  setDigidakTypeCategory]  = useState('');
-    const [digidakSourceVertical,setDigidakSourceVertical]= useState('');
+    const [digidakLanguage,     setDigidakLanguage]     = useState([]);
+    const [digidakModeOfReceipt,setDigidakModeOfReceipt]= useState([]);
+    const [digidakPriority,     setDigidakPriority]     = useState([]);
+    const [digidakSecrecy,      setDigidakSecrecy]      = useState([]);
+    const [digidakStatus,        setDigidakStatus]        = useState([]);
+    const [digidakTypeCategory,  setDigidakTypeCategory]  = useState([]);
+    const [digidakSourceVertical,setDigidakSourceVertical]= useState([]);
     const [digidakSourceVerticals,setDigidakSourceVerticals]= useState([]);
     const [digidakMetadata,     setDigidakMetadata]     = useState({
-        languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: []
+        languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], source_vertical: []
     });
     const [digidakInboxUsername, setDigidakInboxUsername] = useState('');
     const [digidakInboxUsers,   setDigidakInboxUsers]   = useState([]);
@@ -307,14 +308,14 @@ const ReportsPage = () => {
 
     // ── Fetch Digidak Metadata ────────────────────────────────────────────────
     useEffect(() => {
-        axios.get('/digidak/metadata')
+        axios.get('/metadata/digidak/filter-options')
             .then(res => {
                 setDigidakMetadata(res.data || {});
             })
             .catch(err => {
                 console.error('Error fetching Digidak metadata:', err);
                 setDigidakMetadata({
-                    languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: []
+                    languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], source_vertical: []
                 });
             });
     }, []);
@@ -359,16 +360,16 @@ const ReportsPage = () => {
         setDigidakLocation('');
         setDigidakDeptName('');
         setDigidakDepartments([]);
-        setDigidakSourceVertical('');
+        setDigidakSourceVertical([]);
         setDigidakSourceVerticals([]);
         setDigidakFromDate('');
         setDigidakToDate('');
-        setDigidakLanguage('');
-        setDigidakModeOfReceipt('');
-        setDigidakPriority('');
-        setDigidakSecrecy('');
-        setDigidakStatus('');
-        setDigidakTypeCategory('');
+        setDigidakLanguage([]);
+        setDigidakModeOfReceipt([]);
+        setDigidakPriority([]);
+        setDigidakSecrecy([]);
+        setDigidakStatus([]);
+        setDigidakTypeCategory([]);
         setDigidakInboxUsername('');
         setDigidakResults([]);
         setFiltersApplied(false);
@@ -413,12 +414,12 @@ const ReportsPage = () => {
         if (officeType)            p.hoRo      = officeType;
         if (isRoTe && location)    p.location  = location;
         if (deptName)              p.deptNames = deptName;
-        if (vertical)              p.functions = vertical;
+        if (vertical && vertical.length > 0)              p.functions = vertical.join(',');
         if (fromDate)              p.fromDate  = fromDate;
         if (toDate)                p.toDate    = toDate;
-        if (statusFilter)          p.status    = statusFilter;
-        if (priorityFilter)        p.priority  = priorityFilter;
-        if (languageFilter)        p.language  = languageFilter;
+        if (statusFilter && statusFilter.length > 0)          p.status    = statusFilter.join(',');
+        if (priorityFilter && priorityFilter.length > 0)        p.priority  = priorityFilter.join(',');
+        if (languageFilter && languageFilter.length > 0)        p.language  = languageFilter.join(',');
         return p;
     }, [officeType, isRoTe, location, deptName, vertical, fromDate, toDate,
         statusFilter, priorityFilter, languageFilter]);
@@ -446,9 +447,9 @@ const ReportsPage = () => {
 
     const handleClear = () => {
         setOfficeType(''); setLocation(''); setDeptName(''); setDepartments([]);
-        setVertical(''); setVerticals([]);
+        setVertical([]); setVerticals([]);
         setFromDate(''); setToDate('');
-        setStatusFilter(''); setPriorityFilter(''); setLanguageFilter('');
+        setStatusFilter([]); setPriorityFilter([]); setLanguageFilter([]);
         setCases([]); setAllCases([]);
         setFiltersApplied(false); setError(''); setPage(1);
     };
@@ -461,14 +462,14 @@ const ReportsPage = () => {
         if (digidakDeptName)          p.deptNames = digidakDeptName;
         if (digidakFromDate)          p.fromDate = digidakFromDate;
         if (digidakToDate)            p.toDate = digidakToDate;
-        if (digidakLanguage)          p.language = digidakLanguage;
-        if (digidakModeOfReceipt)     p.modeOfReceipt = digidakModeOfReceipt;
-        if (digidakPriority)          p.priority = digidakPriority;
-        if (digidakSecrecy)           p.secrecy = digidakSecrecy;
-        if (digidakStatus)            p.status = digidakStatus;
-        if (digidakTypeCategory)      p.typeCategory = digidakTypeCategory;
+        if (digidakLanguage && digidakLanguage.length > 0)          p.language = digidakLanguage.join(',');
+        if (digidakModeOfReceipt && digidakModeOfReceipt.length > 0)     p.modeOfReceipt = digidakModeOfReceipt.join(',');
+        if (digidakPriority && digidakPriority.length > 0)          p.priority = digidakPriority.join(',');
+        if (digidakSecrecy && digidakSecrecy.length > 0)           p.secrecy = digidakSecrecy.join(',');
+        if (digidakStatus && digidakStatus.length > 0)            p.status = digidakStatus.join(',');
+        if (digidakTypeCategory && digidakTypeCategory.length > 0)      p.typeCategory = digidakTypeCategory.join(',');
         if (digidakInboxUsername)     p.username = digidakInboxUsername;
-        if (digidakSourceVertical && digidakSubTab === 'outbox') p.sourceVertical = digidakSourceVertical;
+        if (digidakSourceVertical && digidakSourceVertical.length > 0 && digidakSubTab === 'outbox') p.sourceVertical = digidakSourceVertical.join(',');
         // For Outbox report, add decisionType parameter
         if (digidakSubTab === 'outbox') p.decisionType = 'outbox';
         return p;
@@ -514,8 +515,8 @@ const ReportsPage = () => {
         setDigidakOfficeType(''); setDigidakLocation(''); setDigidakDeptName('');
         setDigidakDepartments([]);
         setDigidakFromDate(''); setDigidakToDate('');
-        setDigidakLanguage(''); setDigidakModeOfReceipt(''); setDigidakPriority('');
-        setDigidakSecrecy(''); setDigidakStatus(''); setDigidakTypeCategory('');
+        setDigidakLanguage([]); setDigidakModeOfReceipt([]); setDigidakPriority([]);
+        setDigidakSecrecy([]); setDigidakStatus([]); setDigidakTypeCategory([]); setDigidakSourceVertical([]);
         setDigidakInboxUsername('');
         setDigidakResults([]);
         setFiltersApplied(false); setError(''); setPage(1);
@@ -624,6 +625,7 @@ const ReportsPage = () => {
             'Priority':        r.priority         ?? '',
             'Secrecy':         r.secrecy          ?? '',
             'Status':          r.status           ?? '',
+            'Source Vertical': Array.isArray(r.source_vertical) ? r.source_vertical.join(', ') : (r.source_vertical ?? ''),
             'Decision':        r.decision         ?? '',
             'Date Created':    r.r_creation_date  ?? '',
         }));
@@ -730,17 +732,13 @@ const ReportsPage = () => {
 
                     {/* Vertical — HO only, shown when dept is selected and verticals loaded */}
                     {officeType === 'HO' && deptName && verticals.length > 0 && (
-                        <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Vertical</label>
-                            <select value={vertical} onChange={e => setVertical(e.target.value)} className={selectCls}>
-                                <option value="">Select Vertical</option>
-                                {verticals.map(g => (
-                                    <option key={g.group_name} value={g.object_name || g.group_name}>
-                                        {g.object_name || g.group_name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <MultiSelectDropdown
+                            label="Vertical"
+                            options={verticals.map(g => g.object_name || g.group_name)}
+                            selectedValues={vertical}
+                            onChange={setVertical}
+                            placeholder="Select Vertical"
+                        />
                     )}
 
                     {/* From Date */}
@@ -758,31 +756,31 @@ const ReportsPage = () => {
                     </div>
 
                     {/* Status */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
-                        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={selectCls}>
-                            <option value="">Select Status</option>
-                            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Status"
+                        options={STATUS_OPTIONS}
+                        selectedValues={statusFilter}
+                        onChange={setStatusFilter}
+                        placeholder="Select Status"
+                    />
 
                     {/* Priority */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Priority</label>
-                        <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)} className={selectCls}>
-                            <option value="">Select Priority</option>
-                            {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Priority"
+                        options={PRIORITY_OPTIONS}
+                        selectedValues={priorityFilter}
+                        onChange={setPriorityFilter}
+                        placeholder="Select Priority"
+                    />
 
                     {/* Language */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Language</label>
-                        <select value={languageFilter} onChange={e => setLanguageFilter(e.target.value)} className={selectCls}>
-                            <option value="">Select Language</option>
-                            {LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Language"
+                        options={LANGUAGE_OPTIONS}
+                        selectedValues={languageFilter}
+                        onChange={setLanguageFilter}
+                        placeholder="Select Language"
+                    />
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -989,8 +987,8 @@ const ReportsPage = () => {
                         </div>
                     )}
 
-                    {/* Department — hide for Inbox when RO/TE */}
-                    {digidakOfficeType && digidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (digidakSubTab === 'outbox' || !digidakIsRoTe) && (
+                    {/* Department — hide in Outbox when RO/TE */}
+                    {digidakOfficeType && digidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (digidakSubTab === 'inbox' || !digidakIsRoTe) && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
                             <select value={digidakDeptName} onChange={e => setDigidakDeptName(e.target.value)} className={selectCls}>
@@ -1015,13 +1013,13 @@ const ReportsPage = () => {
 
                     {/* Source Vertical — Outbox only */}
                     {digidakSubTab === 'outbox' && digidakSourceVerticals.length > 0 && (
-                        <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Source Vertical</label>
-                            <select value={digidakSourceVertical} onChange={e => setDigidakSourceVertical(e.target.value)} className={selectCls}>
-                                <option value="">Select</option>
-                                {digidakSourceVerticals.map(v => <option key={v} value={v}>{v}</option>)}
-                            </select>
-                        </div>
+                        <MultiSelectDropdown
+                            label="Source Vertical"
+                            options={digidakSourceVerticals || []}
+                            selectedValues={digidakSourceVertical}
+                            onChange={setDigidakSourceVertical}
+                            placeholder="Select Source Vertical"
+                        />
                     )}
 
                     {/* From Date */}
@@ -1037,67 +1035,66 @@ const ReportsPage = () => {
                     </div>
 
                     {/* Language */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Language</label>
-                        <select value={digidakLanguage} onChange={e => setDigidakLanguage(e.target.value)} className={selectCls}>
-                            <option value="">Select</option>
-                            {(digidakMetadata.languages || []).map(lang => <option key={lang} value={lang}>{lang}</option>)}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Language"
+                        options={digidakMetadata.languages || []}
+                        selectedValues={digidakLanguage}
+                        onChange={setDigidakLanguage}
+                        placeholder="Select Language"
+                    />
 
                     {/* Mode of Dispatch */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Mode of Dispatch</label>
-                        <select value={digidakModeOfReceipt} onChange={e => setDigidakModeOfReceipt(e.target.value)} className={selectCls}>
-                            <option value="">Select</option>
-                            {(digidakMetadata.mode_of_receipt || []).map(mode => <option key={mode} value={mode}>{mode}</option>)}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Mode of Dispatch"
+                        options={digidakMetadata.mode_of_receipt || []}
+                        selectedValues={digidakModeOfReceipt}
+                        onChange={setDigidakModeOfReceipt}
+                        placeholder="Select Mode"
+                    />
 
                     {/* Priority */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Priority</label>
-                        <select value={digidakPriority} onChange={e => setDigidakPriority(e.target.value)} className={selectCls}>
-                            <option value="">Select</option>
-                            {(digidakMetadata.priority || []).map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Priority"
+                        options={digidakMetadata.priority || []}
+                        selectedValues={digidakPriority}
+                        onChange={setDigidakPriority}
+                        placeholder="Select Priority"
+                    />
 
                     {/* Secrecy */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Secrecy</label>
-                        <select value={digidakSecrecy} onChange={e => setDigidakSecrecy(e.target.value)} className={selectCls}>
-                            <option value="">Select</option>
-                            {(digidakMetadata.secrecy || []).map(sec => <option key={sec} value={sec}>{sec}</option>)}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Secrecy"
+                        options={digidakMetadata.secrecy || []}
+                        selectedValues={digidakSecrecy}
+                        onChange={setDigidakSecrecy}
+                        placeholder="Select Secrecy"
+                    />
 
                     {/* Status */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
-                        <select value={digidakStatus} onChange={e => setDigidakStatus(e.target.value)} className={selectCls}>
-                            <option value="">Select</option>
-                            {(digidakMetadata.status || []).map(st => <option key={st} value={st}>{st}</option>)}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Status"
+                        options={digidakMetadata.status || []}
+                        selectedValues={digidakStatus}
+                        onChange={setDigidakStatus}
+                        placeholder="Select Status"
+                    />
 
                     {/* Type Category */}
-                    <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Type Category</label>
-                        <select value={digidakTypeCategory} onChange={e => setDigidakTypeCategory(e.target.value)} className={selectCls}>
-                            <option value="">Select</option>
-                            <option value="Information">Information</option>
-                            <option value="Actionable">Actionable</option>
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        label="Type Category"
+                        options={digidakMetadata.type_category || []}
+                        selectedValues={digidakTypeCategory}
+                        onChange={setDigidakTypeCategory}
+                        placeholder="Select Type Category"
+                    />
                 </div>
 
                 {/* Buttons */}
                 <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={handleDigidakApply}
-                        disabled={!digidakOfficeType || !digidakDeptName}
+                        disabled={!digidakOfficeType || (digidakSubTab === 'outbox' && !digidakIsRoTe && !digidakDeptName) || (digidakSubTab === 'outbox' && digidakIsRoTe && !digidakLocation) || (digidakSubTab === 'inbox' && !digidakDeptName && !digidakIsRoTe)}
                         className={`flex items-center gap-1.5 px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors ${
-                            !digidakOfficeType || !digidakDeptName
+                            !digidakOfficeType || (digidakSubTab === 'outbox' && !digidakIsRoTe && !digidakDeptName) || (digidakSubTab === 'outbox' && digidakIsRoTe && !digidakLocation) || (digidakSubTab === 'inbox' && !digidakDeptName && !digidakIsRoTe)
                                 ? 'bg-slate-300 cursor-not-allowed'
                                 : 'bg-[#0A66C2] hover:bg-[#094d92]'
                         }`}>

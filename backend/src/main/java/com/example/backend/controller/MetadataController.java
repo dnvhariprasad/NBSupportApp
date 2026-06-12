@@ -247,4 +247,26 @@ public class MetadataController {
                     .body(Map.of("success", false, "message", e.getMessage()));
         }
     }
+
+    /**
+     * Get filter options for Digidak reports.
+     * GET /api/metadata/digidak/filter-options
+     */
+    @GetMapping("/digidak/filter-options")
+    public ResponseEntity<?> getDigidakFilterOptions() {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "languages", List.of("Bilingual", "English", "Hindi", "Others"),
+                "mode_of_receipt", List.of("Courier", "DigiDak", "Email", "Hand Delivered", "Others"),
+                "priority", List.of("Immediate", "Normal", "Urgent"),
+                "secrecy", List.of("Confidential", "Regular", "Secret"),
+                "status", List.of("Unread", "Opened", "Assigned", "Assigned Head", "Closed", "Reassigned", "Reassign Head", "Responded", "Follow-Up", "In Process", "Pushback"),
+                "type_category", List.of("Information", "Actionable"),
+                "source_vertical", List.of("NABARD", "Regional Office", "State Level")
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
 }
