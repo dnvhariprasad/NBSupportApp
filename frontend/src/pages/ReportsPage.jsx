@@ -598,10 +598,28 @@ const ReportsPage = () => {
         setExporting(true);
         try {
             const endpoint = digidakSubTab === 'inbox' ? '/digidak/inbox' : '/digidak/report';
-            const { data } = await axios.get(endpoint, {
-                params: { ...buildDigidakParams(), page: 1, size: 1000 }
-            });
-            return data.items || [];
+            const allItems = [];
+            let page = 1;
+            let hasNext = true;
+
+            while (hasNext) {
+                const params = { ...buildDigidakParams(), page, size: 100 };
+                if (digidakSubTab === 'outbox') {
+                    params.export = true;
+                }
+                const { data } = await axios.get(endpoint, { params });
+                const items = data.items || [];
+                allItems.push(...items);
+                hasNext = data.hasNext || false;
+                page++;
+            }
+
+            // Deduplicate by r_object_id, keeping last occurrence
+            const lastOccurrence = new Map();
+            for (const item of allItems) {
+                lastOccurrence.set(item.r_object_id, item);
+            }
+            return Array.from(lastOccurrence.values());
         } catch (err) {
             console.error('Error fetching Digidak for export:', err);
             return [];
@@ -615,6 +633,7 @@ const ReportsPage = () => {
         if (!rows.length) return;
         const sheetData = rows.map((r, i) => ({
             '#':               i + 1,
+            'Object ID':       r.r_object_id      ?? '',
             'UID Number':      r.uid_number       ?? '',
             'Letter Subject':  r.letter_subject   ?? '',
             'Initiator':       r.initiator        ?? '',
@@ -625,7 +644,8 @@ const ReportsPage = () => {
             'Priority':        r.priority         ?? '',
             'Secrecy':         r.secrecy          ?? '',
             'Status':          r.status           ?? '',
-            'Source Vertical': Array.isArray(r.source_vertical) ? r.source_vertical.join(', ') : (r.source_vertical ?? ''),
+            'Sent To':         r.selected_region  ?? '',
+            'Source Vertical': r.source_vertical  ?? '',
             'Decision':        r.decision         ?? '',
             'Date Created':    r.r_creation_date  ?? '',
         }));
