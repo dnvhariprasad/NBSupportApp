@@ -36,10 +36,11 @@ public class DigidakController {
             @RequestParam(defaultValue = "") String status,
             @RequestParam(defaultValue = "") String typeCategory,
             @RequestParam(defaultValue = "") String sourceVertical,
+            @RequestParam(defaultValue = "false") boolean export,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
         return digidakService.getDigidakReport(decisionType, hoRo, location, deptNames, fromDate, toDate,
-                language, modeOfReceipt, priority, secrecy, status, typeCategory, sourceVertical, page, size);
+                language, modeOfReceipt, priority, secrecy, status, typeCategory, sourceVertical, export, page, size);
     }
 
     @GetMapping("/metadata")
