@@ -625,7 +625,7 @@ const ReportsPage = () => {
             'Priority':        r.priority         ?? '',
             'Secrecy':         r.secrecy          ?? '',
             'Status':          r.status           ?? '',
-            'Source Vertical': Array.isArray(r.source_vertical) ? r.source_vertical.join(', ') : (r.source_vertical ?? ''),
+            'Sent To':         r.selected_region  ?? '',
             'Decision':        r.decision         ?? '',
             'Date Created':    r.r_creation_date  ?? '',
         }));

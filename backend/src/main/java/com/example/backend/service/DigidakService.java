@@ -40,7 +40,6 @@ public class DigidakService {
      * Get Digidak report with Inbox/Outbox filtering and date range.
      * Always excludes:
      * - is_migrated = false
-     * - is_endorsed_letter = false
      * Mandatory filters:
      * - is_ddm = false
      * - decision = 'Inward' (inbox) or 'Outward' (outbox)
@@ -56,7 +55,6 @@ public class DigidakService {
             // Build WHERE clause with mandatory filters
             StringBuilder where = new StringBuilder();
             where.append("is_ddm = false");
-            where.append(" AND is_endorsed_letter = FALSE");
             where.append(" AND is_migrated = false");
 
             // Decision filter: Inbox = Inward, Outbox = Outward
@@ -197,7 +195,7 @@ public class DigidakService {
 
             String dql = String.format(
                 "SELECT DISTINCT r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
-                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, source_vertical " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region " +
                 "FROM cms_digidak_folder " +
                 "WHERE %s " +
                 "ORDER BY r_creation_date DESC " +
@@ -557,7 +555,7 @@ public class DigidakService {
 
             String dql = String.format(
                 "SELECT DISTINCT r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
-                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, source_vertical " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region " +
                 "FROM cms_digidak_folder " +
                 "WHERE %s " +
                 "ORDER BY r_creation_date DESC " +
