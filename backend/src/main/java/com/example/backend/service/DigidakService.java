@@ -40,7 +40,6 @@ public class DigidakService {
      * Get Digidak report with Inbox/Outbox filtering and date range.
      * Always excludes:
      * - is_migrated = false
-     * - is_endorsed_letter = false
      * Mandatory filters:
      * - is_ddm = false
      * - decision = 'Inward' (inbox) or 'Outward' (outbox)
@@ -51,12 +50,11 @@ public class DigidakService {
     public Map<String, Object> getDigidakReport(String decisionType, String hoRo, String location, String deptNames,
                                                  String fromDate, String toDate, String language, String modeOfReceipt,
                                                  String priority, String secrecy, String status, String typeCategory, String sourceVertical,
-                                                 int page, int itemsPerPage) {
+                                                 boolean export, int page, int itemsPerPage) {
         try {
             // Build WHERE clause with mandatory filters
             StringBuilder where = new StringBuilder();
             where.append("is_ddm = false");
-            where.append(" AND is_endorsed_letter = FALSE");
             where.append(" AND is_migrated = false");
 
             // Decision filter: Inbox = Inward, Outbox = Outward
@@ -125,12 +123,13 @@ public class DigidakService {
                 }
                 where.append(")");
             }
+            // Source Vertical filter - only add if user selected values
             if (sourceVertical != null && !sourceVertical.isBlank()) {
                 String[] verticals = sourceVertical.split(",");
-                where.append(" AND source_vertical IN (");
+                where.append(" AND (");
                 for (int i = 0; i < verticals.length; i++) {
-                    if (i > 0) where.append(", ");
-                    where.append("'").append(verticals[i].trim()).append("'");
+                    if (i > 0) where.append(" OR ");
+                    where.append("ANY source_vertical = '").append(verticals[i].trim()).append("'");
                 }
                 where.append(")");
             }
@@ -195,9 +194,15 @@ public class DigidakService {
                      .append("', 'dd/mm/yyyy')");
             }
 
+            String selectClause = "SELECT " + (export ? "" : "DISTINCT ") +
+                "r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region";
+            if (export) {
+                selectClause += ", source_vertical";
+            }
+
             String dql = String.format(
-                "SELECT DISTINCT r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
-                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, source_vertical " +
+                selectClause + " " +
                 "FROM cms_digidak_folder " +
                 "WHERE %s " +
                 "ORDER BY r_creation_date DESC " +
@@ -205,8 +210,8 @@ public class DigidakService {
                 where, page * itemsPerPage
             );
 
-            log.info("Digidak report DQL — decisionType: {}, hoRo: {}, location: {}, deptNames: {}, from: {}, to: {}",
-                     decisionType, hoRo, location, deptNames, fromDate, toDate);
+            log.info("Digidak report DQL — decisionType: {}, hoRo: {}, location: {}, deptNames: {}, export: {}, from: {}, to: {}",
+                     decisionType, hoRo, location, deptNames, export, fromDate, toDate);
 
             return executeDigidakDQL(dql, page, itemsPerPage);
 
@@ -557,7 +562,7 @@ public class DigidakService {
 
             String dql = String.format(
                 "SELECT DISTINCT r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
-                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, source_vertical " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region " +
                 "FROM cms_digidak_folder " +
                 "WHERE %s " +
                 "ORDER BY r_creation_date DESC " +
