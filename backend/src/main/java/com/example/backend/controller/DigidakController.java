@@ -36,11 +36,14 @@ public class DigidakController {
             @RequestParam(defaultValue = "") String status,
             @RequestParam(defaultValue = "") String typeCategory,
             @RequestParam(defaultValue = "") String sourceVertical,
+            @RequestParam(defaultValue = "") String entryType,
+            @RequestParam(defaultValue = "") String sentTo,
+            @RequestParam(defaultValue = "") String region,
             @RequestParam(defaultValue = "false") boolean export,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
         return digidakService.getDigidakReport(decisionType, hoRo, location, deptNames, fromDate, toDate,
-                language, modeOfReceipt, priority, secrecy, status, typeCategory, sourceVertical, export, page, size);
+                language, modeOfReceipt, priority, secrecy, status, typeCategory, sourceVertical, entryType, sentTo, region, export, page, size);
     }
 
     @GetMapping("/metadata")
@@ -70,10 +73,14 @@ public class DigidakController {
             @RequestParam(defaultValue = "") String secrecy,
             @RequestParam(defaultValue = "") String status,
             @RequestParam(defaultValue = "") String typeCategory,
+            @RequestParam(defaultValue = "") String entryType,
+            @RequestParam(defaultValue = "") String receivedFrom,
+            @RequestParam(defaultValue = "") String region,
+            @RequestParam(defaultValue = "false") boolean export,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
         return digidakService.getDigidakInbox(hoRo, location, deptNames, username, fromDate, toDate,
-                language, modeOfReceipt, priority, secrecy, status, typeCategory, page, size);
+                language, modeOfReceipt, priority, secrecy, status, typeCategory, entryType, receivedFrom, region, export, page, size);
     }
 
     @GetMapping("/{digidakId}/movement")
@@ -87,5 +94,15 @@ public class DigidakController {
             @RequestParam(defaultValue = "") String location,
             @RequestParam(defaultValue = "") String deptName) {
         return digidakService.getDigidakVerticals(officeType, location, deptName);
+    }
+
+    @GetMapping("/sent-to-options")
+    public java.util.List<String> getDigidakSentToOptions() {
+        return digidakService.getDigidakSentToOptions();
+    }
+
+    @GetMapping("/received-from-options")
+    public java.util.List<String> getDigidakReceivedFromOptions() {
+        return digidakService.getDigidakReceivedFromOptions();
     }
 }

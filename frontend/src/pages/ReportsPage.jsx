@@ -192,10 +192,18 @@ const ReportsPage = () => {
     const [digidakSecrecy,      setDigidakSecrecy]      = useState([]);
     const [digidakStatus,        setDigidakStatus]        = useState([]);
     const [digidakTypeCategory,  setDigidakTypeCategory]  = useState([]);
+    const [digidakEntryType,     setDigidakEntryType]     = useState([]);
     const [digidakSourceVertical,setDigidakSourceVertical]= useState([]);
     const [digidakSourceVerticals,setDigidakSourceVerticals]= useState([]);
+    const [digidakSentTo,        setDigidakSentTo]        = useState([]);
+    const [digidakSentToOptions, setDigidakSentToOptions] = useState([]);
+    const [digidakReceivedFrom,  setDigidakReceivedFrom]  = useState([]);
+    const [digidakReceivedFromOptions, setDigidakReceivedFromOptions] = useState([]);
+    const [digidakRegion,        setDigidakRegion]        = useState([]);
+    const [digidakInboxRegion,   setDigidakInboxRegion]   = useState([]);
+    const digidakRegionOptions = ['Region A', 'Region B', 'Region C'];
     const [digidakMetadata,     setDigidakMetadata]     = useState({
-        languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], source_vertical: []
+        languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], entry_type: [], source_vertical: []
     });
     const [digidakInboxUsername, setDigidakInboxUsername] = useState('');
     const [digidakInboxUsers,   setDigidakInboxUsers]   = useState([]);
@@ -308,15 +316,39 @@ const ReportsPage = () => {
 
     // ── Fetch Digidak Metadata ────────────────────────────────────────────────
     useEffect(() => {
-        axios.get('/metadata/digidak/filter-options')
+        axios.get('/digidak/metadata')
             .then(res => {
                 setDigidakMetadata(res.data || {});
             })
             .catch(err => {
                 console.error('Error fetching Digidak metadata:', err);
                 setDigidakMetadata({
-                    languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], source_vertical: []
+                    languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], entry_type: [], source_vertical: []
                 });
+            });
+    }, []);
+
+    // ── Fetch Sent To Options ─────────────────────────────────────────────────
+    useEffect(() => {
+        axios.get('/digidak/sent-to-options')
+            .then(res => {
+                setDigidakSentToOptions(res.data || []);
+            })
+            .catch(err => {
+                console.error('Error fetching Sent To options:', err);
+                setDigidakSentToOptions([]);
+            });
+    }, []);
+
+    // ── Fetch Received From Options ────────────────────────────────────────────
+    useEffect(() => {
+        axios.get('/digidak/received-from-options')
+            .then(res => {
+                setDigidakReceivedFromOptions(res.data || []);
+            })
+            .catch(err => {
+                console.error('Error fetching Received From options:', err);
+                setDigidakReceivedFromOptions([]);
             });
     }, []);
 
@@ -370,6 +402,11 @@ const ReportsPage = () => {
         setDigidakSecrecy([]);
         setDigidakStatus([]);
         setDigidakTypeCategory([]);
+        setDigidakEntryType([]);
+        setDigidakSentTo([]);
+        setDigidakReceivedFrom([]);
+        setDigidakRegion([]);
+        setDigidakInboxRegion([]);
         setDigidakInboxUsername('');
         setDigidakResults([]);
         setFiltersApplied(false);
@@ -468,6 +505,28 @@ const ReportsPage = () => {
         if (digidakSecrecy && digidakSecrecy.length > 0)           p.secrecy = digidakSecrecy.join(',');
         if (digidakStatus && digidakStatus.length > 0)            p.status = digidakStatus.join(',');
         if (digidakTypeCategory && digidakTypeCategory.length > 0)      p.typeCategory = digidakTypeCategory.join(',');
+        if (digidakEntryType && digidakEntryType.length > 0)          p.entryType = digidakEntryType.join(',');
+
+        // Outbox: Region/Sent To handling
+        if (digidakSubTab === 'outbox') {
+            if (digidakRegion && digidakRegion.length > 0) {
+                p.region = digidakRegion.join(',');
+            } else if (digidakSentTo && digidakSentTo.length > 0) {
+                p.sentTo = digidakSentTo.join(',');
+            }
+        }
+
+        // Inbox: Region/Received From handling
+        if (digidakSubTab === 'inbox') {
+            if (digidakInboxRegion && digidakInboxRegion.length > 0) {
+                p.region = digidakInboxRegion.join(',');
+            } else if (digidakReceivedFrom && digidakReceivedFrom.length > 0) {
+                p.receivedFrom = digidakReceivedFrom.join(',');
+            }
+        } else {
+            if (digidakReceivedFrom && digidakReceivedFrom.length > 0) p.receivedFrom = digidakReceivedFrom.join(',');
+        }
+
         if (digidakInboxUsername)     p.username = digidakInboxUsername;
         if (digidakSourceVertical && digidakSourceVertical.length > 0 && digidakSubTab === 'outbox') p.sourceVertical = digidakSourceVertical.join(',');
         // For Outbox report, add decisionType parameter
@@ -475,7 +534,7 @@ const ReportsPage = () => {
         return p;
     }, [digidakOfficeType, digidakIsRoTe, digidakLocation, digidakDeptName,
         digidakFromDate, digidakToDate, digidakLanguage, digidakModeOfReceipt,
-        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakInboxUsername,
+        digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakEntryType, digidakSentTo, digidakRegion, digidakInboxRegion, digidakReceivedFrom, digidakInboxUsername,
         digidakSourceVertical, digidakSubTab]);
 
     const fetchDigidakReport = useCallback(async (pageNum = 1, size = 10) => {
@@ -604,7 +663,7 @@ const ReportsPage = () => {
 
             while (hasNext) {
                 const params = { ...buildDigidakParams(), page, size: 100 };
-                if (digidakSubTab === 'outbox') {
+                if (digidakSubTab === 'outbox' || digidakSubTab === 'inbox') {
                     params.export = true;
                 }
                 const { data } = await axios.get(endpoint, { params });
@@ -631,24 +690,38 @@ const ReportsPage = () => {
     const exportDigidakToExcel = async () => {
         const rows = await fetchAllDigidakForExport();
         if (!rows.length) return;
-        const sheetData = rows.map((r, i) => ({
-            '#':               i + 1,
-            'Object ID':       r.r_object_id      ?? '',
-            'UID Number':      r.uid_number       ?? '',
-            'Letter Subject':  r.letter_subject   ?? '',
-            'Initiator':       r.initiator        ?? '',
-            'File Number':     r.file_number      ?? '',
-            'Type Category':   r.type_category    ?? '',
-            'Language':        r.languages        ?? '',
-            'Mode of Dispatch':r.mode_of_receipt  ?? '',
-            'Priority':        r.priority         ?? '',
-            'Secrecy':         r.secrecy          ?? '',
-            'Status':          r.status           ?? '',
-            'Sent To':         r.selected_region  ?? '',
-            'Source Vertical': r.source_vertical  ?? '',
-            'Decision':        r.decision         ?? '',
-            'Date Created':    r.r_creation_date  ?? '',
-        }));
+        const sheetData = rows.map((r, i) => {
+            const row = {
+                '#':               i + 1,
+                'Object ID':       r.r_object_id      ?? '',
+                'UID Number':      r.uid_number       ?? '',
+                'Letter Subject':  r.letter_subject   ?? '',
+                'Initiator':       r.initiator        ?? '',
+                'File Number':     r.file_number      ?? '',
+                'Type Category':   r.type_category    ?? '',
+                'Type':            r.entry_type       ?? '',
+                'Language':        r.languages        ?? '',
+                'Mode of Dispatch':r.mode_of_receipt  ?? '',
+                'Priority':        r.priority         ?? '',
+                'Secrecy':         r.secrecy          ?? '',
+                'Status':          r.status           ?? '',
+                'Sent To':         r.selected_region  ?? '',
+                'Received From':   r.login_region     ?? '',
+            };
+            // Include Vertical/Department only for Inbox
+            if (digidakSubTab === 'inbox') {
+                const vertical = r.vertical ?? '';
+                const transformedVertical = vertical ? vertical.replace(/_/g, '-').toUpperCase() : '';
+                row['Vertical/Department'] = transformedVertical;
+            }
+            // Include Source Vertical only for Outbox
+            if (digidakSubTab === 'outbox') {
+                row['Source Vertical'] = r.source_vertical ?? '';
+            }
+            row['Decision'] = r.decision ?? '';
+            row['Date Created'] = r.r_creation_date ?? '';
+            return row;
+        });
         const ws = XLSX.utils.json_to_sheet(sheetData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, `${digidakSubTab.charAt(0).toUpperCase() + digidakSubTab.slice(1)} Report`);
@@ -1107,6 +1180,71 @@ const ReportsPage = () => {
                         onChange={setDigidakTypeCategory}
                         placeholder="Select Type Category"
                     />
+
+                    {/* Type (Entry Type) */}
+                    <MultiSelectDropdown
+                        label="Type"
+                        options={digidakMetadata.entry_type || []}
+                        selectedValues={digidakEntryType}
+                        onChange={setDigidakEntryType}
+                        placeholder="Select Type"
+                    />
+
+                    {/* Region - Only for Outbox (disabled if Sent To selected) */}
+                    {digidakSubTab === 'outbox' && (
+                    <div className={digidakSentTo.length > 0 ? 'opacity-50 pointer-events-none' : ''}>
+                        <MultiSelectDropdown
+                            label="Region"
+                            options={digidakRegionOptions}
+                            selectedValues={digidakSentTo.length > 0 ? [] : digidakRegion}
+                            onChange={setDigidakRegion}
+                            placeholder="Select Region"
+                            disabled={digidakSentTo.length > 0}
+                        />
+                    </div>
+                    )}
+
+                    {/* Sent To - Only for Outbox (disabled if Region selected) */}
+                    {digidakSubTab === 'outbox' && (
+                    <div className={digidakRegion.length > 0 ? 'opacity-50 pointer-events-none' : ''}>
+                        <MultiSelectDropdown
+                            label="Sent To"
+                            options={digidakSentToOptions || []}
+                            selectedValues={digidakRegion.length > 0 ? [] : digidakSentTo}
+                            onChange={setDigidakSentTo}
+                            placeholder="Select Sent To"
+                            disabled={digidakRegion.length > 0}
+                        />
+                    </div>
+                    )}
+
+                    {/* Region - Only for Inbox (disabled if Received From selected) */}
+                    {digidakSubTab === 'inbox' && (
+                    <div className={digidakReceivedFrom.length > 0 ? 'opacity-50 pointer-events-none' : ''}>
+                        <MultiSelectDropdown
+                            label="Region"
+                            options={digidakRegionOptions}
+                            selectedValues={digidakReceivedFrom.length > 0 ? [] : digidakInboxRegion}
+                            onChange={setDigidakInboxRegion}
+                            placeholder="Select Region"
+                            disabled={digidakReceivedFrom.length > 0}
+                        />
+                    </div>
+                    )}
+
+                    {/* Received From - Only for Inbox (disabled if Region selected) */}
+                    {digidakSubTab === 'inbox' && (
+                    <div className={digidakInboxRegion.length > 0 ? 'opacity-50 pointer-events-none' : ''}>
+                        <MultiSelectDropdown
+                            label="Received From"
+                            options={digidakReceivedFromOptions || []}
+                            selectedValues={digidakInboxRegion.length > 0 ? [] : digidakReceivedFrom}
+                            onChange={setDigidakReceivedFrom}
+                            placeholder="Select Received From"
+                            disabled={digidakInboxRegion.length > 0}
+                        />
+                    </div>
+                    )}
                 </div>
 
                 {/* Buttons */}
@@ -1169,6 +1307,9 @@ const ReportsPage = () => {
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Priority</th>
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Secrecy</th>
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Status</th>
+                                        {digidakSubTab === 'outbox' && (
+                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Sent To</th>
+                                        )}
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Decision</th>
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Date Created</th>
                                         <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-600">Actions</th>
@@ -1177,7 +1318,7 @@ const ReportsPage = () => {
                                 <tbody className="divide-y divide-slate-100">
                                     {digidakResults.length === 0 ? (
                                         <tr>
-                                            <td colSpan={13} className="px-4 py-16 text-center text-slate-400 text-sm">
+                                            <td colSpan={digidakSubTab === 'outbox' ? 14 : 13} className="px-4 py-16 text-center text-slate-400 text-sm">
                                                 No Digidak records found for the selected filters.
                                             </td>
                                         </tr>
@@ -1199,6 +1340,9 @@ const ReportsPage = () => {
                                                         {item.status || '-'}
                                                     </span>
                                                 </td>
+                                                {digidakSubTab === 'outbox' && (
+                                                    <td className="px-4 py-2.5 text-slate-600 text-xs">{item.selected_region || '-'}</td>
+                                                )}
                                                 <td className="px-4 py-2.5 text-xs">
                                                     <span className={`px-2 py-0.5 rounded-full font-medium ${
                                                         item.decision === 'Inward' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'
