@@ -708,6 +708,12 @@ const ReportsPage = () => {
                 'Sent To':         r.selected_region  ?? '',
                 'Received From':   r.login_region     ?? '',
             };
+            // Include Vertical/Department only for Inbox
+            if (digidakSubTab === 'inbox') {
+                const vertical = r.vertical ?? '';
+                const transformedVertical = vertical ? vertical.replace(/_/g, '-').toUpperCase() : '';
+                row['Vertical/Department'] = transformedVertical;
+            }
             // Include Source Vertical only for Outbox
             if (digidakSubTab === 'outbox') {
                 row['Source Vertical'] = r.source_vertical ?? '';
@@ -1301,6 +1307,9 @@ const ReportsPage = () => {
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Priority</th>
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Secrecy</th>
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Status</th>
+                                        {digidakSubTab === 'outbox' && (
+                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Sent To</th>
+                                        )}
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Decision</th>
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Date Created</th>
                                         <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-600">Actions</th>
@@ -1309,7 +1318,7 @@ const ReportsPage = () => {
                                 <tbody className="divide-y divide-slate-100">
                                     {digidakResults.length === 0 ? (
                                         <tr>
-                                            <td colSpan={13} className="px-4 py-16 text-center text-slate-400 text-sm">
+                                            <td colSpan={digidakSubTab === 'outbox' ? 14 : 13} className="px-4 py-16 text-center text-slate-400 text-sm">
                                                 No Digidak records found for the selected filters.
                                             </td>
                                         </tr>
@@ -1331,6 +1340,9 @@ const ReportsPage = () => {
                                                         {item.status || '-'}
                                                     </span>
                                                 </td>
+                                                {digidakSubTab === 'outbox' && (
+                                                    <td className="px-4 py-2.5 text-slate-600 text-xs">{item.selected_region || '-'}</td>
+                                                )}
                                                 <td className="px-4 py-2.5 text-xs">
                                                     <span className={`px-2 py-0.5 rounded-full font-medium ${
                                                         item.decision === 'Inward' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'

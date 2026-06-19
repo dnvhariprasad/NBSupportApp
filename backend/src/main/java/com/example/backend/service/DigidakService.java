@@ -229,7 +229,7 @@ public class DigidakService {
                      .append("', 'dd/mm/yyyy')");
             }
 
-            String selectClause = "SELECT " + (export ? "" : "DISTINCT ") +
+            String selectClause = "SELECT " + (export ? "" : "") +
                 "r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
                 "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region";
             if (export) {
@@ -632,7 +632,7 @@ public class DigidakService {
             String selectClause = "SELECT " + (export ? "" : "DISTINCT ") +
                 "r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
                 "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region, login_region, entry_type" +
-                (export ? ", source_vertical" : "");
+                (export ? ", source_vertical, vertical" : "");
 
             String dql = String.format(
                 selectClause + " " +
@@ -960,15 +960,20 @@ public class DigidakService {
                 locations.addAll(java.util.Arrays.asList(
                     "Bihar", "Chhattisgarh", "Haryana", "Himachal Pradesh", "Jharkhand",
                     "Madhya Pradesh", "Rajasthan", "Uttar Pradesh", "Uttarakhand", "New Delhi",
-                    "Andaman and Nicobar"
+                    "Andaman and Nicobar", "Bird Lucknow", "NBSC Lucknow"
                 ));
             } else if ("region b".equals(trimmed)) {
-                locations.addAll(java.util.Arrays.asList("Gujarat", "Maharashtra", "Punjab"));
+                locations.addAll(java.util.Arrays.asList(
+                    "Gujarat", "Maharashtra", "Punjab",
+                    "AD", "BID", "CC", "CCD", "CHMNS", "CISO", "CPD", "CSDD", "CVC", "DCAS",
+                    "DDMABI", "DDSI", "DEAR", "DFIBT", "DIT", "FAD", "FSDD", "HRMD"
+                ));
             } else if ("region c".equals(trimmed)) {
                 locations.addAll(java.util.Arrays.asList(
                     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Goa", "Karnataka", "Kerala",
                     "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Sikkim", "Tamilnadu",
-                    "Telangana", "Tripura", "West Bengal", "Jammu and Kashmir"
+                    "Telangana", "Tripura", "West Bengal", "Jammu and Kashmir",
+                    "Bird Kolkata", "Bird Mangalore"
                 ));
             }
         }
