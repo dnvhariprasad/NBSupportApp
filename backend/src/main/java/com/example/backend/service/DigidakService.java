@@ -50,7 +50,7 @@ public class DigidakService {
     public Map<String, Object> getDigidakReport(String decisionType, String hoRo, String location, String deptNames,
                                                  String fromDate, String toDate, String language, String modeOfReceipt,
                                                  String priority, String secrecy, String status, String typeCategory, String sourceVertical,
-                                                 boolean export, int page, int itemsPerPage) {
+                                                 String entryType, String sentTo, String region, boolean export, int page, int itemsPerPage) {
         try {
             // Build WHERE clause with mandatory filters
             StringBuilder where = new StringBuilder();
@@ -123,6 +123,41 @@ public class DigidakService {
                 }
                 where.append(")");
             }
+
+            // Entry Type filter
+            if (entryType != null && !entryType.isBlank()) {
+                String[] types = entryType.split(",");
+                where.append(" AND entry_type IN (");
+                for (int i = 0; i < types.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(types[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            // Region filter (maps to selected_region)
+            if (region != null && !region.isBlank()) {
+                List<String> regionLocations = getLocationsByRegion(region);
+                if (!regionLocations.isEmpty()) {
+                    where.append(" AND selected_region IN (");
+                    for (int i = 0; i < regionLocations.size(); i++) {
+                        if (i > 0) where.append(", ");
+                        where.append("'").append(regionLocations.get(i)).append("'");
+                    }
+                    where.append(")");
+                }
+            }
+            // Sent To (selected_region) filter - only if region not selected
+            else if (sentTo != null && !sentTo.isBlank()) {
+                String[] regions = sentTo.split(",");
+                where.append(" AND selected_region IN (");
+                for (int i = 0; i < regions.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(regions[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
             // Source Vertical filter - only add if user selected values
             if (sourceVertical != null && !sourceVertical.isBlank()) {
                 String[] verticals = sourceVertical.split(",");
@@ -194,11 +229,11 @@ public class DigidakService {
                      .append("', 'dd/mm/yyyy')");
             }
 
-            String selectClause = "SELECT " + (export ? "" : "DISTINCT ") +
+            String selectClause = "SELECT " + (export ? "" : "") +
                 "r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
                 "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region";
             if (export) {
-                selectClause += ", source_vertical";
+                selectClause += ", login_region, entry_type, source_vertical";
             }
 
             String dql = String.format(
@@ -468,7 +503,7 @@ public class DigidakService {
     public Map<String, Object> getDigidakInbox(String hoRo, String location, String deptNames, String username,
                                                String fromDate, String toDate, String language, String modeOfReceipt,
                                                String priority, String secrecy, String status, String typeCategory,
-                                               int page, int itemsPerPage) {
+                                               String entryType, String receivedFrom, String region, boolean export, int page, int itemsPerPage) {
         try {
             // Query 1: Get groups for the selected username
             List<String> groups = getWorkflowGroupsForUser(username);
@@ -549,6 +584,40 @@ public class DigidakService {
                 where.append(")");
             }
 
+            // Entry Type filter
+            if (entryType != null && !entryType.isBlank()) {
+                String[] types = entryType.split(",");
+                where.append(" AND entry_type IN (");
+                for (int i = 0; i < types.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(types[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            // Region filter (maps to login_region)
+            if (region != null && !region.isBlank()) {
+                List<String> regionLocations = getLocationsByRegion(region);
+                if (!regionLocations.isEmpty()) {
+                    where.append(" AND login_region IN (");
+                    for (int i = 0; i < regionLocations.size(); i++) {
+                        if (i > 0) where.append(", ");
+                        where.append("'").append(regionLocations.get(i)).append("'");
+                    }
+                    where.append(")");
+                }
+            }
+            // Received From (login_region) filter - only if region not selected
+            else if (receivedFrom != null && !receivedFrom.isBlank()) {
+                String[] regions = receivedFrom.split(",");
+                where.append(" AND login_region IN (");
+                for (int i = 0; i < regions.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(regions[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
             // Date range filter
             if (fromDate != null && !fromDate.isBlank()) {
                 where.append(" AND r_creation_date >= DATE('").append(formatDateToDDMMYYYY(fromDate))
@@ -560,9 +629,13 @@ public class DigidakService {
                      .append("', 'dd/mm/yyyy')");
             }
 
+            String selectClause = "SELECT " + (export ? "" : "DISTINCT ") +
+                "r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region, login_region, entry_type" +
+                (export ? ", source_vertical, vertical" : "");
+
             String dql = String.format(
-                "SELECT DISTINCT r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
-                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region " +
+                selectClause + " " +
                 "FROM cms_digidak_folder " +
                 "WHERE %s " +
                 "ORDER BY r_creation_date DESC " +
@@ -570,7 +643,7 @@ public class DigidakService {
                 where, page * itemsPerPage
             );
 
-            log.info("Digidak Inbox DQL — hoRo: {}, username: {}, from: {}, to: {}", hoRo, username, fromDate, toDate);
+            log.info("Digidak Inbox DQL — hoRo: {}, username: {}, entryType: {}, receivedFrom: {}, region: {}, export: {}, from: {}, to: {}", hoRo, username, entryType, receivedFrom, region, export, fromDate, toDate);
 
             return executeDigidakDQL(dql, page, itemsPerPage);
 
@@ -677,10 +750,16 @@ public class DigidakService {
             typeCategories.add("Actionable");
             metadata.put("type_category", typeCategories);
 
+            // Add hardcoded Entry Type values
+            List<String> entryTypes = new ArrayList<>();
+            entryTypes.add("External");
+            entryTypes.add("Internal");
+            metadata.put("entry_type", entryTypes);
+
         } catch (Exception e) {
             log.error("Error fetching Digidak metadata", e);
             // Return empty lists on error
-            String[] inputs = {"languages", "mode_of_receipt", "priority", "secrecy", "status", "type_category"};
+            String[] inputs = {"languages", "mode_of_receipt", "priority", "secrecy", "status", "type_category", "entry_type"};
             for (String input : inputs) {
                 metadata.put(input, new ArrayList<>());
             }
@@ -793,5 +872,111 @@ public class DigidakService {
             log.error("Error fetching digidak verticals: {}", e.getMessage());
             return new ArrayList<>();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getDigidakSentToOptions() {
+        List<String> sentToOptions = new ArrayList<>();
+        try {
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            String dql = "SELECT DISTINCT selected_region FROM cms_digidak_folder WHERE selected_region IS NOT NULL ORDER BY selected_region";
+
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&items-per-page=500&page=1&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                            if (props != null && props.get("selected_region") != null) {
+                                String region = props.get("selected_region").toString().trim();
+                                if (!region.isEmpty()) {
+                                    sentToOptions.add(region);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            log.info("Fetched {} Sent To options", sentToOptions.size());
+        } catch (Exception e) {
+            log.error("Error fetching Sent To options", e);
+        }
+        return sentToOptions;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getDigidakReceivedFromOptions() {
+        List<String> receivedFromOptions = new ArrayList<>();
+        try {
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            String dql = "SELECT DISTINCT login_region FROM cms_digidak_folder WHERE login_region IS NOT NULL ORDER BY login_region";
+
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&items-per-page=500&page=1&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null) {
+                    for (Map<String, Object> entry : entries) {
+                        Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                        if (content != null) {
+                            Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                            if (props != null && props.get("login_region") != null) {
+                                String region = props.get("login_region").toString().trim();
+                                if (!region.isEmpty()) {
+                                    receivedFromOptions.add(region);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            log.info("Fetched {} Received From options", receivedFromOptions.size());
+        } catch (Exception e) {
+            log.error("Error fetching Received From options", e);
+        }
+        return receivedFromOptions;
+    }
+
+    private List<String> getLocationsByRegion(String region) {
+        List<String> locations = new ArrayList<>();
+        String[] regions = region.split(",");
+
+        for (String r : regions) {
+            String trimmed = r.trim().toLowerCase();
+            if ("region a".equals(trimmed)) {
+                locations.addAll(java.util.Arrays.asList(
+                    "Bihar", "Chhattisgarh", "Haryana", "Himachal Pradesh", "Jharkhand",
+                    "Madhya Pradesh", "Rajasthan", "Uttar Pradesh", "Uttarakhand", "New Delhi",
+                    "Andaman and Nicobar", "Bird Lucknow", "NBSC Lucknow"
+                ));
+            } else if ("region b".equals(trimmed)) {
+                locations.addAll(java.util.Arrays.asList(
+                    "Gujarat", "Maharashtra", "Punjab",
+                    "AD", "BID", "CC", "CCD", "CHMNS", "CISO", "CPD", "CSDD", "CVC", "DCAS",
+                    "DDMABI", "DDSI", "DEAR", "DFIBT", "DIT", "FAD", "FSDD", "HRMD"
+                ));
+            } else if ("region c".equals(trimmed)) {
+                locations.addAll(java.util.Arrays.asList(
+                    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Goa", "Karnataka", "Kerala",
+                    "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Sikkim", "Tamilnadu",
+                    "Telangana", "Tripura", "West Bengal", "Jammu and Kashmir",
+                    "Bird Kolkata", "Bird Mangalore"
+                ));
+            }
+        }
+        return locations;
     }
 }
