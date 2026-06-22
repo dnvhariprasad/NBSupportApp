@@ -166,6 +166,33 @@ const ReportsPage = () => {
     const [activeTab, setActiveTab] = useState('cases'); // 'cases' or 'digidak'
     const [digidakSubTab, setDigidakSubTab] = useState('inbox'); // 'inbox', 'outbox', or 'draft'
 
+    // ── Local Admin Context ────────────────────────────────────────────────────
+    const storedUser    = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole     = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const isLocalAdmin  = adminRole === 'Local Admin';
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+    const [profileCtx, setProfileCtx] = useState(null);
+
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+        axios.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                const ot  = ctx.office_type || '';
+                const loc = ctx.location    || '';
+                if (ot) {
+                    setOfficeType(ot);
+                    setDigidakOfficeType(ot);
+                    if (loc) {
+                        setLocation(loc);
+                        setDigidakLocation(loc);
+                    }
+                }
+            })
+            .catch(() => setProfileCtx({}));
+    }, [isLocalAdmin, loginUsername]);
+
     // ── Cases Report Filter state ─────────────────────────────────────────────
     const [officeType,   setOfficeType]   = useState('');
     const [location,     setLocation]     = useState('');
@@ -250,6 +277,16 @@ const ReportsPage = () => {
             });
     }, [officeType, location, isRoTe]);
 
+    // For Local Admin: filter departments to only those in their profile (HO only)
+    const filteredDepartments = isLocalAdmin && profileCtx && !isRoTe
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return departments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : departments;
+
     // Fetch verticals for HO when department is selected
     useEffect(() => {
         setVertical('');
@@ -288,6 +325,16 @@ const ReportsPage = () => {
                 setDigidakDepartments([]);
             });
     }, [digidakOfficeType, digidakLocation, digidakIsRoTe]);
+
+    // For Local Admin: filter departments to only those in their profile (HO only)
+    const filteredDigidakDepartments = isLocalAdmin && profileCtx && !digidakIsRoTe
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return digidakDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : digidakDepartments;
 
     // ── Fetch Digidak Source Verticals (Outbox only) ───────────────────────────
     useEffect(() => {
@@ -388,8 +435,11 @@ const ReportsPage = () => {
 
     // ── Clear Digidak filters on tab change ────────────────────────────────────
     useEffect(() => {
-        setDigidakOfficeType('');
-        setDigidakLocation('');
+        // For local admins, preserve Office Type and Location (they're auto-set from profile)
+        if (!isLocalAdmin) {
+            setDigidakOfficeType('');
+            setDigidakLocation('');
+        }
         setDigidakDeptName('');
         setDigidakDepartments([]);
         setDigidakSourceVertical([]);
@@ -412,7 +462,7 @@ const ReportsPage = () => {
         setFiltersApplied(false);
         setPage(1);
         setError('');
-    }, [digidakSubTab]);
+    }, [digidakSubTab, isLocalAdmin]);
 
     // ── Cases Handlers ────────────────────────────────────────────────────────
     const handleOfficeTypeChange = (val) => {
@@ -813,7 +863,7 @@ const ReportsPage = () => {
                     {/* Office Type */}
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
-                        <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)} className={selectCls}>
+                        <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
                             <option value="">Select</option>
                             <option value="HO">HO</option>
                             <option value="RO">RO</option>
@@ -825,7 +875,7 @@ const ReportsPage = () => {
                     {isRoTe && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
-                            <select value={location} onChange={e => handleLocationChange(e.target.value)} className={selectCls}>
+                            <select value={location} onChange={e => handleLocationChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
                                 <option value="">Select Location</option>
                                 {locations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
                             </select>
@@ -833,12 +883,12 @@ const ReportsPage = () => {
                     )}
 
                     {/* Department */}
-                    {officeType && departments.length > 0 && (!isRoTe || location) && (
+                    {officeType && filteredDepartments.length > 0 && (!isRoTe || location) && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
                             <select value={deptName} onChange={e => setDeptName(e.target.value)} className={selectCls}>
                                 <option value="">Select Department</option>
-                                {departments.map(d => <option key={d.shortCode} value={d.name}>{d.name}</option>)}
+                                {filteredDepartments.map(d => <option key={d.shortCode} value={d.name}>{d.name}</option>)}
                             </select>
                         </div>
                     )}
@@ -1091,7 +1141,7 @@ const ReportsPage = () => {
                     {/* Office Type */}
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
-                        <select value={digidakOfficeType} onChange={e => handleDigidakOfficeTypeChange(e.target.value)} className={selectCls}>
+                        <select value={digidakOfficeType} onChange={e => handleDigidakOfficeTypeChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
                             <option value="">Select</option>
                             <option value="HO">HO</option>
                             <option value="RO">RO</option>
@@ -1103,7 +1153,7 @@ const ReportsPage = () => {
                     {digidakIsRoTe && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
-                            <select value={digidakLocation} onChange={e => handleDigidakLocationChange(e.target.value)} className={selectCls}>
+                            <select value={digidakLocation} onChange={e => handleDigidakLocationChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
                                 <option value="">Select Location</option>
                                 {digidakLocations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
                             </select>
@@ -1111,12 +1161,12 @@ const ReportsPage = () => {
                     )}
 
                     {/* Department — hide in Outbox when RO/TE */}
-                    {digidakOfficeType && digidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (digidakSubTab === 'inbox' || !digidakIsRoTe) && (
+                    {digidakOfficeType && filteredDigidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (digidakSubTab === 'inbox' || !digidakIsRoTe) && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
                             <select value={digidakDeptName} onChange={e => setDigidakDeptName(e.target.value)} className={selectCls}>
                                 <option value="">Select Department</option>
-                                {digidakDepartments.map(d => (
+                                {filteredDigidakDepartments.map(d => (
                                     <option key={d.shortCode} value={d.name}>{d.name}</option>
                                 ))}
                             </select>
