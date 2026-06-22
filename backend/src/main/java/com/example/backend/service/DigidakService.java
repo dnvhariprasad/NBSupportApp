@@ -256,6 +256,159 @@ public class DigidakService {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getDigidakDraft(String hoRo, String location, String deptNames,
+                                                String fromDate, String toDate, String language, String modeOfReceipt,
+                                                String priority, String secrecy, String status, String typeCategory, String entryType,
+                                                boolean export, int page, int itemsPerPage) {
+        try {
+            StringBuilder where = new StringBuilder();
+            where.append("is_ddm = false");
+            where.append(" AND is_migrated = false");
+            where.append(" AND status = 'Saved'");
+
+            // Optional filters - support comma-separated values with IN operator
+            if (language != null && !language.isBlank()) {
+                String[] langs = language.split(",");
+                where.append(" AND languages IN (");
+                for (int i = 0; i < langs.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(langs[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (modeOfReceipt != null && !modeOfReceipt.isBlank()) {
+                String[] modes = modeOfReceipt.split(",");
+                where.append(" AND mode_of_receipt IN (");
+                for (int i = 0; i < modes.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(modes[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (priority != null && !priority.isBlank()) {
+                String[] priorities = priority.split(",");
+                where.append(" AND priority IN (");
+                for (int i = 0; i < priorities.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(priorities[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (secrecy != null && !secrecy.isBlank()) {
+                String[] secrecies = secrecy.split(",");
+                where.append(" AND secrecy IN (");
+                for (int i = 0; i < secrecies.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(secrecies[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (typeCategory != null && !typeCategory.isBlank()) {
+                String[] categories = typeCategory.split(",");
+                where.append(" AND type_category IN (");
+                for (int i = 0; i < categories.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(categories[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            // Entry Type filter
+            if (entryType != null && !entryType.isBlank()) {
+                String[] types = entryType.split(",");
+                where.append(" AND entry_type IN (");
+                for (int i = 0; i < types.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(types[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            // Office type filter (HO, RO, TE)
+            if (hoRo == null || hoRo.isBlank()) {
+                log.warn("Office type (hoRo) is required for Digidak draft report");
+                return buildErrorResponse("Office type is required", page, itemsPerPage);
+            }
+
+            String officeType = hoRo.trim().toUpperCase();
+            boolean isRoTe = "RO".equals(officeType) || "TE".equals(officeType);
+
+            // Build CGM group filter based on office type
+            StringBuilder cgmFilter = new StringBuilder(" AND (");
+
+            if (isRoTe) {
+                if (location == null || location.isBlank()) {
+                    log.warn("Location is required for RO/TE Digidak draft report");
+                    return buildErrorResponse("Location is required for RO/TE", page, itemsPerPage);
+                }
+                String locationShortCode = getLocationShortCode(location.trim());
+                cgmFilter.append("login_cgm_group = 'ecm_digidak_").append(officeType.toLowerCase()).append("_")
+                         .append(locationShortCode.toLowerCase()).append("_cgm'");
+            } else {
+                if (deptNames == null || deptNames.isBlank()) {
+                    log.warn("Department is required for HO Digidak draft report");
+                    return buildErrorResponse("Department is required", page, itemsPerPage);
+                }
+
+                Map<String, String> deptNameToCode = new HashMap<>();
+                String[] deptArray = deptNames.split(",");
+                for (String name : deptArray) {
+                    deptNameToCode.put(name.trim(), getDeptShortCode(name.trim()));
+                }
+
+                for (int i = 0; i < deptArray.length; i++) {
+                    if (i > 0) cgmFilter.append(" OR ");
+                    String deptCode = deptNameToCode.get(deptArray[i].trim());
+                    if (deptCode == null) {
+                        deptCode = getDeptShortCode(deptArray[i].trim());
+                    }
+                    cgmFilter.append("login_cgm_group = 'ecm_digidak_").append(officeType.toLowerCase()).append("_")
+                             .append(deptCode.toLowerCase()).append("_cgm'");
+                }
+            }
+
+            cgmFilter.append(")");
+            where.append(cgmFilter);
+
+            // Date range filter
+            if (fromDate != null && !fromDate.isBlank()) {
+                where.append(" AND r_creation_date >= DATE('").append(formatDateToDDMMYYYY(fromDate))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            if (toDate != null && !toDate.isBlank()) {
+                where.append(" AND r_creation_date <= DATE('").append(formatDateToDDMMYYYY(addOneDay(toDate)))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            String selectClause = "SELECT " + (export ? "" : "DISTINCT ") +
+                "r_object_id, uid_number, letter_subject, initiator, file_number, type_category, " +
+                "status, r_creation_date, decision, languages, mode_of_receipt, priority, secrecy, selected_region";
+            if (export) {
+                selectClause += ", entry_type, source_vertical";
+            }
+
+            String dql = String.format(
+                selectClause + " " +
+                "FROM cms_digidak_folder " +
+                "WHERE %s " +
+                "ORDER BY r_creation_date DESC " +
+                "ENABLE(RETURN_TOP %d)",
+                where, page * itemsPerPage
+            );
+
+            log.info("Digidak draft DQL — hoRo: {}, location: {}, deptNames: {}, export: {}, from: {}, to: {}",
+                     hoRo, location, deptNames, export, fromDate, toDate);
+
+            return executeDigidakDQL(dql, page, itemsPerPage);
+
+        } catch (Exception e) {
+            log.error("Error in getDigidakDraft", e);
+            return buildErrorResponse("Failed to get Digidak draft report: " + e.getMessage(), page, itemsPerPage);
+        }
+    }
+
     /**
      * Get department short code from name (simple mapping - can be extended)
      */

@@ -164,7 +164,7 @@ const DigidakMovementRegisterModal = ({ digidakItem, onClose }) => {
 const ReportsPage = () => {
     // ── Tab state ─────────────────────────────────────────────────────────────
     const [activeTab, setActiveTab] = useState('cases'); // 'cases' or 'digidak'
-    const [digidakSubTab, setDigidakSubTab] = useState('inbox'); // 'inbox' or 'outbox'
+    const [digidakSubTab, setDigidakSubTab] = useState('inbox'); // 'inbox', 'outbox', or 'draft'
 
     // ── Cases Report Filter state ─────────────────────────────────────────────
     const [officeType,   setOfficeType]   = useState('');
@@ -541,7 +541,14 @@ const ReportsPage = () => {
         setLoading(true);
         setError('');
         try {
-            const endpoint = digidakSubTab === 'inbox' ? '/digidak/inbox' : '/digidak/report';
+            let endpoint;
+            if (digidakSubTab === 'inbox') {
+                endpoint = '/digidak/inbox';
+            } else if (digidakSubTab === 'draft') {
+                endpoint = '/digidak/draft';
+            } else {
+                endpoint = '/digidak/report';
+            }
             const { data } = await axios.get(endpoint, {
                 params: { ...buildDigidakParams(), page: pageNum, size }
             });
@@ -656,14 +663,21 @@ const ReportsPage = () => {
     const fetchAllDigidakForExport = async () => {
         setExporting(true);
         try {
-            const endpoint = digidakSubTab === 'inbox' ? '/digidak/inbox' : '/digidak/report';
+            let endpoint;
+            if (digidakSubTab === 'inbox') {
+                endpoint = '/digidak/inbox';
+            } else if (digidakSubTab === 'draft') {
+                endpoint = '/digidak/draft';
+            } else {
+                endpoint = '/digidak/report';
+            }
             const allItems = [];
             let page = 1;
             let hasNext = true;
 
             while (hasNext) {
                 const params = { ...buildDigidakParams(), page, size: 100 };
-                if (digidakSubTab === 'outbox' || digidakSubTab === 'inbox') {
+                if (digidakSubTab === 'outbox' || digidakSubTab === 'inbox' || digidakSubTab === 'draft') {
                     params.export = true;
                 }
                 const { data } = await axios.get(endpoint, { params });
@@ -705,9 +719,15 @@ const ReportsPage = () => {
                 'Priority':        r.priority         ?? '',
                 'Secrecy':         r.secrecy          ?? '',
                 'Status':          r.status           ?? '',
-                'Sent To':         r.selected_region  ?? '',
-                'Received From':   r.login_region     ?? '',
             };
+            // Include Sent To only for Inbox and Outbox (not Draft)
+            if (digidakSubTab !== 'draft') {
+                row['Sent To'] = r.selected_region ?? '';
+            }
+            // Include Received From only for Inbox and Outbox (not Draft)
+            if (digidakSubTab !== 'draft') {
+                row['Received From'] = r.login_region ?? '';
+            }
             // Include Vertical/Department only for Inbox
             if (digidakSubTab === 'inbox') {
                 const vertical = r.vertical ?? '';
@@ -1047,6 +1067,16 @@ const ReportsPage = () => {
                     >
                         Outbox Report
                     </button>
+                    <button
+                        onClick={() => setDigidakSubTab('draft')}
+                        className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            digidakSubTab === 'draft'
+                                ? 'border-[#0A66C2] text-[#0A66C2]'
+                                : 'border-transparent text-slate-600 hover:text-slate-800'
+                        }`}
+                    >
+                        Draft Report
+                    </button>
                 </div>
             </div>
 
@@ -1163,7 +1193,8 @@ const ReportsPage = () => {
                         placeholder="Select Secrecy"
                     />
 
-                    {/* Status */}
+                    {/* Status - Hidden for Draft Report */}
+                    {digidakSubTab !== 'draft' && (
                     <MultiSelectDropdown
                         label="Status"
                         options={digidakMetadata.status || []}
@@ -1171,6 +1202,7 @@ const ReportsPage = () => {
                         onChange={setDigidakStatus}
                         placeholder="Select Status"
                     />
+                    )}
 
                     {/* Type Category */}
                     <MultiSelectDropdown
@@ -1250,9 +1282,9 @@ const ReportsPage = () => {
                 {/* Buttons */}
                 <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={handleDigidakApply}
-                        disabled={!digidakOfficeType || (digidakSubTab === 'outbox' && !digidakIsRoTe && !digidakDeptName) || (digidakSubTab === 'outbox' && digidakIsRoTe && !digidakLocation) || (digidakSubTab === 'inbox' && !digidakDeptName && !digidakIsRoTe)}
+                        disabled={!digidakOfficeType || (digidakSubTab !== 'inbox' && !digidakIsRoTe && !digidakDeptName) || (digidakSubTab !== 'inbox' && digidakIsRoTe && !digidakLocation)}
                         className={`flex items-center gap-1.5 px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors ${
-                            !digidakOfficeType || (digidakSubTab === 'outbox' && !digidakIsRoTe && !digidakDeptName) || (digidakSubTab === 'outbox' && digidakIsRoTe && !digidakLocation) || (digidakSubTab === 'inbox' && !digidakDeptName && !digidakIsRoTe)
+                            !digidakOfficeType || (digidakSubTab !== 'inbox' && !digidakIsRoTe && !digidakDeptName) || (digidakSubTab !== 'inbox' && digidakIsRoTe && !digidakLocation)
                                 ? 'bg-slate-300 cursor-not-allowed'
                                 : 'bg-[#0A66C2] hover:bg-[#094d92]'
                         }`}>
