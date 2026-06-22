@@ -105,4 +105,25 @@ public class DigidakController {
     public java.util.List<String> getDigidakReceivedFromOptions() {
         return digidakService.getDigidakReceivedFromOptions();
     }
+
+    @GetMapping("/draft")
+    public Map<String, Object> getDigidakDraft(
+            @RequestParam(defaultValue = "") String hoRo,
+            @RequestParam(defaultValue = "") String location,
+            @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String fromDate,
+            @RequestParam(defaultValue = "") String toDate,
+            @RequestParam(defaultValue = "") String language,
+            @RequestParam(defaultValue = "") String modeOfReceipt,
+            @RequestParam(defaultValue = "") String priority,
+            @RequestParam(defaultValue = "") String secrecy,
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String typeCategory,
+            @RequestParam(defaultValue = "") String entryType,
+            @RequestParam(defaultValue = "false") boolean export,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return digidakService.getDigidakDraft(hoRo, location, deptNames, fromDate, toDate,
+                language, modeOfReceipt, priority, secrecy, status, typeCategory, entryType, export, page, size);
+    }
 }
