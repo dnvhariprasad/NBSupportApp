@@ -2,9 +2,12 @@ package com.example.backend.service;
 
 import com.example.backend.config.DctmConfig;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.xwpf.usermodel.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -717,6 +720,339 @@ public class RajbhashaService {
             "and status!='Saved' and decision='Outward' and languages in ('English')");
         log.info("Grid 3 Region C Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
+    }
+
+    /**
+     * Export Rajbhasha report to Word document
+     */
+    public byte[] exportToWord(Map<String, Object> reportData) throws IOException {
+        XWPFDocument document = new XWPFDocument();
+
+        // Add title
+        XWPFParagraph titlePara = document.createParagraph();
+        titlePara.setAlignment(ParagraphAlignment.CENTER);
+        XWPFRun titleRun = titlePara.createRun();
+        titleRun.setText("राजभाषा रिपोर्ट (Rajbhasha Report)");
+        titleRun.setBold(true);
+        titleRun.setFontSize(16);
+
+        // Add date
+        XWPFParagraph datePara = document.createParagraph();
+        datePara.setAlignment(ParagraphAlignment.CENTER);
+        XWPFRun dateRun = datePara.createRun();
+        dateRun.setText("रिपोर्ट तारीख (Report Date): " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+
+        document.createParagraph(); // spacing
+
+        // Grid 1
+        addGrid1ToDocument(document, (Map<String, Object>) reportData.get("grid1"));
+
+        document.createParagraph(); // spacing
+
+        // Grid 2
+        addGrid2ToDocument(document, (Map<String, Object>) reportData.get("grid2"));
+
+        document.createParagraph(); // spacing
+
+        // Grid 3
+        addGrid3ToDocument(document, (Map<String, Object>) reportData.get("grid3"));
+
+        // Convert to bytes
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        document.write(baos);
+        document.close();
+
+        return baos.toByteArray();
+    }
+
+    private void addGrid1ToDocument(XWPFDocument document, Map<String, Object> grid1) {
+        // Main heading
+        XWPFParagraph mainHeading = document.createParagraph();
+        XWPFRun mainHeadingRun = mainHeading.createRun();
+        mainHeadingRun.setText("I. हिन्दी में प्राप्त पत्रों के उत्तर हिन्दी में दिए जाने की स्थिति (राजभाषा नियम-5)");
+        mainHeadingRun.setBold(true);
+        mainHeadingRun.setFontSize(11);
+
+        XWPFParagraph subHeading = document.createParagraph();
+        XWPFRun subHeadingRun = subHeading.createRun();
+        subHeadingRun.setText("Status of reply in Hindi to the letters received in Hindi (Official Language Rule 5)");
+        subHeadingRun.setBold(true);
+        subHeadingRun.setFontSize(10);
+
+        XWPFTable table = document.createTable(1, 3);
+        table.setWidth("100%");
+        table.getRow(0).getCell(0).setWidth("12%");
+        table.getRow(0).getCell(1).setWidth("63%");
+        table.getRow(0).getCell(2).setWidth("25%");
+
+        // Data rows with labels as per template
+        Object[] rows = (Object[]) grid1.get("rows");
+        String[] labelCodes = { "(क)(a)", "(ख)(b)", "(ग)(c)", "(घ)(d)" };
+        String[] labelTexts = {
+            "हिन्दी में प्राप्त पत्रों की कुल संख्या\nTotal no. of letters received in Hindi",
+            "इनमें से कितनों के उत्तर हिन्दी में दिए गए\nOut of the above how many were replied to in Hindi",
+            "उक्त (क) में से कितनों के उत्तर अंग्रेज़ी में दिए गए\nOut of the above (a) how many were replied to in English",
+            "उक्त (क) में से कितने पत्रों का उत्तर देना अपेक्षित नहीं था\nOut of the above (a) how many letters were not required to be replied to."
+        };
+
+        for (int i = 0; i < rows.length && i < labelTexts.length; i++) {
+            Map<String, Object> rowData = (Map<String, Object>) rows[i];
+            XWPFTableRow newRow = table.createRow();
+            newRow.setHeight(800); // Extra height for multi-line content
+
+            // Column 1: Label code
+            XWPFTableCell codeCell = newRow.getCell(0);
+            codeCell.setText("");
+            XWPFParagraph codePara = codeCell.getParagraphs().get(0);
+            codePara.setAlignment(ParagraphAlignment.CENTER);
+            XWPFRun codeRun = codePara.createRun();
+            codeRun.setText(labelCodes[i]);
+            codeRun.setBold(true);
+
+            // Column 2: Label text (Hindi + English on next line)
+            XWPFTableCell labelCell = newRow.getCell(1);
+            labelCell.setText("");
+            String[] textParts = labelTexts[i].split("\n");
+            XWPFParagraph labelPara = labelCell.getParagraphs().get(0);
+            labelPara.setAlignment(ParagraphAlignment.CENTER);
+            XWPFRun hindiRun = labelPara.createRun();
+            hindiRun.setText(textParts[0]);
+            hindiRun.setBold(true);
+
+            labelPara.createRun().addBreak();
+
+            XWPFRun englishRun = labelPara.createRun();
+            englishRun.setText(textParts[1]);
+            englishRun.setBold(true);
+
+            // Column 3: Total value
+            XWPFTableCell totalCell = newRow.getCell(2);
+            totalCell.setText("");
+            XWPFParagraph totalPara = totalCell.getParagraphs().get(0);
+            totalPara.setAlignment(ParagraphAlignment.CENTER);
+            XWPFRun totalRun = totalPara.createRun();
+            totalRun.setText(rowData.get("total").toString());
+            totalRun.setBold(true);
+        }
+    }
+
+    private void addGrid2ToDocument(XWPFDocument document, Map<String, Object> grid2) {
+        // Blank line before Grid 2
+        document.createParagraph();
+
+        // Main heading
+        XWPFParagraph mainHeading = document.createParagraph();
+        XWPFRun mainHeadingRun = mainHeading.createRun();
+        mainHeadingRun.setText("II. अंग्रेजी में प्राप्त पत्रों के उत्तर हिन्दी में दिए जाने की स्थिति (केवल 'क' और 'ख' क्षेत्र में स्थित कार्यालयों के लिए)");
+        mainHeadingRun.setBold(true);
+        mainHeadingRun.setFontSize(11);
+
+        XWPFParagraph subHeading = document.createParagraph();
+        XWPFRun subHeadingRun = subHeading.createRun();
+        subHeadingRun.setText("Status of letters received in English & replied to in Hindi (applicable to offices located in 'A' & 'B' Regions)");
+        subHeadingRun.setBold(true);
+        subHeadingRun.setFontSize(10);
+
+        XWPFTable table = document.createTable(1, 5);
+        table.setWidth("100%");
+        table.getRow(0).getCell(0).setWidth("18%");
+        table.getRow(0).getCell(1).setWidth("18%");
+        table.getRow(0).getCell(2).setWidth("18%");
+        table.getRow(0).getCell(3).setWidth("18%");
+        table.getRow(0).getCell(4).setWidth("28%");
+
+        // Header row - Column 1: Empty (Region), Columns 2-5: Letter counts
+        String[] headerLabels = {
+            "",
+            "अंग्रेजी में प्राप्त पत्रों की संख्या\nNo. of letters received in English",
+            "इनमें से कितनों के उत्तर हिन्दी में दिए गए\nOut of these how many were replied to in Hindi",
+            "इनमें से कितनों के उत्तर अंग्रेजी में दिए गए\nOut of these how many were replied to in English",
+            "इनमें से कितनों के उत्तर अपेक्षित नहीं थे\nout of these how many letters were not required to be replied to"
+        };
+
+        for (int col = 0; col < headerLabels.length; col++) {
+            XWPFTableCell headerCell = table.getRow(0).getCell(col);
+            headerCell.setText("");
+            String[] textParts = headerLabels[col].split("\n");
+            XWPFParagraph headerPara = headerCell.getParagraphs().get(0);
+            headerPara.setAlignment(col == 0 ? ParagraphAlignment.CENTER : ParagraphAlignment.CENTER);
+
+            for (int j = 0; j < textParts.length; j++) {
+                if (j > 0) headerPara.createRun().addBreak();
+                XWPFRun headerRun = headerPara.createRun();
+                headerRun.setText(textParts[j]);
+                headerRun.setBold(true);
+            }
+        }
+
+        // Region labels as per template
+        String[] regionLabels = {
+            "'क' क्षेत्र से\nFrom Region A",
+            "'ख' क्षेत्र से\nFrom Region B"
+        };
+
+        // Data
+        Object[] rows = (Object[]) grid2.get("rows");
+        for (int i = 0; i < rows.length && i < regionLabels.length; i++) {
+            Map<String, Object> rowData = (Map<String, Object>) rows[i];
+            XWPFTableRow newRow = table.createRow();
+            newRow.setHeight(800);
+
+            // Column 1: Region label
+            XWPFTableCell regionCell = newRow.getCell(0);
+            regionCell.setText("");
+            String[] regionParts = regionLabels[i].split("\n");
+            XWPFParagraph regionPara = regionCell.getParagraphs().get(0);
+            regionPara.setAlignment(ParagraphAlignment.CENTER);
+
+            // Add blank line above Hindi
+            XWPFRun blankLineRun = regionPara.createRun();
+            blankLineRun.addBreak();
+
+            XWPFRun hindiRegionRun = regionPara.createRun();
+            hindiRegionRun.setText(" " + regionParts[0] + " ");
+            hindiRegionRun.setBold(true);
+            regionPara.createRun().addBreak();
+            XWPFRun englishRegionRun = regionPara.createRun();
+            englishRegionRun.setText(" " + regionParts[1] + " ");
+            englishRegionRun.setBold(true);
+
+            // Columns 2-5: Data values
+            long[] values = {
+                Long.parseLong(rowData.get("no_of_letters_english").toString()),
+                Long.parseLong(rowData.get("replied_in_hindi").toString()),
+                Long.parseLong(rowData.get("replied_in_english").toString()),
+                Long.parseLong(rowData.get("not_replied_to").toString())
+            };
+
+            for (int col = 0; col < values.length; col++) {
+                XWPFTableCell valueCell = newRow.getCell(col + 1);
+                valueCell.setText("");
+                XWPFParagraph valuePara = valueCell.getParagraphs().get(0);
+                valuePara.setAlignment(ParagraphAlignment.CENTER);
+
+                // Add blank line above value with spacing
+                XWPFRun blankValueRun = valuePara.createRun();
+                blankValueRun.addBreak();
+
+                XWPFRun valueRun = valuePara.createRun();
+                valueRun.setText(" " + String.valueOf(values[col]) + " ");
+                valueRun.setBold(true);
+            }
+        }
+    }
+
+    private void addGrid3ToDocument(XWPFDocument document, Map<String, Object> grid3) {
+        // Blank line before Grid 3
+        document.createParagraph();
+        // Main heading
+        XWPFParagraph mainHeading = document.createParagraph();
+        XWPFRun mainHeadingRun = mainHeading.createRun();
+        mainHeadingRun.setText("III. भेजे गए मूल पत्रों (ईमेल सहित) का ब्योरा");
+        mainHeadingRun.setBold(true);
+        mainHeadingRun.setFontSize(11);
+
+        XWPFParagraph subHeading = document.createParagraph();
+        XWPFRun subHeadingRun = subHeading.createRun();
+        subHeadingRun.setText("Details of original letters (Including Emails) issued");
+        subHeadingRun.setBold(true);
+        subHeadingRun.setFontSize(10);
+
+        XWPFTable table = document.createTable(1, 5);
+        table.setWidth("100%");
+        table.getRow(0).getCell(0).setWidth("18%");
+        table.getRow(0).getCell(1).setWidth("18%");
+        table.getRow(0).getCell(2).setWidth("18%");
+        table.getRow(0).getCell(3).setWidth("18%");
+        table.getRow(0).getCell(4).setWidth("28%");
+
+        // Header row - Column 1: Empty (Region), Columns 2-5: Letter counts
+        String[] headerLabels = {
+            "",
+            "हिन्दी में/ द्विभाषी\nIn Hindi/Bilingual",
+            "केवल अंग्रेजी में\nIn English only",
+            "भेजे गए पत्रों की कुल संख्या\nTotal No. of Letters Issues",
+            "हिन्दी में /द्विभाषी भेजे गए पत्रों का प्रतिशत\nPercentage of letters sent in Hindi/Bilingual"
+        };
+
+        for (int col = 0; col < headerLabels.length; col++) {
+            XWPFTableCell headerCell = table.getRow(0).getCell(col);
+            headerCell.setText("");
+            String[] textParts = headerLabels[col].split("\n");
+            XWPFParagraph headerPara = headerCell.getParagraphs().get(0);
+            headerPara.setAlignment(ParagraphAlignment.CENTER);
+
+            for (int j = 0; j < textParts.length; j++) {
+                if (j > 0) headerPara.createRun().addBreak();
+                XWPFRun headerRun = headerPara.createRun();
+                headerRun.setText(textParts[j]);
+                headerRun.setBold(true);
+            }
+        }
+
+        // Region labels as per template
+        String[] regionLabels = {
+            "'क' क्षेत्र\nFrom Region A",
+            "'ख' क्षेत्र को\nFrom Region B",
+            "'ग' क्षेत्र को\nFrom Region c",
+            "कुल\nTotal"
+        };
+
+        // Data
+        Object[] rows = (Object[]) grid3.get("rows");
+        for (int i = 0; i < rows.length && i < regionLabels.length; i++) {
+            Map<String, Object> rowData = (Map<String, Object>) rows[i];
+            XWPFTableRow newRow = table.createRow();
+            newRow.setHeight(800);
+
+            // Column 1: Region label
+            XWPFTableCell regionCell = newRow.getCell(0);
+            regionCell.setText("");
+            String[] regionParts = regionLabels[i].split("\n");
+            XWPFParagraph regionPara = regionCell.getParagraphs().get(0);
+            regionPara.setAlignment(ParagraphAlignment.CENTER);
+
+            // Add blank line above Hindi
+            XWPFRun blankLineRun = regionPara.createRun();
+            blankLineRun.addBreak();
+
+            XWPFRun hindiRegionRun = regionPara.createRun();
+            hindiRegionRun.setText(" " + regionParts[0] + " ");
+            hindiRegionRun.setBold(true);
+            regionPara.createRun().addBreak();
+            XWPFRun englishRegionRun = regionPara.createRun();
+            englishRegionRun.setText(" " + regionParts[1] + " ");
+            englishRegionRun.setBold(true);
+
+            // Columns 2-5: Data values
+            long hindi = Long.parseLong(rowData.get("hindi_bilingual").toString());
+            long english = Long.parseLong(rowData.get("english_only").toString());
+            long total = Long.parseLong(rowData.get("total_letters_issued").toString());
+            String percentage = rowData.get("percentage").toString();
+
+            long[] values = { hindi, english, total };
+            String[] valueTexts = {
+                String.valueOf(hindi),
+                String.valueOf(english),
+                String.valueOf(total),
+                percentage
+            };
+
+            for (int col = 0; col < 4; col++) {
+                XWPFTableCell valueCell = newRow.getCell(col + 1);
+                valueCell.setText("");
+                XWPFParagraph valuePara = valueCell.getParagraphs().get(0);
+                valuePara.setAlignment(ParagraphAlignment.CENTER);
+
+                // Add blank line above value with spacing
+                XWPFRun blankValueRun = valuePara.createRun();
+                blankValueRun.addBreak();
+
+                XWPFRun valueRun = valuePara.createRun();
+                valueRun.setText(" " + valueTexts[col] + " ");
+                valueRun.setBold(true);
+            }
+        }
     }
 
     private Map<String, Object> buildErrorResponse(String error) {

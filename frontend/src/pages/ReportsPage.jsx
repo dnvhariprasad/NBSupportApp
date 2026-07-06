@@ -777,6 +777,50 @@ const ReportsPage = () => {
         setError('');
     };
 
+    const handleRajbhashaExport = async () => {
+        if (!rajbhashaReport) {
+            setError('Please apply filters and generate report first');
+            return;
+        }
+
+        setExporting(true);
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const fromDateYYYYMMDD = rajbhashaFromDate || '2025-01-01';
+            const toDateYYYYMMDD = rajbhashaToDate || today;
+
+            const params = new URLSearchParams({
+                hoRo: rajbhashaOfficeType,
+                deptNames: rajbhashaDeptName,
+                fromDate: formatDateToDDMMYYYY(fromDateYYYYMMDD),
+                toDate: formatDateToDDMMYYYY(toDateYYYYMMDD)
+            });
+
+            if (rajbhashaOfficeType !== 'HO' && rajbhashaLocation) {
+                params.append('location', rajbhashaLocation);
+            }
+
+            const response = await axios.get(`/rajbhasha/report/export?${params}`, {
+                responseType: 'blob'
+            });
+
+            // Create blob link and download
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Rajbhasha_Report_${new Date().toISOString().split('T')[0]}.docx`);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setError('Failed to export report');
+            console.error('Export error:', err);
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const handlePageSizeChange = (newSize) => {
         setPageSize(newSize);
         fetchReport(1, newSize);
@@ -1701,6 +1745,13 @@ const ReportsPage = () => {
                         <X size={14} />
                         Clear
                     </button>
+                    {filtersApplied && rajbhashaReport && (
+                        <button onClick={handleRajbhashaExport} disabled={exporting}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                            <Download size={14} />
+                            Export
+                        </button>
+                    )}
                     {error && (
                         <div className="text-red-600 text-sm flex items-center gap-1.5">
                             <AlertCircle size={16} />
