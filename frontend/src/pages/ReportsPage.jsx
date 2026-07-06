@@ -163,7 +163,7 @@ const DigidakMovementRegisterModal = ({ digidakItem, onClose }) => {
 
 const ReportsPage = () => {
     // ── Tab state ─────────────────────────────────────────────────────────────
-    const [activeTab, setActiveTab] = useState('cases'); // 'cases' or 'digidak'
+    const [activeTab, setActiveTab] = useState('cases'); // 'cases', 'digidak', or 'rajbhasha'
     const [digidakSubTab, setDigidakSubTab] = useState('inbox'); // 'inbox', 'outbox', or 'draft'
 
     // ── Local Admin Context ────────────────────────────────────────────────────
@@ -184,9 +184,11 @@ const ReportsPage = () => {
                 if (ot) {
                     setOfficeType(ot);
                     setDigidakOfficeType(ot);
+                    setRajbhashaOfficeType(ot);
                     if (loc) {
                         setLocation(loc);
                         setDigidakLocation(loc);
+                        setRajbhashaLocation(loc);
                     }
                 }
             })
@@ -234,6 +236,15 @@ const ReportsPage = () => {
     });
     const [digidakInboxUsername, setDigidakInboxUsername] = useState('');
     const [digidakInboxUsers,   setDigidakInboxUsers]   = useState([]);
+
+    // ── Rajbhasha Report Filter state ────────────────────────────────────────
+    const [rajbhashaOfficeType,  setRajbhashaOfficeType]  = useState('');
+    const [rajbhashaLocation,    setRajbhashaLocation]    = useState('');
+    const [rajbhashaDeptName,    setRajbhashaDeptName]    = useState('');
+    const [rajbhashaDepartments, setRajbhashaDepartments] = useState([]);
+    const [rajbhashaFromDate,    setRajbhashaFromDate]    = useState('');
+    const [rajbhashaToDate,      setRajbhashaToDate]      = useState('');
+    const [rajbhashaReport,      setRajbhashaReport]      = useState(null);
 
     // ── Results state ─────────────────────────────────────────────────────────
     const [cases,          setCases]          = useState([]);
@@ -335,6 +346,35 @@ const ReportsPage = () => {
             return digidakDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
           })()
         : digidakDepartments;
+
+    // ── Rajbhasha Departments ────────────────────────────────────────────────
+    const rajbhashaLocations = useMemo(() => getLocations(rajbhashaOfficeType), [rajbhashaOfficeType]);
+    const rajbhashaIsRoTe = rajbhashaOfficeType === 'RO' || rajbhashaOfficeType === 'TE';
+
+    useEffect(() => {
+        setRajbhashaDeptName('');
+        setRajbhashaDepartments([]);
+        if (!rajbhashaOfficeType) return;
+        if (rajbhashaIsRoTe && !rajbhashaLocation) return;
+        fetchDepartments(rajbhashaOfficeType, rajbhashaIsRoTe ? rajbhashaLocation : '')
+            .then(depts => {
+                setRajbhashaDepartments(depts || []);
+            })
+            .catch(err => {
+                console.error('Error fetching departments (Rajbhasha):', err);
+                setRajbhashaDepartments([]);
+            });
+    }, [rajbhashaOfficeType, rajbhashaLocation, rajbhashaIsRoTe]);
+
+    // For Local Admin: filter departments to only those in their profile (HO only)
+    const filteredRajbhashaDepartments = isLocalAdmin && profileCtx && !rajbhashaIsRoTe
+        ? (() => {
+            const raw = profileCtx.department_short_code_multi;
+            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
+                .map(s => s.toLowerCase());
+            return rajbhashaDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+          })()
+        : rajbhashaDepartments;
 
     // ── Fetch Digidak Source Verticals (Outbox only) ───────────────────────────
     useEffect(() => {
@@ -496,6 +536,20 @@ const ReportsPage = () => {
         setDigidakDepartments([]);
     };
 
+    // ── Rajbhasha Handlers ─────────────────────────────────────────────────────
+    const handleRajbhashaOfficeTypeChange = (val) => {
+        setRajbhashaOfficeType(val);
+        setRajbhashaLocation('');
+        setRajbhashaDeptName('');
+        setRajbhashaDepartments([]);
+    };
+
+    const handleRajbhashaLocationChange = (val) => {
+        setRajbhashaLocation(val);
+        setRajbhashaDeptName('');
+        setRajbhashaDepartments([]);
+    };
+
     const buildParams = useCallback(() => {
         const p = {};
         if (officeType)            p.hoRo      = officeType;
@@ -636,6 +690,135 @@ const ReportsPage = () => {
         setDigidakInboxUsername('');
         setDigidakResults([]);
         setFiltersApplied(false); setError(''); setPage(1);
+    };
+
+    // ── Rajbhasha Report Functions ─────────────────────────────────────────────
+    const formatDateToDDMMYYYY = (dateStr) => {
+        if (!dateStr) return null;
+        if (dateStr.includes('-')) {
+            // YYYY-MM-DD format → dd/mm/yyyy
+            const [year, month, day] = dateStr.split('-');
+            return `${day}/${month}/${year}`;
+        }
+        return dateStr;
+    };
+
+    const fetchRajbhashaReport = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            // Apply default dates if not provided (as per requirement)
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            const fromDateYYYYMMDD = rajbhashaFromDate || '2025-01-01'; // Default: 01/01/2025
+            const toDateYYYYMMDD = rajbhashaToDate || today; // Default: today
+
+            // Convert to dd/mm/yyyy format as required
+            const finalFromDate = formatDateToDDMMYYYY(fromDateYYYYMMDD);
+            const finalToDate = formatDateToDDMMYYYY(toDateYYYYMMDD);
+
+            const params = {
+                hoRo: rajbhashaOfficeType,
+                deptNames: rajbhashaDeptName,
+                fromDate: finalFromDate,
+                toDate: finalToDate
+            };
+
+            // Only add location for RO/TE, not for HO
+            if (rajbhashaOfficeType !== 'HO' && rajbhashaLocation) {
+                params.location = rajbhashaLocation;
+            }
+
+            const { data } = await axios.get('/rajbhasha/report', { params });
+            if (data.success) {
+                setRajbhashaReport({
+                    grid1: data.grid1 || null,
+                    grid2: data.grid2 || null,
+                    grid3: data.grid3 || null
+                });
+                setFiltersApplied(true);
+            } else {
+                setError(data.error || 'Failed to load Rajbhasha report');
+                setRajbhashaReport(null);
+            }
+        } catch (err) {
+            setError('Failed to load Rajbhasha report. Please try again.');
+            setRajbhashaReport(null);
+        } finally {
+            setLoading(false);
+        }
+    }, [rajbhashaOfficeType, rajbhashaLocation, rajbhashaDeptName, rajbhashaFromDate, rajbhashaToDate]);
+
+    const handleRajbhashaApply = () => {
+        if (!rajbhashaOfficeType) {
+            setError('Office Type is required');
+            return;
+        }
+        if (rajbhashaIsRoTe && !rajbhashaLocation) {
+            setError('Location is required for RO/TE');
+            return;
+        }
+        if (!rajbhashaIsRoTe && !rajbhashaDeptName) {
+            setError('Department is required for HO');
+            return;
+        }
+        setError('');
+        fetchRajbhashaReport();
+    };
+
+    const handleRajbhashaClear = () => {
+        setRajbhashaOfficeType('');
+        setRajbhashaLocation('');
+        setRajbhashaDeptName('');
+        setRajbhashaDepartments([]);
+        setRajbhashaFromDate('');
+        setRajbhashaToDate('');
+        setRajbhashaReport(null);
+        setFiltersApplied(false);
+        setError('');
+    };
+
+    const handleRajbhashaExport = async () => {
+        if (!rajbhashaReport) {
+            setError('Please apply filters and generate report first');
+            return;
+        }
+
+        setExporting(true);
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const fromDateYYYYMMDD = rajbhashaFromDate || '2025-01-01';
+            const toDateYYYYMMDD = rajbhashaToDate || today;
+
+            const params = new URLSearchParams({
+                hoRo: rajbhashaOfficeType,
+                deptNames: rajbhashaDeptName,
+                fromDate: formatDateToDDMMYYYY(fromDateYYYYMMDD),
+                toDate: formatDateToDDMMYYYY(toDateYYYYMMDD)
+            });
+
+            if (rajbhashaOfficeType !== 'HO' && rajbhashaLocation) {
+                params.append('location', rajbhashaLocation);
+            }
+
+            const response = await axios.get(`/rajbhasha/report/export?${params}`, {
+                responseType: 'blob'
+            });
+
+            // Create blob link and download
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Rajbhasha_Report_${new Date().toISOString().split('T')[0]}.docx`);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setError('Failed to export report');
+            console.error('Export error:', err);
+        } finally {
+            setExporting(false);
+        }
     };
 
     const handlePageSizeChange = (newSize) => {
@@ -846,6 +1029,16 @@ const ReportsPage = () => {
                     }`}
                 >
                     Digidak
+                </button>
+                <button
+                    onClick={() => setActiveTab('rajbhasha')}
+                    className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                        activeTab === 'rajbhasha'
+                            ? 'border-b-2 border-[#0A66C2] text-[#0A66C2]'
+                            : 'border-b-2 border-transparent text-slate-600 hover:text-slate-800'
+                    }`}
+                >
+                    Rajbhasha Report
                 </button>
             </div>
 
@@ -1480,6 +1673,184 @@ const ReportsPage = () => {
                     </>
                 )}
 
+            </div>
+            </>
+            )}
+
+            {/* Rajbhasha Report Section */}
+            {activeTab === 'rajbhasha' && (
+            <>
+            {/* Filter Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Filter size={16} className="text-slate-500" />
+                    <span className="text-sm font-semibold text-slate-700">Filters</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-4">
+                    {/* Office Type */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
+                        <select value={rajbhashaOfficeType} onChange={e => handleRajbhashaOfficeTypeChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
+                            <option value="">Select</option>
+                            <option value="HO">HO</option>
+                            <option value="RO">RO</option>
+                            <option value="TE">TE</option>
+                        </select>
+                    </div>
+
+                    {/* Location — RO/TE only */}
+                    {rajbhashaIsRoTe && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
+                            <select value={rajbhashaLocation} onChange={e => handleRajbhashaLocationChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
+                                <option value="">Select Location</option>
+                                {rajbhashaLocations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Department — HO only */}
+                    {rajbhashaOfficeType && filteredRajbhashaDepartments.length > 0 && !rajbhashaIsRoTe && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
+                            <select value={rajbhashaDeptName} onChange={e => setRajbhashaDeptName(e.target.value)} className={selectCls}>
+                                <option value="">Select Department</option>
+                                {filteredRajbhashaDepartments.map(d => <option key={d.shortCode} value={d.name}>{d.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* From Date */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">From Date</label>
+                        <input type="date" value={rajbhashaFromDate} onChange={e => setRajbhashaFromDate(e.target.value)} className={selectCls} />
+                    </div>
+
+                    {/* To Date */}
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">To Date</label>
+                        <input type="date" value={rajbhashaToDate} onChange={e => setRajbhashaToDate(e.target.value)} className={selectCls} />
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <button onClick={handleRajbhashaApply} disabled={loading}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#0A66C2] text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        <Search size={14} />
+                        Apply Filters
+                    </button>
+                    <button onClick={handleRajbhashaClear} disabled={loading}
+                        className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors">
+                        <X size={14} />
+                        Clear
+                    </button>
+                    {filtersApplied && rajbhashaReport && (
+                        <button onClick={handleRajbhashaExport} disabled={exporting}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                            <Download size={14} />
+                            Export
+                        </button>
+                    )}
+                    {error && (
+                        <div className="text-red-600 text-sm flex items-center gap-1.5">
+                            <AlertCircle size={16} />
+                            {error}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Results Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                {!filtersApplied && !loading ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                        <FileBarChart2 size={48} className="mb-3 opacity-30" />
+                        <p className="text-sm">Apply filters to view the report</p>
+                    </div>
+                ) : loading ? (
+                    <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0A66C2]"></div>
+                    </div>
+                ) : rajbhashaReport ? (
+                    <div className="space-y-8">
+                        {/* Grid 1 */}
+                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Summary</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {rajbhashaReport.grid1?.rows && rajbhashaReport.grid1.rows.map((row, idx) => (
+                                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                            <td className="px-4 py-3 font-medium text-slate-900">{row.summary}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-[#0A66C2]">{row.total}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Grid 2 */}
+                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Region</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">No. of English Letters</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Replied in Hindi</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Replied in English</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Not Replied To</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {rajbhashaReport.grid2?.rows && rajbhashaReport.grid2.rows.map((row, idx) => (
+                                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                            <td className="px-4 py-3 font-medium text-slate-900">{row.summary}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-[#0A66C2]">{row.no_of_letters_english}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-orange-600">{row.replied_in_hindi}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-green-600">{row.replied_in_english}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-red-600">{row.not_replied_to}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Grid 3 */}
+                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Region</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">In Hindi/Bilingual</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">In English Only</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Letters Issued</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">% Hindi/Bilingual</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {rajbhashaReport.grid3?.rows && rajbhashaReport.grid3.rows.map((row, idx) => (
+                                        <tr key={idx} className={`${row.summary === 'Total' ? 'bg-slate-100 font-semibold' : 'hover:bg-blue-50/30'} transition-colors`}>
+                                            <td className="px-4 py-3 font-medium text-slate-900">{row.summary}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-purple-600">{row.hindi_bilingual}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-amber-600">{row.english_only}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-blue-600">{row.total_letters_issued}</td>
+                                            <td className="px-4 py-3 text-slate-700 text-lg font-semibold text-indigo-600">{row.percentage}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="px-6 py-12 text-center text-slate-400">
+                        <p className="text-sm">No data found for the selected filters.</p>
+                    </div>
+                )}
             </div>
             </>
             )}
