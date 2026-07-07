@@ -126,4 +126,65 @@ public class DigidakController {
         return digidakService.getDigidakDraft(hoRo, location, deptNames, fromDate, toDate,
                 language, modeOfReceipt, priority, secrecy, status, typeCategory, entryType, export, page, size);
     }
+
+    @GetMapping("/count")
+    public Map<String, Object> getDigidakCount(
+            @RequestParam(defaultValue = "inbox") String decisionType,
+            @RequestParam(defaultValue = "") String hoRo,
+            @RequestParam(defaultValue = "") String location,
+            @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String fromDate,
+            @RequestParam(defaultValue = "") String toDate,
+            @RequestParam(defaultValue = "") String language,
+            @RequestParam(defaultValue = "") String modeOfReceipt,
+            @RequestParam(defaultValue = "") String priority,
+            @RequestParam(defaultValue = "") String secrecy,
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String typeCategory,
+            @RequestParam(defaultValue = "") String sourceVertical,
+            @RequestParam(defaultValue = "") String entryType,
+            @RequestParam(defaultValue = "") String sentTo,
+            @RequestParam(defaultValue = "") String region) {
+        return digidakService.getDigidakCount(decisionType, hoRo, location, deptNames, fromDate, toDate,
+                language, modeOfReceipt, priority, secrecy, status, typeCategory, sourceVertical, entryType, sentTo, region);
+    }
+
+    @GetMapping("/inbox/count")
+    public Map<String, Object> getDigidakInboxCount(
+            @RequestParam(defaultValue = "") String hoRo,
+            @RequestParam(defaultValue = "") String location,
+            @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String username,
+            @RequestParam(defaultValue = "") String fromDate,
+            @RequestParam(defaultValue = "") String toDate,
+            @RequestParam(defaultValue = "") String language,
+            @RequestParam(defaultValue = "") String modeOfReceipt,
+            @RequestParam(defaultValue = "") String priority,
+            @RequestParam(defaultValue = "") String secrecy,
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String typeCategory,
+            @RequestParam(defaultValue = "") String entryType,
+            @RequestParam(defaultValue = "") String receivedFrom,
+            @RequestParam(defaultValue = "") String region) {
+        return digidakService.getDigidakInboxCount(hoRo, location, deptNames, username, fromDate, toDate,
+                language, modeOfReceipt, priority, secrecy, status, typeCategory, entryType, receivedFrom, region);
+    }
+
+    @GetMapping("/draft/count")
+    public Map<String, Object> getDigidakDraftCount(
+            @RequestParam(defaultValue = "") String hoRo,
+            @RequestParam(defaultValue = "") String location,
+            @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String fromDate,
+            @RequestParam(defaultValue = "") String toDate,
+            @RequestParam(defaultValue = "") String language,
+            @RequestParam(defaultValue = "") String modeOfReceipt,
+            @RequestParam(defaultValue = "") String priority,
+            @RequestParam(defaultValue = "") String secrecy,
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String typeCategory,
+            @RequestParam(defaultValue = "") String entryType) {
+        return digidakService.getDigidakDraftCount(hoRo, location, deptNames, fromDate, toDate,
+                language, modeOfReceipt, priority, secrecy, status, typeCategory, entryType);
+    }
 }

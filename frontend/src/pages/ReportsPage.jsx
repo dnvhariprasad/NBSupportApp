@@ -249,7 +249,11 @@ const ReportsPage = () => {
     // ── Results state ─────────────────────────────────────────────────────────
     const [cases,          setCases]          = useState([]);
     const [allCases,       setAllCases]       = useState([]); // holds full export dataset
+    const [casesTotalCount, setCasesTotalCount] = useState(0);
+    const [caseCountLoading, setCaseCountLoading] = useState(false);
     const [digidakResults, setDigidakResults] = useState([]);
+    const [digidakTotalCount, setDigidakTotalCount] = useState(0);
+    const [countLoading,   setCountLoading]   = useState(false);
     const [loading,        setLoading]        = useState(false);
     const [exporting,      setExporting]      = useState(false);
     const [page,           setPage]           = useState(1);
@@ -505,6 +509,7 @@ const ReportsPage = () => {
         setDigidakInboxRegion([]);
         setDigidakInboxUsername('');
         setDigidakResults([]);
+        setDigidakTotalCount(0);
         setFiltersApplied(false);
         setPage(1);
         setError('');
@@ -590,7 +595,26 @@ const ReportsPage = () => {
         }
     }, [buildParams]);
 
-    const handleApply = () => fetchReport(1, pageSize);
+    const fetchCasesCount = useCallback(async () => {
+        setCaseCountLoading(true);
+        try {
+            const { data } = await axios.get('/cases/count', {
+                params: buildParams(),
+                timeout: 60000
+            });
+            setCasesTotalCount(data.total || 0);
+        } catch (err) {
+            console.error('Error fetching cases count:', err);
+            setCasesTotalCount(0);
+        } finally {
+            setCaseCountLoading(false);
+        }
+    }, [buildParams]);
+
+    const handleApply = () => {
+        fetchReport(1, pageSize);
+        fetchCasesCount();
+    };
 
     const handleClear = () => {
         setOfficeType(''); setLocation(''); setDeptName(''); setDepartments([]);
@@ -598,6 +622,7 @@ const ReportsPage = () => {
         setFromDate(''); setToDate('');
         setStatusFilter([]); setPriorityFilter([]); setLanguageFilter([]);
         setCases([]); setAllCases([]);
+        setCasesTotalCount(0);
         setFiltersApplied(false); setError(''); setPage(1);
     };
 
@@ -674,6 +699,28 @@ const ReportsPage = () => {
         }
     }, [buildDigidakParams, digidakSubTab]);
 
+    const fetchDigidakCount = useCallback(async () => {
+        setCountLoading(true);
+        try {
+            let endpoint = '/digidak/count';
+            if (digidakSubTab === 'inbox') {
+                endpoint = '/digidak/inbox/count';
+            } else if (digidakSubTab === 'draft') {
+                endpoint = '/digidak/draft/count';
+            }
+            const { data } = await axios.get(endpoint, {
+                params: buildDigidakParams(),
+                timeout: 60000
+            });
+            setDigidakTotalCount(data.total || 0);
+        } catch (err) {
+            console.error('Error fetching Digidak count:', err);
+            setDigidakTotalCount(0);
+        } finally {
+            setCountLoading(false);
+        }
+    }, [buildDigidakParams, digidakSubTab]);
+
     const handleDigidakApply = () => {
         if (digidakSubTab === 'inbox' && !digidakInboxUsername) {
             setError('Username is required for Inbox report');
@@ -685,6 +732,7 @@ const ReportsPage = () => {
         }
         setError('');
         fetchDigidakReport(1, pageSize);
+        fetchDigidakCount();
     };
 
     const handleDigidakClear = () => {
@@ -695,6 +743,7 @@ const ReportsPage = () => {
         setDigidakSecrecy([]); setDigidakStatus([]); setDigidakTypeCategory([]); setDigidakSourceVertical([]);
         setDigidakInboxUsername('');
         setDigidakResults([]);
+        setDigidakTotalCount(0);
         setFiltersApplied(false); setError(''); setPage(1);
     };
 
@@ -1170,6 +1219,31 @@ const ReportsPage = () => {
                 </div>
             </div>
 
+            {/* Cases Total Count Card */}
+            {filtersApplied && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border border-blue-200 shadow-sm p-4 mb-6"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-[#0A66C2] flex items-center justify-center shadow-sm">
+                                <FileBarChart2 size={20} className="text-white" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-medium text-blue-600">Total Records</p>
+                                <p className="text-2xl font-bold text-slate-900">{casesTotalCount.toLocaleString()}</p>
+                            </div>
+                        </div>
+                        {caseCountLoading && (
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#0A66C2]"></div>
+                        )}
+                    </div>
+                </motion.div>
+            )}
+
             {/* Results Card */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 {!filtersApplied && !loading ? (
@@ -1564,6 +1638,31 @@ const ReportsPage = () => {
                     )}
                 </div>
             </div>
+
+            {/* Digidak Total Count Card */}
+            {filtersApplied && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border border-blue-200 shadow-sm p-4 mb-6"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-[#0A66C2] flex items-center justify-center shadow-sm">
+                                <FileBarChart2 size={20} className="text-white" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-medium text-blue-600">Total Records</p>
+                                <p className="text-2xl font-bold text-slate-900">{digidakTotalCount.toLocaleString()}</p>
+                            </div>
+                        </div>
+                        {countLoading && (
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#0A66C2]"></div>
+                        )}
+                    </div>
+                </motion.div>
+            )}
 
             {/* Digidak Results */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">

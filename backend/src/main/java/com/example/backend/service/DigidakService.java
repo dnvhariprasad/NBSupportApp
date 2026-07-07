@@ -1139,4 +1139,539 @@ public class DigidakService {
         }
         return locations;
     }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getDigidakCount(String decisionType, String hoRo, String location, String deptNames,
+                                               String fromDate, String toDate, String language, String modeOfReceipt,
+                                               String priority, String secrecy, String status, String typeCategory, String sourceVertical,
+                                               String entryType, String sentTo, String region) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            StringBuilder where = new StringBuilder();
+            where.append("is_ddm = false");
+            where.append(" AND is_migrated = false");
+
+            String decision = "Outward";
+            if ("inbox".equalsIgnoreCase(decisionType)) {
+                decision = "Inward";
+            }
+            where.append(" AND decision = '").append(decision).append("'");
+
+            if (status != null && !status.isBlank()) {
+                String[] statuses = status.split(",");
+                where.append(" AND status IN (");
+                for (int i = 0; i < statuses.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(statuses[i].trim()).append("'");
+                }
+                where.append(")");
+            } else {
+                where.append(" AND status IN ('Unread','Opened','Assigned Head','Assigned','Closed','Reassigned','Reassign Head','Responded','Follow-Up','Inprocess','Pushback')");
+            }
+
+            if (language != null && !language.isBlank()) {
+                String[] langs = language.split(",");
+                where.append(" AND languages IN (");
+                for (int i = 0; i < langs.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(langs[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (modeOfReceipt != null && !modeOfReceipt.isBlank()) {
+                String[] modes = modeOfReceipt.split(",");
+                where.append(" AND mode_of_receipt IN (");
+                for (int i = 0; i < modes.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(modes[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (priority != null && !priority.isBlank()) {
+                String[] priorities = priority.split(",");
+                where.append(" AND priority IN (");
+                for (int i = 0; i < priorities.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(priorities[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (secrecy != null && !secrecy.isBlank()) {
+                String[] secrecies = secrecy.split(",");
+                where.append(" AND secrecy IN (");
+                for (int i = 0; i < secrecies.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(secrecies[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (typeCategory != null && !typeCategory.isBlank()) {
+                String[] categories = typeCategory.split(",");
+                where.append(" AND type_category IN (");
+                for (int i = 0; i < categories.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(categories[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            if (entryType != null && !entryType.isBlank()) {
+                String[] types = entryType.split(",");
+                where.append(" AND entry_type IN (");
+                for (int i = 0; i < types.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(types[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            if (region != null && !region.isBlank()) {
+                List<String> regionLocations = getLocationsByRegion(region);
+                if (!regionLocations.isEmpty()) {
+                    where.append(" AND selected_region IN (");
+                    for (int i = 0; i < regionLocations.size(); i++) {
+                        if (i > 0) where.append(", ");
+                        where.append("'").append(regionLocations.get(i)).append("'");
+                    }
+                    where.append(")");
+                }
+            } else if (sentTo != null && !sentTo.isBlank()) {
+                String[] regions = sentTo.split(",");
+                where.append(" AND selected_region IN (");
+                for (int i = 0; i < regions.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(regions[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            if (sourceVertical != null && !sourceVertical.isBlank()) {
+                String[] verticals = sourceVertical.split(",");
+                where.append(" AND (");
+                for (int i = 0; i < verticals.length; i++) {
+                    if (i > 0) where.append(" OR ");
+                    where.append("ANY source_vertical = '").append(verticals[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            String officeType = (hoRo != null && !hoRo.isBlank()) ? hoRo.trim().toUpperCase() : "";
+            boolean isRoTe = "RO".equals(officeType) || "TE".equals(officeType);
+
+            StringBuilder cgmFilter = new StringBuilder(" AND (");
+            if (isRoTe) {
+                if (location != null && !location.isBlank()) {
+                    String locationShortCode = getLocationShortCode(location.trim());
+                    cgmFilter.append("login_cgm_group = 'ecm_digidak_").append(officeType.toLowerCase()).append("_")
+                             .append(locationShortCode.toLowerCase()).append("_cgm'");
+                }
+            } else if (deptNames != null && !deptNames.isBlank()) {
+                Map<String, String> deptNameToCode = new HashMap<>();
+                String[] deptArray = deptNames.split(",");
+                for (String name : deptArray) {
+                    deptNameToCode.put(name.trim(), getDeptShortCode(name.trim()));
+                }
+
+                for (int i = 0; i < deptArray.length; i++) {
+                    if (i > 0) cgmFilter.append(" OR ");
+                    String deptCode = deptNameToCode.get(deptArray[i].trim());
+                    if (deptCode == null) {
+                        deptCode = getDeptShortCode(deptArray[i].trim());
+                    }
+                    cgmFilter.append("login_cgm_group = 'ecm_digidak_").append(officeType.toLowerCase()).append("_")
+                             .append(deptCode.toLowerCase()).append("_cgm'");
+                }
+            }
+            cgmFilter.append(")");
+            where.append(cgmFilter);
+
+            if (fromDate != null && !fromDate.isBlank()) {
+                where.append(" AND r_creation_date >= DATE('").append(formatDateToDDMMYYYY(fromDate))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            if (toDate != null && !toDate.isBlank()) {
+                where.append(" AND r_creation_date <= DATE('").append(formatDateToDDMMYYYY(addOneDay(toDate)))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            String dql = "SELECT count(*) as total FROM cms_digidak_folder WHERE " + where;
+            log.info("Digidak count DQL: {}", dql);
+
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            long total = 0;
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null && !entries.isEmpty()) {
+                    Map<String, Object> entry = entries.get(0);
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        if (props != null) {
+                            if (props.containsKey("total")) {
+                                Object totalObj = props.get("total");
+                                total = toLong(totalObj);
+                            } else if (props.containsKey("COUNT(*)")) {
+                                Object countObj = props.get("COUNT(*)");
+                                total = toLong(countObj);
+                            } else {
+                                for (Object value : props.values()) {
+                                    if (value instanceof Number) {
+                                        total = ((Number) value).longValue();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            result.put("total", total);
+            log.info("Digidak count result: {}", total);
+        } catch (Exception e) {
+            log.error("Error fetching Digidak count: {}", e.getMessage(), e);
+            result.put("total", 0);
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getDigidakInboxCount(String hoRo, String location, String deptNames, String username,
+                                                    String fromDate, String toDate, String language, String modeOfReceipt,
+                                                    String priority, String secrecy, String status, String typeCategory,
+                                                    String entryType, String receivedFrom, String region) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            List<String> groups = getWorkflowGroupsForUser(username);
+            if (groups.isEmpty()) {
+                result.put("total", 0);
+                return result;
+            }
+
+            StringBuilder where = new StringBuilder();
+            where.append("is_migrated = false");
+            where.append(" AND nature_of_correspondence != 'DO Letter'");
+
+            if (status != null && !status.isBlank()) {
+                String[] statuses = status.split(",");
+                where.append(" AND status IN (");
+                for (int i = 0; i < statuses.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(statuses[i].trim()).append("'");
+                }
+                where.append(")");
+            } else {
+                where.append(" AND status IN ('Unread','Opened','Assigned Head','Assigned','Closed','Reassigned','Reassign Head','Responded','Follow-Up','Inprocess','Pushback')");
+            }
+
+            where.append(" AND (");
+            for (int i = 0; i < groups.size(); i++) {
+                if (i > 0) where.append(" OR ");
+                where.append("ANY workflow_groups = '").append(groups.get(i)).append("'");
+            }
+            where.append(")");
+
+            if (language != null && !language.isBlank()) {
+                String[] langs = language.split(",");
+                where.append(" AND languages IN (");
+                for (int i = 0; i < langs.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(langs[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (modeOfReceipt != null && !modeOfReceipt.isBlank()) {
+                String[] modes = modeOfReceipt.split(",");
+                where.append(" AND mode_of_receipt IN (");
+                for (int i = 0; i < modes.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(modes[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (priority != null && !priority.isBlank()) {
+                String[] priorities = priority.split(",");
+                where.append(" AND priority IN (");
+                for (int i = 0; i < priorities.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(priorities[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (secrecy != null && !secrecy.isBlank()) {
+                String[] secrecies = secrecy.split(",");
+                where.append(" AND secrecy IN (");
+                for (int i = 0; i < secrecies.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(secrecies[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (typeCategory != null && !typeCategory.isBlank()) {
+                String[] categories = typeCategory.split(",");
+                where.append(" AND type_category IN (");
+                for (int i = 0; i < categories.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(categories[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            if (entryType != null && !entryType.isBlank()) {
+                String[] types = entryType.split(",");
+                where.append(" AND entry_type IN (");
+                for (int i = 0; i < types.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(types[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            if (region != null && !region.isBlank()) {
+                List<String> regionLocations = getLocationsByRegion(region);
+                if (!regionLocations.isEmpty()) {
+                    where.append(" AND login_region IN (");
+                    for (int i = 0; i < regionLocations.size(); i++) {
+                        if (i > 0) where.append(", ");
+                        where.append("'").append(regionLocations.get(i)).append("'");
+                    }
+                    where.append(")");
+                }
+            } else if (receivedFrom != null && !receivedFrom.isBlank()) {
+                String[] regions = receivedFrom.split(",");
+                where.append(" AND login_region IN (");
+                for (int i = 0; i < regions.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(regions[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            if (fromDate != null && !fromDate.isBlank()) {
+                where.append(" AND r_creation_date >= DATE('").append(formatDateToDDMMYYYY(fromDate))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            if (toDate != null && !toDate.isBlank()) {
+                where.append(" AND r_creation_date <= DATE('").append(formatDateToDDMMYYYY(addOneDay(toDate)))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            String dql = "SELECT count(*) as total FROM cms_digidak_folder WHERE " + where;
+            log.info("Digidak inbox count DQL: {}", dql);
+
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            long total = 0;
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null && !entries.isEmpty()) {
+                    Map<String, Object> entry = entries.get(0);
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        if (props != null) {
+                            if (props.containsKey("total")) {
+                                Object totalObj = props.get("total");
+                                total = toLong(totalObj);
+                            } else if (props.containsKey("COUNT(*)")) {
+                                Object countObj = props.get("COUNT(*)");
+                                total = toLong(countObj);
+                            } else {
+                                for (Object value : props.values()) {
+                                    if (value instanceof Number) {
+                                        total = ((Number) value).longValue();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            result.put("total", total);
+            log.info("Digidak inbox count result: {}", total);
+        } catch (Exception e) {
+            log.error("Error fetching Digidak inbox count: {}", e.getMessage(), e);
+            result.put("total", 0);
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getDigidakDraftCount(String hoRo, String location, String deptNames,
+                                                    String fromDate, String toDate, String language, String modeOfReceipt,
+                                                    String priority, String secrecy, String status, String typeCategory, String entryType) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            StringBuilder where = new StringBuilder();
+            where.append("is_ddm = false");
+            where.append(" AND is_migrated = false");
+            where.append(" AND status = 'Saved'");
+
+            if (language != null && !language.isBlank()) {
+                String[] langs = language.split(",");
+                where.append(" AND languages IN (");
+                for (int i = 0; i < langs.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(langs[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (modeOfReceipt != null && !modeOfReceipt.isBlank()) {
+                String[] modes = modeOfReceipt.split(",");
+                where.append(" AND mode_of_receipt IN (");
+                for (int i = 0; i < modes.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(modes[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (priority != null && !priority.isBlank()) {
+                String[] priorities = priority.split(",");
+                where.append(" AND priority IN (");
+                for (int i = 0; i < priorities.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(priorities[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (secrecy != null && !secrecy.isBlank()) {
+                String[] secrecies = secrecy.split(",");
+                where.append(" AND secrecy IN (");
+                for (int i = 0; i < secrecies.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(secrecies[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+            if (typeCategory != null && !typeCategory.isBlank()) {
+                String[] categories = typeCategory.split(",");
+                where.append(" AND type_category IN (");
+                for (int i = 0; i < categories.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(categories[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            if (entryType != null && !entryType.isBlank()) {
+                String[] types = entryType.split(",");
+                where.append(" AND entry_type IN (");
+                for (int i = 0; i < types.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(types[i].trim()).append("'");
+                }
+                where.append(")");
+            }
+
+            String officeType = (hoRo != null && !hoRo.isBlank()) ? hoRo.trim().toUpperCase() : "";
+            boolean isRoTe = "RO".equals(officeType) || "TE".equals(officeType);
+
+            StringBuilder cgmFilter = new StringBuilder(" AND (");
+            if (isRoTe) {
+                if (location != null && !location.isBlank()) {
+                    String locationShortCode = getLocationShortCode(location.trim());
+                    cgmFilter.append("login_cgm_group = 'ecm_digidak_").append(officeType.toLowerCase()).append("_")
+                             .append(locationShortCode.toLowerCase()).append("_cgm'");
+                }
+            } else if (deptNames != null && !deptNames.isBlank()) {
+                Map<String, String> deptNameToCode = new HashMap<>();
+                String[] deptArray = deptNames.split(",");
+                for (String name : deptArray) {
+                    deptNameToCode.put(name.trim(), getDeptShortCode(name.trim()));
+                }
+
+                for (int i = 0; i < deptArray.length; i++) {
+                    if (i > 0) cgmFilter.append(" OR ");
+                    String deptCode = deptNameToCode.get(deptArray[i].trim());
+                    if (deptCode == null) {
+                        deptCode = getDeptShortCode(deptArray[i].trim());
+                    }
+                    cgmFilter.append("login_cgm_group = 'ecm_digidak_").append(officeType.toLowerCase()).append("_")
+                             .append(deptCode.toLowerCase()).append("_cgm'");
+                }
+            }
+            cgmFilter.append(")");
+            where.append(cgmFilter);
+
+            if (fromDate != null && !fromDate.isBlank()) {
+                where.append(" AND r_creation_date >= DATE('").append(formatDateToDDMMYYYY(fromDate))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            if (toDate != null && !toDate.isBlank()) {
+                where.append(" AND r_creation_date <= DATE('").append(formatDateToDDMMYYYY(addOneDay(toDate)))
+                     .append("', 'dd/mm/yyyy')");
+            }
+
+            String dql = "SELECT count(*) as total FROM cms_digidak_folder WHERE " + where;
+            log.info("Digidak draft count DQL: {}", dql);
+
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            long total = 0;
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null && !entries.isEmpty()) {
+                    Map<String, Object> entry = entries.get(0);
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        if (props != null) {
+                            if (props.containsKey("total")) {
+                                Object totalObj = props.get("total");
+                                total = toLong(totalObj);
+                            } else if (props.containsKey("COUNT(*)")) {
+                                Object countObj = props.get("COUNT(*)");
+                                total = toLong(countObj);
+                            } else {
+                                for (Object value : props.values()) {
+                                    if (value instanceof Number) {
+                                        total = ((Number) value).longValue();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            result.put("total", total);
+            log.info("Digidak draft count result: {}", total);
+        } catch (Exception e) {
+            log.error("Error fetching Digidak draft count: {}", e.getMessage(), e);
+            result.put("total", 0);
+        }
+        return result;
+    }
+
+    private long toLong(Object obj) {
+        if (obj == null) return 0;
+        if (obj instanceof Number) return ((Number) obj).longValue();
+        try {
+            return Long.parseLong(obj.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
 }
