@@ -416,8 +416,7 @@ const DelegatePage = () => {
         if (!selectedUser) { setToast({ type: 'error', message: 'Please select a user to delegate to.' }); return; }
         setDelegating(caseItem.r_object_id);
         try {
-            const assignedUser = `NEO Admin (${loginUsername})`;
-            const res = await api.post('/delegate', { caseId: caseItem.r_object_id, performerDisplayName: selectedUser, loginUsername: assignedUser });
+            const res = await api.post('/delegate', { caseId: caseItem.r_object_id, performerDisplayName: selectedUser, loginUsername });
             setToast({ type: 'success', message: res.data?.message || 'Case delegated successfully.' });
         } catch (err) {
             setToast({ type: 'error', message: err.response?.data?.message || err.message || 'Delegation failed.' });
