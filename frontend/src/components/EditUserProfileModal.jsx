@@ -399,10 +399,9 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         const caseId = pf(delegateTask, 'id') || delegateTask.id || delegateTask.r_object_id;
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
-        const assignedUser = `NEO Admin (${loginUsername})`;
         setDelegatingCaseId(caseId);
         try {
-            await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser, loginUsername: assignedUser });
+            await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser, loginUsername });
             const filterOut = (list) => list.filter(t => {
                 const tid = pf(t, 'id') || t.id || t.r_object_id;
                 return tid !== caseId;
