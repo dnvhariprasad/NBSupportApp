@@ -294,7 +294,9 @@ const ReportsPage = () => {
             const raw = profileCtx.department_short_code_multi;
             const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
                 .map(s => s.toLowerCase());
-            return departments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+            const filtered = departments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+            // If filtering results in empty list, show all departments (fallback for data consistency)
+            return filtered.length > 0 ? filtered : departments;
           })()
         : departments;
 
@@ -343,7 +345,9 @@ const ReportsPage = () => {
             const raw = profileCtx.department_short_code_multi;
             const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
                 .map(s => s.toLowerCase());
-            return digidakDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+            const filtered = digidakDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
+            // If filtering results in empty list, show all departments (fallback for data consistency)
+            return filtered.length > 0 ? filtered : digidakDepartments;
           })()
         : digidakDepartments;
 
@@ -481,7 +485,9 @@ const ReportsPage = () => {
             setDigidakLocation('');
         }
         setDigidakDeptName('');
-        setDigidakDepartments([]);
+        // NOTE: Do NOT clear digidakDepartments here - departments are based on office type/location,
+        // not the tab. Clearing them breaks the department dropdown when switching tabs.
+        // setDigidakDepartments([]);
         setDigidakSourceVertical([]);
         setDigidakSourceVerticals([]);
         setDigidakFromDate('');
@@ -1353,15 +1359,19 @@ const ReportsPage = () => {
                         </div>
                     )}
 
-                    {/* Department — hide in Outbox when RO/TE */}
-                    {digidakOfficeType && filteredDigidakDepartments.length > 0 && (!digidakIsRoTe || digidakLocation) && (digidakSubTab === 'inbox' || !digidakIsRoTe) && (
+                    {/* Department — show for HO (all tabs) and Inbox (all office types) */}
+                    {digidakOfficeType && (digidakSubTab === 'inbox' || !digidakIsRoTe) && (digidakIsRoTe ? digidakLocation : true) && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
                             <select value={digidakDeptName} onChange={e => setDigidakDeptName(e.target.value)} className={selectCls}>
                                 <option value="">Select Department</option>
-                                {filteredDigidakDepartments.map(d => (
-                                    <option key={d.shortCode} value={d.name}>{d.name}</option>
-                                ))}
+                                {filteredDigidakDepartments.length > 0 ? (
+                                    filteredDigidakDepartments.map(d => (
+                                        <option key={d.shortCode} value={d.name}>{d.name}</option>
+                                    ))
+                                ) : (
+                                    <option disabled>{digidakIsRoTe ? 'No departments available for this location' : 'No departments available'}</option>
+                                )}
                             </select>
                         </div>
                     )}

@@ -893,6 +893,13 @@ public class DigidakService {
                         }
                     }
                 }
+
+                // Filter out "Saved" status from Inbox/Outbox (only used in Draft)
+                if ("status".equals(input)) {
+                    values.removeIf(v -> "Saved".equals(v));
+                    log.info("Removed 'Saved' status from Inbox/Outbox filter");
+                }
+
                 log.info("Fetched {} values for input '{}': {}", values.size(), input, values);
                 metadata.put(input, values);
             }
