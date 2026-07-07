@@ -253,6 +253,134 @@ public class CaseService {
     }
 
     /**
+     * Get total count of cases matching the report filters
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCasesCount(String hoRo, String location, String deptNames,
+                                             String functions, String fromDate, String toDate,
+                                             String status, String priority, String language) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            StringBuilder where = new StringBuilder();
+            where.append("(is_migrated IS NULL OR is_migrated = FALSE)");
+            where.append(" AND status <> 'Delete'");
+            where.append(" AND status <> 'Draft'");
+
+            if (hoRo != null && !hoRo.isBlank()) {
+                where.append(" AND ho_ro = '").append(hoRo.trim().replace("'", "''")).append("'");
+            }
+
+            if (location != null && !location.isBlank()) {
+                where.append(" AND location = '").append(location.trim().replace("'", "''")).append("'");
+            }
+
+            if (deptNames != null && !deptNames.isBlank()) {
+                String[] names = deptNames.split(",");
+                StringBuilder inClause = new StringBuilder(" AND department_name IN (");
+                for (int i = 0; i < names.length; i++) {
+                    if (i > 0) inClause.append(", ");
+                    inClause.append("'").append(names[i].trim().replace("'", "''")).append("'");
+                }
+                inClause.append(")");
+                where.append(inClause);
+            }
+
+            if (functions != null && !functions.isBlank()) {
+                String[] funcs = functions.split(",");
+                where.append(" AND functions IN (");
+                for (int i = 0; i < funcs.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(funcs[i].trim().replace("'", "''")).append("'");
+                }
+                where.append(")");
+            }
+
+            if (fromDate != null && !fromDate.isBlank()) {
+                where.append(" AND r_creation_date >= DATE('").append(fromDate.trim()).append("', 'yyyy-mm-dd')");
+            }
+
+            if (toDate != null && !toDate.isBlank()) {
+                where.append(" AND r_creation_date <= DATE('").append(toDate.trim()).append("', 'yyyy-mm-dd')");
+            }
+
+            if (status != null && !status.isBlank()) {
+                String[] statuses = status.split(",");
+                where.append(" AND status IN (");
+                for (int i = 0; i < statuses.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(statuses[i].trim().replace("'", "''")).append("'");
+                }
+                where.append(")");
+            }
+
+            if (priority != null && !priority.isBlank()) {
+                String[] priorities = priority.split(",");
+                where.append(" AND task_priority IN (");
+                for (int i = 0; i < priorities.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(priorities[i].trim().replace("'", "''")).append("'");
+                }
+                where.append(")");
+            }
+
+            if (language != null && !language.isBlank()) {
+                String[] languages = language.split(",");
+                where.append(" AND language_type IN (");
+                for (int i = 0; i < languages.length; i++) {
+                    if (i > 0) where.append(", ");
+                    where.append("'").append(languages[i].trim().replace("'", "''")).append("'");
+                }
+                where.append(")");
+            }
+
+            String dql = "SELECT count(*) as total FROM cms_case_folder WHERE " + where;
+            log.info("Cases count DQL: {}", dql);
+
+            String baseUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+            Map<String, Object> response = restClient.get()
+                    .uri(baseUrl + "?dql={dql}&inline=true", dql)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+
+            long total = 0;
+            if (response != null) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) response.get("entries");
+                if (entries != null && !entries.isEmpty()) {
+                    Map<String, Object> entry = entries.get(0);
+                    Map<String, Object> content = (Map<String, Object>) entry.get("content");
+                    if (content != null) {
+                        Map<String, Object> props = (Map<String, Object>) content.get("properties");
+                        if (props != null) {
+                            if (props.containsKey("total")) {
+                                Object totalObj = props.get("total");
+                                total = toLong(totalObj);
+                            } else if (props.containsKey("COUNT(*)")) {
+                                Object countObj = props.get("COUNT(*)");
+                                total = toLong(countObj);
+                            } else {
+                                for (Object value : props.values()) {
+                                    if (value instanceof Number) {
+                                        total = ((Number) value).longValue();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            result.put("total", total);
+            log.info("Cases count result: {}", total);
+        } catch (Exception e) {
+            log.error("Error fetching cases count: {}", e.getMessage(), e);
+            result.put("total", 0);
+        }
+        return result;
+    }
+
+    /**
      * Execute a DQL query for cases and return paginated results.
      * Uses Documentum REST API with DQL parameter.
      */
@@ -329,5 +457,15 @@ public class CaseService {
         log.info("Transformed {} cases for page {}, hasNext: {}", cases.size(), page, hasNext);
 
         return result;
+    }
+
+    private long toLong(Object obj) {
+        if (obj == null) return 0;
+        if (obj instanceof Number) return ((Number) obj).longValue();
+        try {
+            return Long.parseLong(obj.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 }

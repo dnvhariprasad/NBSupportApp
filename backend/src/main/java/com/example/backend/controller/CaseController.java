@@ -53,4 +53,21 @@ public class CaseController {
             @RequestParam(defaultValue = "10") int size) {
         return caseService.searchCases(caseNumber, hoRo, roShortCode, deptNames, departmentShortCode, functions, fromDate, toDate, page, size);
     }
+
+    /**
+     * Get total count of cases report records based on filters
+     */
+    @GetMapping("/count")
+    public Map<String, Object> getCasesCount(
+            @RequestParam(defaultValue = "") String hoRo,
+            @RequestParam(defaultValue = "") String location,
+            @RequestParam(defaultValue = "") String deptNames,
+            @RequestParam(defaultValue = "") String functions,
+            @RequestParam(defaultValue = "") String fromDate,
+            @RequestParam(defaultValue = "") String toDate,
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String priority,
+            @RequestParam(defaultValue = "") String language) {
+        return caseService.getCasesCount(hoRo, location, deptNames, functions, fromDate, toDate, status, priority, language);
+    }
 }
