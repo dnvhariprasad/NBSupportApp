@@ -1085,6 +1085,7 @@ const ReportsPage = () => {
                 >
                     Digidak
                 </button>
+                {!isLocalAdmin && (
                 <button
                     onClick={() => setActiveTab('rajbhasha')}
                     className={`px-4 py-2 text-sm font-semibold transition-colors ${
@@ -1095,6 +1096,7 @@ const ReportsPage = () => {
                 >
                     Rajbhasha Report
                 </button>
+                )}
             </div>
 
             {/* Cases Report Section */}
@@ -1787,7 +1789,7 @@ const ReportsPage = () => {
             )}
 
             {/* Rajbhasha Report Section */}
-            {activeTab === 'rajbhasha' && (
+            {activeTab === 'rajbhasha' && !isLocalAdmin && (
             <>
             {/* Filter Card */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
