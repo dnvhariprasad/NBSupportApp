@@ -1026,7 +1026,9 @@ const ReportsPage = () => {
             if (digidakSubTab === 'outbox') {
                 row['Source Vertical'] = r.source_vertical ?? '';
             }
-            row['Decision'] = r.decision ?? '';
+            if (digidakSubTab !== 'inbox') {
+                row['Decision'] = r.decision ?? '';
+            }
             row['Date Created'] = r.r_creation_date ?? '';
             return row;
         });
@@ -1696,7 +1698,9 @@ const ReportsPage = () => {
                                         {digidakSubTab === 'outbox' && (
                                             <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Sent To</th>
                                         )}
-                                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Decision</th>
+                                        {digidakSubTab !== 'inbox' && (
+                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Decision</th>
+                                        )}
                                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Date Created</th>
                                         <th className="px-4 py-2.5 text-center text-xs font-semibold text-slate-600">Actions</th>
                                     </tr>
@@ -1704,7 +1708,7 @@ const ReportsPage = () => {
                                 <tbody className="divide-y divide-slate-100">
                                     {digidakResults.length === 0 ? (
                                         <tr>
-                                            <td colSpan={digidakSubTab === 'outbox' ? 14 : 13} className="px-4 py-16 text-center text-slate-400 text-sm">
+                                            <td colSpan={digidakSubTab === 'inbox' ? 12 : 14} className="px-4 py-16 text-center text-slate-400 text-sm">
                                                 No Digidak records found for the selected filters.
                                             </td>
                                         </tr>
@@ -1729,13 +1733,15 @@ const ReportsPage = () => {
                                                 {digidakSubTab === 'outbox' && (
                                                     <td className="px-4 py-2.5 text-slate-600 text-xs">{item.selected_region || '-'}</td>
                                                 )}
-                                                <td className="px-4 py-2.5 text-xs">
-                                                    <span className={`px-2 py-0.5 rounded-full font-medium ${
-                                                        item.decision === 'Inward' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'
-                                                    }`}>
-                                                        {item.decision || '-'}
-                                                    </span>
-                                                </td>
+                                                {digidakSubTab !== 'inbox' && (
+                                                    <td className="px-4 py-2.5 text-xs">
+                                                        <span className={`px-2 py-0.5 rounded-full font-medium ${
+                                                            item.decision === 'Inward' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'
+                                                        }`}>
+                                                            {item.decision || '-'}
+                                                        </span>
+                                                    </td>
+                                                )}
                                                 <td className="px-4 py-2.5 text-slate-600 text-xs">{formatDate(item.r_creation_date)}</td>
                                                 <td className="px-4 py-2.5">
                                                     <div className="flex items-center justify-center">

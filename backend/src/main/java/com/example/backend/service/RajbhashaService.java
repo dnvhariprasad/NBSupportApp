@@ -487,7 +487,7 @@ public class RajbhashaService {
             "and selected_region in ('").append(value1).append("') " +
             "and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in ('Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','Rajasthan','Uttar Pradesh','Uttarakhand','New Delhi','Andaman and Nicobar','Bird Lucknow','NBSC Lucknow') " +
-            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 ) " +
             "and status!='Saved' and languages in ('English')");
         log.info("Grid 2 Region A Query 1 (English letters): {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -500,9 +500,9 @@ public class RajbhashaService {
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in ('Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','Rajasthan','Uttar Pradesh','Uttarakhand','New Delhi','Andaman and Nicobar','Bird Lucknow','NBSC Lucknow') " +
-            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')) " +
-            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved'");
         log.info("Grid 2 Region A Query 2 (Replied Hindi): {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -515,9 +515,9 @@ public class RajbhashaService {
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in ('Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','Rajasthan','Uttar Pradesh','Uttarakhand','New Delhi','Andaman and Nicobar','Bird Lucknow','NBSC Lucknow') " +
-            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')) " +
-            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved'");
         log.info("Grid 2 Region A Query 3 (Replied English): {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -529,7 +529,7 @@ public class RajbhashaService {
             "select count(*) as total from cms_digidak_folder where is_group=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD','DOS') " +
-            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')");
         log.info("Grid 2 Region B Query 1 (English letters): {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -541,9 +541,9 @@ public class RajbhashaService {
             "select count (*) as total from cms_digidak_folder where is_group=false " +
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD','DOS')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD','DOS')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')) " +
-            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved'");
         log.info("Grid 2 Region B Query 2 (Replied Hindi): {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -555,9 +555,9 @@ public class RajbhashaService {
             "select count(*) as total from cms_digidak_folder where is_group=false " +
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD','DOS')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD','DOS')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')) " +
-            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) " +
+            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved'");
         log.info("Grid 2 Region B Query 3 (Replied English): {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -627,7 +627,7 @@ public class RajbhashaService {
 
     /**
      * Grid 3 - Region C queries (Outbound letters)
-     * Region C: RO-AR, RO-AD, RO-AS, RO-GA, RO-KA, RO-KL, RO-MN, RO-MG, RO-MZ, RO-NL, RO-OR, RO-SK, RO-TN, RO-TG, RO-TR, RO-WB, RO-JK, TE-BK, TE-BM
+     * Region C: RO-AR, RO-AD, RO-AS, RO-GA, RO-KA, RO-KL, RO-MN, RO-ML, RO-MZ, RO-NL, RO-OR, RO-SK, RO-TN, RO-TG, RO-TR, RO-WB, RO-JK, TE-BK, TE-BM
      */
     private Map<String, Object> executeGrid3RegionC(String value1, String fromDate, String toDate) {
         log.info("Executing Grid 3 - To Region C queries");
@@ -682,7 +682,7 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-PN','RO-MH','RO-GJ','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-CISO','HO-DDSI','HO-CSDD') " +
+            "and region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
             "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
             "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual')");
         log.info("Grid 3 Region B Query 1 (Hindi/Bilingual): {}", dql.toString());
@@ -693,7 +693,7 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-PN','RO-MH','RO-GJ','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-CISO','HO-DDSI','HO-CSDD') " +
+            "and region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
             "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
             "and status!='Saved' and decision='Outward' and languages in ('English')");
         log.info("Grid 3 Region B Query 2 (English Only): {}", dql.toString());
