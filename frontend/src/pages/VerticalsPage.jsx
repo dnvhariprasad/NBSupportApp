@@ -969,7 +969,7 @@ const RemoveMembersTab = ({ setToast }) => {
         const caseId = pfield(delegateTask, 'id') || delegateTask.id || delegateTask.r_object_id;
         setDelegatingCaseId(caseId);
         try {
-            const res = await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser });
+            const res = await api.post('/delegate', { caseId, performerDisplayName: delegateSelectedUser, loginUsername });
             setToast({ type: 'success', message: res.data?.message || 'Case delegated successfully.' });
             setInboxTasks(prev => prev.filter(t => {
                 const tid = pfield(t, 'id') || t.id || t.r_object_id;
