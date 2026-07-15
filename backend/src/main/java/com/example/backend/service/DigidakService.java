@@ -895,8 +895,10 @@ public class DigidakService {
                 }
 
                 // Filter out "Saved" status from Inbox/Outbox (only used in Draft)
+                // Normalize "In Process" to "Inprocess" to match query logic
                 if ("status".equals(input)) {
                     values.removeIf(v -> "Saved".equals(v));
+                    values.replaceAll(v -> "In Process".equals(v) ? "Inprocess" : v);
                     log.info("Removed 'Saved' status from Inbox/Outbox filter");
                 }
 
@@ -1124,9 +1126,10 @@ public class DigidakService {
                 ));
             } else if ("region b".equals(trimmed)) {
                 locations.addAll(java.util.Arrays.asList(
-                    "Gujarat", "Maharashtra", "Punjab",
-                    "AD", "BID", "CC", "CCD", "CHMNS", "CISO", "CPD", "CSDD", "CVC", "DCAS",
-                    "DDMABI", "DDSI", "DEAR", "DFIBT", "DIT", "FAD", "FSDD", "HRMD"
+                    "Gujarat", "Maharashtra", "Punjab", "PFD", "DIT", "DOR", "SECY", "RMD", "SPD", "AD", "RAJ", "SPPID",
+                    "FD", "FSDD", "FSPD", "HRMD", "ID", "IDD", "LAW", "GSD", "RMSMED", "DCAS", "DDMABI", "DEAR",
+                    "DMFI", "DOS", "DPSP", "DSM", "DSSI", "CC", "CCD", "CPD", "CVC", "CHMNS", "DMDS1", "DMDS2",
+                    "CISO", "DDSI", "CSDD"
                 ));
             } else if ("region c".equals(trimmed)) {
                 locations.addAll(java.util.Arrays.asList(

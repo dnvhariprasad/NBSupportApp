@@ -528,7 +528,7 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD','DOS') " +
+            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD') " +
             "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')");
         log.info("Grid 2 Region B Query 1 (English letters): {}", dql.toString());
@@ -541,7 +541,7 @@ public class RajbhashaService {
             "select count (*) as total from cms_digidak_folder where is_group=false " +
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD','DOS')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')) " +
             "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved'");
@@ -555,7 +555,7 @@ public class RajbhashaService {
             "select count(*) as total from cms_digidak_folder where is_group=false " +
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD','DOS')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')) " +
             "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved'");
