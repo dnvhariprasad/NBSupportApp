@@ -899,7 +899,18 @@ public class DigidakService {
                 if ("status".equals(input)) {
                     values.removeIf(v -> "Saved".equals(v));
                     values.replaceAll(v -> "In Process".equals(v) ? "Inprocess" : v);
-                    log.info("Removed 'Saved' status from Inbox/Outbox filter");
+
+                    // Ensure all required statuses are present
+                    String[] requiredStatuses = {"Unread", "Opened", "Assigned Head", "Assigned", "Closed",
+                                                 "Reassigned", "Reassign Head", "Responded", "Follow-Up",
+                                                 "Inprocess", "Pushback"};
+                    for (String status : requiredStatuses) {
+                        if (!values.contains(status)) {
+                            values.add(status);
+                        }
+                    }
+
+                    log.info("Removed 'Saved' status from Inbox/Outbox filter. All required statuses added.");
                 }
 
                 log.info("Fetched {} values for input '{}': {}", values.size(), input, values);
