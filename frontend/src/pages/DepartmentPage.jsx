@@ -72,7 +72,7 @@ export default function DepartmentPage() {
 
     const handleDeptNameChange = (e) => {
         const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-        if (val.length <= 6) setDepartmentName(val);
+        if (val.length <= 8) setDepartmentName(val);
     };
 
     const handleOfficeTypeChange = (val) => {
@@ -164,11 +164,11 @@ export default function DepartmentPage() {
                                 type="text"
                                 value={departmentName}
                                 onChange={handleDeptNameChange}
-                                maxLength={6}
-                                placeholder="e.g. FSPD (max 6 characters, uppercase only)"
+                                maxLength={8}
+                                placeholder="e.g. FSPD (max 8 characters, uppercase only)"
                                 className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2] hover:border-slate-300 bg-white text-slate-800 placeholder:text-slate-400"
                             />
-                            <p className="text-xs text-slate-400 mt-1">{departmentName.length}/6 characters</p>
+                            <p className="text-xs text-slate-400 mt-1">{departmentName.length}/8 characters</p>
                         </div>
 
                         {/* Department Short Code (auto) */}
