@@ -658,13 +658,6 @@ public class DigidakService {
                                                String priority, String secrecy, String status, String typeCategory,
                                                String entryType, String receivedFrom, String region, boolean export, int page, int itemsPerPage) {
         try {
-            // Query 1: Get groups for the selected username
-            List<String> groups = getWorkflowGroupsForUser(username);
-            if (groups.isEmpty()) {
-                return buildErrorResponse("No groups found for user: " + username, page, itemsPerPage);
-            }
-
-            // Query 2: Query cms_digidak_folder with workflow_groups
             StringBuilder where = new StringBuilder();
             where.append("is_migrated = false");
             where.append(" AND nature_of_correspondence != 'DO Letter'");
@@ -682,13 +675,38 @@ public class DigidakService {
                 where.append(" AND status IN ('Unread','Opened','Assigned Head','Assigned','Closed','Reassigned','Reassign Head','Responded','Follow-Up','Inprocess','Pushback')");
             }
 
-            // Workflow groups filter
-            where.append(" AND (");
-            for (int i = 0; i < groups.size(); i++) {
-                if (i > 0) where.append(" OR ");
-                where.append("ANY workflow_groups = '").append(groups.get(i)).append("'");
+            // Workflow groups filter: Use username's groups OR CGM group if no username
+            if (username != null && !username.isBlank()) {
+                List<String> groups = getWorkflowGroupsForUser(username);
+                if (!groups.isEmpty()) {
+                    where.append(" AND (");
+                    for (int i = 0; i < groups.size(); i++) {
+                        if (i > 0) where.append(" OR ");
+                        where.append("ANY workflow_groups = '").append(groups.get(i)).append("'");
+                    }
+                    where.append(")");
+                }
+            } else {
+                // No username: use CGM group format (ecm_digidak_<officetype>_<dept>_cgm)
+                String officeType = (hoRo != null && !hoRo.isBlank()) ? hoRo.trim().toLowerCase() : "";
+                boolean isRoTe = "ro".equals(officeType) || "te".equals(officeType);
+
+                if (isRoTe && location != null && !location.isBlank()) {
+                    String locationShortCode = getLocationShortCode(location.trim()).toLowerCase();
+                    where.append(" AND ANY workflow_groups = 'ecm_digidak_").append(officeType).append("_")
+                         .append(locationShortCode).append("_cgm'");
+                } else if (!isRoTe && deptNames != null && !deptNames.isBlank()) {
+                    String[] deptArray = deptNames.split(",");
+                    where.append(" AND (");
+                    for (int i = 0; i < deptArray.length; i++) {
+                        if (i > 0) where.append(" OR ");
+                        String deptCode = getDeptShortCode(deptArray[i].trim()).toLowerCase();
+                        where.append("ANY workflow_groups = 'ecm_digidak_").append(officeType).append("_")
+                             .append(deptCode).append("_cgm'");
+                    }
+                    where.append(")");
+                }
             }
-            where.append(")");
 
             // Optional filters - support comma-separated values with IN operator
             if (language != null && !language.isBlank()) {
@@ -1363,12 +1381,6 @@ public class DigidakService {
                                                     String entryType, String receivedFrom, String region) {
         Map<String, Object> result = new HashMap<>();
         try {
-            List<String> groups = getWorkflowGroupsForUser(username);
-            if (groups.isEmpty()) {
-                result.put("total", 0);
-                return result;
-            }
-
             StringBuilder where = new StringBuilder();
             where.append("is_migrated = false");
             where.append(" AND nature_of_correspondence != 'DO Letter'");
@@ -1385,12 +1397,38 @@ public class DigidakService {
                 where.append(" AND status IN ('Unread','Opened','Assigned Head','Assigned','Closed','Reassigned','Reassign Head','Responded','Follow-Up','Inprocess','Pushback')");
             }
 
-            where.append(" AND (");
-            for (int i = 0; i < groups.size(); i++) {
-                if (i > 0) where.append(" OR ");
-                where.append("ANY workflow_groups = '").append(groups.get(i)).append("'");
+            // Workflow groups filter: Use username's groups OR CGM group if no username
+            if (username != null && !username.isBlank()) {
+                List<String> groups = getWorkflowGroupsForUser(username);
+                if (!groups.isEmpty()) {
+                    where.append(" AND (");
+                    for (int i = 0; i < groups.size(); i++) {
+                        if (i > 0) where.append(" OR ");
+                        where.append("ANY workflow_groups = '").append(groups.get(i)).append("'");
+                    }
+                    where.append(")");
+                }
+            } else {
+                // No username: use CGM group format (ecm_digidak_<officetype>_<dept>_cgm)
+                String officeType = (hoRo != null && !hoRo.isBlank()) ? hoRo.trim().toLowerCase() : "";
+                boolean isRoTe = "ro".equals(officeType) || "te".equals(officeType);
+
+                if (isRoTe && location != null && !location.isBlank()) {
+                    String locationShortCode = getLocationShortCode(location.trim()).toLowerCase();
+                    where.append(" AND ANY workflow_groups = 'ecm_digidak_").append(officeType).append("_")
+                         .append(locationShortCode).append("_cgm'");
+                } else if (!isRoTe && deptNames != null && !deptNames.isBlank()) {
+                    String[] deptArray = deptNames.split(",");
+                    where.append(" AND (");
+                    for (int i = 0; i < deptArray.length; i++) {
+                        if (i > 0) where.append(" OR ");
+                        String deptCode = getDeptShortCode(deptArray[i].trim()).toLowerCase();
+                        where.append("ANY workflow_groups = 'ecm_digidak_").append(officeType).append("_")
+                             .append(deptCode).append("_cgm'");
+                    }
+                    where.append(")");
+                }
             }
-            where.append(")");
 
             if (language != null && !language.isBlank()) {
                 String[] langs = language.split(",");

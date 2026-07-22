@@ -511,8 +511,8 @@ public class RajbhashaService {
     private long executeGrid2Query3RegionA(String value1, String value2, String value3,
                                           String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count(*) as total from cms_digidak_folder where is_group=false " +
-            "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
+            "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in ('Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','Rajasthan','Uttar Pradesh','Uttarakhand','New Delhi','Andaman and Nicobar','Bird Lucknow','NBSC Lucknow') " +
             "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
@@ -526,7 +526,7 @@ public class RajbhashaService {
     private long executeGrid2Query1RegionB(String value1, String value2, String value3,
                                           String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count(*) as total from cms_digidak_folder where is_group=false " +
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD') " +
             "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
@@ -538,8 +538,8 @@ public class RajbhashaService {
     private long executeGrid2Query2RegionB(String value1, String value2, String value3,
                                           String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count (*) as total from cms_digidak_folder where is_group=false " +
-            "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
+            "select count (*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
+            "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')) " +
@@ -552,8 +552,8 @@ public class RajbhashaService {
     private long executeGrid2Query3RegionB(String value1, String value2, String value3,
                                           String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count(*) as total from cms_digidak_folder where is_group=false " +
-            "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
+            "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
             "and status!='Saved' and languages in ('English')) " +
@@ -669,7 +669,7 @@ public class RajbhashaService {
 
     private long executeGrid3Query2RegionA(String value1, String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count(*) as total from cms_digidak_folder where is_group=false " +
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
             "and region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
             "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
@@ -680,7 +680,7 @@ public class RajbhashaService {
 
     private long executeGrid3Query1RegionB(String value1, String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count(*) as total from cms_digidak_folder where is_group=false " +
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
             "and region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
             "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
@@ -691,7 +691,7 @@ public class RajbhashaService {
 
     private long executeGrid3Query2RegionB(String value1, String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count(*) as total from cms_digidak_folder where is_group=false " +
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
             "and region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
             "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
@@ -702,7 +702,7 @@ public class RajbhashaService {
 
     private long executeGrid3Query1RegionC(String value1, String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count(*) as total from cms_digidak_folder where is_group=false " +
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
             "and region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
             "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
@@ -713,7 +713,7 @@ public class RajbhashaService {
 
     private long executeGrid3Query2RegionC(String value1, String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
-            "select count(*) as total from cms_digidak_folder where is_group=false " +
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
             "and region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
             "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
