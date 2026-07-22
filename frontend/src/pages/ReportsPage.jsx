@@ -722,10 +722,6 @@ const ReportsPage = () => {
     }, [buildDigidakParams, digidakSubTab]);
 
     const handleDigidakApply = () => {
-        if (digidakSubTab === 'inbox' && !digidakInboxUsername) {
-            setError('Username is required for Inbox report');
-            return;
-        }
         if (!digidakOfficeType) {
             setError('Office Type is required');
             return;
@@ -1437,8 +1433,8 @@ const ReportsPage = () => {
                         </div>
                     )}
 
-                    {/* Department — show for HO (all tabs) and Inbox (all office types) */}
-                    {digidakOfficeType && (digidakSubTab === 'inbox' || !digidakIsRoTe) && (digidakIsRoTe ? digidakLocation : true) && (
+                    {/* Department — show for HO only (hide if RO/TE in Inbox) */}
+                    {digidakOfficeType && !digidakIsRoTe && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
                             <select value={digidakDeptName} onChange={e => setDigidakDeptName(e.target.value)} className={selectCls}>
