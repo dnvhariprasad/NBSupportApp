@@ -76,10 +76,13 @@ public class UserController {
     /**
      * List cms_user_profile users by location (for RO/TE offices).
      * GET /api/users/by-location?location=Chennai
+     * Optional: GET /api/users/by-location?location=Chennai&officeType=RO
      */
     @GetMapping("/by-location")
-    public List<Map<String, Object>> getUsersByLocation(@RequestParam String location) {
-        return userService.getUsersByLocation(location);
+    public List<Map<String, Object>> getUsersByLocation(
+            @RequestParam String location,
+            @RequestParam(required = false) String officeType) {
+        return userService.getUsersByLocation(location, officeType);
     }
 
     /**

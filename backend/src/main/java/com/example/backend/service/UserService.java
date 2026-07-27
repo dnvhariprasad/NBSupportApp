@@ -900,15 +900,40 @@ public class UserService {
 
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getUsersByLocation(String location) {
+        return getUsersByLocation(location, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getUsersByLocation(String location, String officeType) {
         String safe = location.replace("'", "''");
         String dql  = "SELECT r_object_id, object_name, user_login_name, department_short_code_multi, office_type FROM cms_user_profile"
-                    + " WHERE location = '" + safe + "'"
-                    + " ORDER BY object_name";
+                    + " WHERE location = '" + safe + "'";
+
+        // Filter by office type if provided (RO or TE)
+        if (officeType != null && !officeType.isBlank()) {
+            String safeOfficeType = officeType.replace("'", "''");
+            dql += " AND office_type = '" + safeOfficeType + "'";
+        }
+
+        dql += " ORDER BY object_name";
+
         Map<String, Object> result = executeDql(dql, 1, 500);
         List<?> raw = (List<?>) result.get("users");
         if (raw == null) return Collections.emptyList();
         List<Map<String, Object>> list = new ArrayList<>();
-        for (Object o : raw) { if (o instanceof Map<?,?> m) list.add((Map<String, Object>) m); }
+        for (Object o : raw) {
+            if (o instanceof Map<?,?> m) {
+                Map<String, Object> user = (Map<String, Object>) m;
+                // Additional safety: ensure office_type matches filter if provided
+                if (officeType != null && !officeType.isBlank()) {
+                    String userOfficeType = (String) user.get("office_type");
+                    if (!officeType.equalsIgnoreCase(userOfficeType)) {
+                        continue; // Skip if office type doesn't match
+                    }
+                }
+                list.add(user);
+            }
+        }
         return list;
     }
 
