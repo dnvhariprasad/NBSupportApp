@@ -459,12 +459,12 @@ const ReportsPage = () => {
         let params = {};
         if (digidakIsRoTe && digidakLocation) {
             endpoint = '/users/by-location';
-            params = { location: digidakLocation };
+            params = { location: digidakLocation, officeType: digidakOfficeType };
         } else if (!digidakIsRoTe && digidakDeptName) {
             const dept = digidakDepartments.find(d => d.name === digidakDeptName);
             if (dept && dept.shortCode) {
                 endpoint = '/users/by-dept';
-                params = { shortCode: dept.shortCode };
+                params = { shortCode: dept.shortCode, officeType: digidakOfficeType };
             }
         }
 
