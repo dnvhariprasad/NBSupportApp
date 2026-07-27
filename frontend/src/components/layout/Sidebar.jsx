@@ -32,6 +32,7 @@ const Sidebar = () => {
         { name: 'HO Vertical Management',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'ROTE' },
         { name: 'RO/TE Department Head Assignment',  path: '/dashboard/verticals2', icon: Network,     roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'HO' },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
+        { name: 'SFS',          path: '/dashboard/sfs',       icon: FolderCog,    roles: null },
         { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
         { name: 'Reports',      path: '/dashboard/reports',   icon: FileBarChart2, roles: null },
         { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null, hideForLocalAdmin: true },
