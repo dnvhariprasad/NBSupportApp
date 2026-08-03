@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
 import {
-    CheckCircle2, AlertCircle, X, Loader2, Plus, Hash, RefreshCw, Trash2, Pencil, FileText
+    CheckCircle2, AlertCircle, X, Loader2, Plus, Hash, RefreshCw, Trash2, FileText
 } from 'lucide-react';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -236,11 +236,6 @@ const DocumentTypeList = ({ refreshKey, onToast }) => {
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <button onClick={() => startEdit(item)}
-                                                            className="p-1 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
-                                                            title="Edit">
-                                                            <Pencil size={16} />
-                                                        </button>
                                                         <button onClick={() => setConfirmId(item.r_object_id)}
                                                             className="p-1 rounded text-red-500 hover:bg-red-50 transition-colors"
                                                             title="Delete">
@@ -571,11 +566,6 @@ const DocumentCategoryList = ({ refreshKey, onToast }) => {
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <button onClick={() => startEdit(item)}
-                                                            className="p-1 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
-                                                            title="Edit">
-                                                            <Pencil size={16} />
-                                                        </button>
                                                         <button onClick={() => setConfirmId(item.r_object_id)}
                                                             className="p-1 rounded text-red-500 hover:bg-red-50 transition-colors"
                                                             title="Delete">

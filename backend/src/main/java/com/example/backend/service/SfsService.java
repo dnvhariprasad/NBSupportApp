@@ -87,22 +87,65 @@ public class SfsService {
         }
 
         try {
-            // List objects in the folder
+            // First, list objects in the folder to get their IDs
             String listUrl = repoUrl + "/folders/" + folderId + "/objects";
-            Map<String, Object> response = restClient.get()
+            Map<String, Object> listResponse = restClient.get()
                     .uri(listUrl)
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
                     .body(Map.class);
 
-            if (response != null && response.containsKey("entries")) {
-                return (List<Map<String, Object>>) response.get("entries");
+            List<Map<String, Object>> result = new ArrayList<>();
+            if (listResponse != null && listResponse.containsKey("entries")) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) listResponse.get("entries");
+
+                // Fetch each object individually to get its full properties
+                for (Map<String, Object> entry : entries) {
+                    Object idObj = entry.get("r_object_id");
+                    if (idObj == null) idObj = entry.get("id");
+
+                    if (idObj != null) {
+                        String objectId = idObj.toString();
+                        // Extract ID from URL if needed
+                        if (objectId.contains("/objects/")) {
+                            objectId = objectId.substring(objectId.lastIndexOf("/objects/") + 9);
+                        }
+
+                        try {
+                            String objectUrl = repoUrl + "/objects/" + objectId;
+                            Map<String, Object> objectResponse = restClient.get()
+                                    .uri(objectUrl)
+                                    .header("Authorization", getAuthHeader())
+                                    .header("Accept", "application/vnd.emc.documentum+json")
+                                    .retrieve()
+                                    .body(Map.class);
+
+                            if (objectResponse != null) {
+                                Map<String, Object> item = new HashMap<>();
+                                item.put("r_object_id", objectId);
+
+                                // Extract properties
+                                if (objectResponse.containsKey("properties")) {
+                                    Map<String, Object> props = (Map<String, Object>) objectResponse.get("properties");
+                                    if (props != null) {
+                                        item.putAll(props);
+                                    }
+                                }
+                                result.add(item);
+                            }
+                        } catch (Exception e) {
+                            log.warn("[SFS] Failed to fetch object {}: {}", objectId, e.getMessage());
+                        }
+                    }
+                }
             }
-            return Collections.emptyList();
+
+            log.info("[SFS] Listed {} document types", result.size());
+            return result;
         } catch (Exception e) {
-            log.error("[SFS] Failed to list document types: {}", e.getMessage());
-            throw new RuntimeException("Failed to list document types", e);
+            log.error("[SFS] Failed to list document types: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to list document types: " + e.getMessage(), e);
         }
     }
 
@@ -118,7 +161,7 @@ public class SfsService {
         body.put("properties", props);
 
         try {
-            Map<String, Object> response = restClient.put()
+            Map<String, Object> response = restClient.post()
                     .uri(url)
                     .header("Authorization", getAuthHeader())
                     .header("Content-Type", "application/vnd.emc.documentum+json;charset=UTF-8")
@@ -213,22 +256,65 @@ public class SfsService {
         }
 
         try {
-            // List objects in the folder
+            // First, list objects in the folder to get their IDs
             String listUrl = repoUrl + "/folders/" + folderId + "/objects";
-            Map<String, Object> response = restClient.get()
+            Map<String, Object> listResponse = restClient.get()
                     .uri(listUrl)
                     .header("Authorization", getAuthHeader())
                     .header("Accept", "application/vnd.emc.documentum+json")
                     .retrieve()
                     .body(Map.class);
 
-            if (response != null && response.containsKey("entries")) {
-                return (List<Map<String, Object>>) response.get("entries");
+            List<Map<String, Object>> result = new ArrayList<>();
+            if (listResponse != null && listResponse.containsKey("entries")) {
+                List<Map<String, Object>> entries = (List<Map<String, Object>>) listResponse.get("entries");
+
+                // Fetch each object individually to get its full properties
+                for (Map<String, Object> entry : entries) {
+                    Object idObj = entry.get("r_object_id");
+                    if (idObj == null) idObj = entry.get("id");
+
+                    if (idObj != null) {
+                        String objectId = idObj.toString();
+                        // Extract ID from URL if needed
+                        if (objectId.contains("/objects/")) {
+                            objectId = objectId.substring(objectId.lastIndexOf("/objects/") + 9);
+                        }
+
+                        try {
+                            String objectUrl = repoUrl + "/objects/" + objectId;
+                            Map<String, Object> objectResponse = restClient.get()
+                                    .uri(objectUrl)
+                                    .header("Authorization", getAuthHeader())
+                                    .header("Accept", "application/vnd.emc.documentum+json")
+                                    .retrieve()
+                                    .body(Map.class);
+
+                            if (objectResponse != null) {
+                                Map<String, Object> item = new HashMap<>();
+                                item.put("r_object_id", objectId);
+
+                                // Extract properties
+                                if (objectResponse.containsKey("properties")) {
+                                    Map<String, Object> props = (Map<String, Object>) objectResponse.get("properties");
+                                    if (props != null) {
+                                        item.putAll(props);
+                                    }
+                                }
+                                result.add(item);
+                            }
+                        } catch (Exception e) {
+                            log.warn("[SFS] Failed to fetch object {}: {}", objectId, e.getMessage());
+                        }
+                    }
+                }
             }
-            return Collections.emptyList();
+
+            log.info("[SFS] Listed {} document categories", result.size());
+            return result;
         } catch (Exception e) {
-            log.error("[SFS] Failed to list document categories: {}", e.getMessage());
-            throw new RuntimeException("Failed to list document categories", e);
+            log.error("[SFS] Failed to list document categories: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to list document categories: " + e.getMessage(), e);
         }
     }
 
@@ -244,7 +330,7 @@ public class SfsService {
         body.put("properties", props);
 
         try {
-            Map<String, Object> response = restClient.put()
+            Map<String, Object> response = restClient.post()
                     .uri(url)
                     .header("Authorization", getAuthHeader())
                     .header("Content-Type", "application/vnd.emc.documentum+json;charset=UTF-8")
