@@ -7,19 +7,45 @@ const Sidebar = () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
     const adminRole = storedUser.properties?.admin_role || storedUser.admin_role || null;
     const username = storedUser.properties?.user_name || storedUser.user_name || null;
+    const isSuperAdmin = adminRole === 'Super Admin';
     const isLocalAdmin = adminRole === 'Local Admin';
 
     const [userOfficeType, setUserOfficeType] = useState(null);
+    const [userDepartment, setUserDepartment] = useState(null);
 
     console.log('Sidebar - username:', username, 'isLocalAdmin:', isLocalAdmin, 'adminRole:', adminRole);
 
-    // Fetch office_type from cms_user_profile when component mounts
+    // Fetch office_type and department from cms_user_profile when component mounts
     useEffect(() => {
         if (isLocalAdmin && username) {
             api.get('/users/profile-context', { params: { username } })
                 .then(res => {
+                    console.log('[Sidebar] Profile context response:', res.data);
                     if (res.data?.office_type) {
                         setUserOfficeType(res.data.office_type);
+                    }
+                    // Try multiple department field names
+                    let dept = res.data?.department_short_code ||
+                                 res.data?.department_name ||
+                                 res.data?.profile_department_short_code ||
+                                 res.data?.profile_department_name ||
+                                 res.data?.dept;
+
+                    // Check if department_short_code_multi exists (array format)
+                    if (!dept && res.data?.department_short_code_multi && Array.isArray(res.data.department_short_code_multi)) {
+                        const deptArray = res.data.department_short_code_multi;
+                        if (deptArray.length > 0) {
+                            dept = deptArray[0]; // Get first department
+                        }
+                    }
+
+                    if (dept) {
+                        // Normalize to uppercase for comparison
+                        const normalizedDept = String(dept).toUpperCase();
+                        console.log('[Sidebar] Setting department to:', normalizedDept);
+                        setUserDepartment(normalizedDept);
+                    } else {
+                        console.log('[Sidebar] No department found in response. Available keys:', Object.keys(res.data || {}));
                     }
                 })
                 .catch(err => console.error('Failed to fetch profile context:', err));
@@ -32,7 +58,7 @@ const Sidebar = () => {
         { name: 'HO Vertical Management',    path: '/dashboard/verticals', icon: Network,      roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'ROTE' },
         { name: 'RO/TE Department Head Assignment',  path: '/dashboard/verticals2', icon: Network,     roles: ['Super Admin', 'Local Admin'], hideForLocalAdminIf: 'HO' },
         { name: 'Metadata',     path: '/dashboard/metadata',  icon: FolderCog,    roles: null },
-        { name: 'SFS',          path: '/dashboard/sfs',       icon: FolderCog,    roles: null },
+        { name: 'SFS',          path: '/dashboard/sfs',       icon: FolderCog,    roles: null, showOnlyForHRMD: true },
         { name: 'Cases',        path: '/dashboard/cases',     icon: Briefcase,    roles: null },
         { name: 'Reports',      path: '/dashboard/reports',   icon: FileBarChart2, roles: null },
         { name: 'Workflows',    path: '/dashboard/workflows', icon: GitBranch,    roles: null, hideForLocalAdmin: true },
@@ -40,6 +66,26 @@ const Sidebar = () => {
     ];
 
     const navItems = allNavItems.filter(item => {
+        // Check if item is only for HRMD department Local Admin
+        if (item.showOnlyForHRMD) {
+            console.log('[Sidebar] Checking SFS menu - isSuperAdmin:', isSuperAdmin, 'isLocalAdmin:', isLocalAdmin, 'userDepartment:', userDepartment);
+            // Super Admin can always see it
+            if (isSuperAdmin) {
+                console.log('[Sidebar] Super Admin - showing SFS');
+                return true;
+            }
+            // Local Admin can only see it if they're HRMD
+            if (isLocalAdmin) {
+                const normalizedDept = String(userDepartment).toUpperCase();
+                const isHRMD = normalizedDept === 'HRMD';
+                console.log('[Sidebar] Local Admin HRMD check - userDepartment:', userDepartment, 'normalized:', normalizedDept, 'isHRMD:', isHRMD);
+                return isHRMD;
+            }
+            // Regular users cannot see it
+            console.log('[Sidebar] Regular user - hiding SFS');
+            return false;
+        }
+
         // Hide items for Local Admin
         if (isLocalAdmin && item.hideForLocalAdmin) {
             return false;

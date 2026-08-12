@@ -748,6 +748,37 @@ const SfsUserAccessTab = ({ onToast }) => {
     const [addingUser, setAddingUser] = useState(null);
     const [userMembership, setUserMembership] = useState({});
 
+    // Get user profile for access control
+    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const adminRole = storedUser.properties?.admin_role || storedUser.admin_role || null;
+    const loginUsername = storedUser.properties?.user_name || storedUser.user_name || '';
+    const isSuperAdmin = adminRole === 'Super Admin';
+    const isLocalAdmin = adminRole === 'Local Admin';
+
+    // Access control: only Super Admin and Local Admin can access
+    const hasAccess = isSuperAdmin || isLocalAdmin;
+
+    // Fetch profile context for Local Admin
+    const [profileCtx, setProfileCtx] = useState(null);
+
+    useEffect(() => {
+        if (!isLocalAdmin || !loginUsername) return;
+
+        api.get('/users/profile-context', { params: { username: loginUsername } })
+            .then(res => {
+                const ctx = res.data || {};
+                setProfileCtx(ctx);
+                // Auto-select office type and location
+                if (ctx.office_type && !officeType) {
+                    setOfficeType(ctx.office_type);
+                }
+                if (ctx.location && !location) {
+                    setLocation(ctx.location);
+                }
+            })
+            .catch(err => console.error('[SFS] Failed to fetch profile context:', err));
+    }, [isLocalAdmin, loginUsername, officeType, location]);
+
     // Update locations when office type changes
     useEffect(() => {
         const locs = getLocations(officeType);
@@ -900,6 +931,17 @@ const SfsUserAccessTab = ({ onToast }) => {
         }
     };
 
+    // Access denied check
+    if (!hasAccess) {
+        return (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
+                <AlertCircle size={32} className="text-red-600 mx-auto mb-3" />
+                <h3 className="text-lg font-semibold text-red-900 mb-2">Access Denied</h3>
+                <p className="text-red-700">You don't have permission to access SFS User Access. Only Super Admin and Local Admin users can access this feature.</p>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-4">
             {/* Filters */}
@@ -908,10 +950,11 @@ const SfsUserAccessTab = ({ onToast }) => {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         {/* Office Type */}
                         <div>
-                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Office Type</label>
+                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Office Type {isLocalAdmin && '(Locked)'}</label>
                             <div className="relative">
                                 <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)}
-                                    className={selectCls(false, false)}>
+                                    disabled={isLocalAdmin}
+                                    className={selectCls(false, isLocalAdmin)}>
                                     <option value="">— Select —</option>
                                     <option value="HO">HO — Head Office</option>
                                     <option value="RO">RO — Regional Office</option>
@@ -923,11 +966,11 @@ const SfsUserAccessTab = ({ onToast }) => {
 
                         {/* Location */}
                         <div>
-                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Location</label>
+                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Location {isLocalAdmin && '(Locked)'}</label>
                             <div className="relative">
                                 <select value={location} onChange={e => handleLocationChange(e.target.value)}
-                                    disabled={officeType === 'HO' || !officeType}
-                                    className={selectCls(false, officeType === 'HO' || !officeType)}>
+                                    disabled={officeType === 'HO' || !officeType || isLocalAdmin}
+                                    className={selectCls(false, officeType === 'HO' || !officeType || isLocalAdmin)}>
                                     <option value="">— Select —</option>
                                     {locations.map(loc => {
                                         const locStr = typeof loc === 'string' ? loc : loc.location;
