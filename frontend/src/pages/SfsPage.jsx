@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
+import { getLocations } from '../data/nabardMetadata.js';
 import {
     CheckCircle2, AlertCircle, X, Loader2, Plus, Hash, RefreshCw, Trash2, FileText
 } from 'lucide-react';
@@ -732,10 +733,363 @@ const DocumentCategoryTab = ({ onToast }) => {
     );
 };
 
+// ─── SFS User Access Tab ──────────────────────────────────────────────────────
+const SFS_USER_ROLES = ['Digitization', 'Request Document', 'View SFS Document', 'View Download'];
+
+const SfsUserAccessTab = ({ onToast }) => {
+    const [officeType, setOfficeType] = useState('');
+    const [location, setLocation] = useState('');
+    const [role, setRole] = useState('');
+    const [locations, setLocations] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [displayedUsers, setDisplayedUsers] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [addingUser, setAddingUser] = useState(null);
+    const [userMembership, setUserMembership] = useState({});
+
+    // Update locations when office type changes
+    useEffect(() => {
+        const locs = getLocations(officeType);
+        setLocations(locs || []);
+    }, [officeType]);
+
+    // Check membership for a user in a specific role
+    const checkUserMembership = async (userName, role, office) => {
+        try {
+            const res = await api.get('/sfs/user-access/check-membership', {
+                params: {
+                    userName,
+                    role,
+                    officeType: office,
+                    department: 'HRMD'
+                }
+            });
+            return res.data?.isMember || false;
+        } catch (err) {
+            console.error('[SFS] Error checking membership:', err);
+            return false;
+        }
+    };
+
+    // Check membership for a single user in all roles (lazy loading)
+    const checkUserAllRoles = async (userName, office) => {
+        const membership = {};
+        for (const role of SFS_USER_ROLES) {
+            membership[role] = await checkUserMembership(userName, role, office);
+        }
+        setUserMembership(prev => ({
+            ...prev,
+            [userName]: membership
+        }));
+        return membership;
+    };
+
+    // Fetch users when office type or location changes
+    const fetchUsersByOffice = async (office, loc = '', selectedRole = '') => {
+        setUsers([]);
+        setDisplayedUsers([]);
+        setSearchQuery('');
+        setUserMembership({});
+
+        if (!office) return;
+
+        setLoading(true);
+        try {
+            const res = await api.get('/sfs/user-access/users', {
+                params: {
+                    officeType: office,
+                    department: 'HRMD',
+                    location: loc || undefined,
+                    role: selectedRole || undefined
+                }
+            });
+            const fetchedUsers = Array.isArray(res.data) ? res.data : [];
+            setUsers(fetchedUsers);
+            setDisplayedUsers(fetchedUsers);
+
+            // Pre-load membership for first 10 users
+            setTimeout(() => {
+                for (let i = 0; i < Math.min(10, fetchedUsers.length); i++) {
+                    checkUserAllRoles(fetchedUsers[i].user_name, office);
+                }
+            }, 100);
+        } catch (err) {
+            const errMsg = err.response?.data?.message || err.message || 'Failed to fetch users';
+            console.error('[SFS] Error fetching users:', errMsg);
+            onToast({ type: 'error', message: errMsg });
+            setUsers([]);
+            setDisplayedUsers([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Handle office type change
+    const handleOfficeTypeChange = (value) => {
+        setOfficeType(value);
+        setLocation('');
+        setRole('');
+        setUsers([]);
+        setDisplayedUsers([]);
+        setUserMembership({});
+
+        if (value === 'HO') {
+            fetchUsersByOffice(value, '', '');
+        } else if (value === 'RO' || value === 'TE') {
+            // For RO/TE, wait for location selection
+            // Grid will show "Select location" message
+        }
+    };
+
+    // Handle location change
+    const handleLocationChange = (value) => {
+        setLocation(value);
+        if (officeType && value) {
+            fetchUsersByOffice(officeType, value, role);
+        }
+    };
+
+    // Handle role change
+    const handleRoleChange = (value) => {
+        setRole(value);
+        if (officeType) {
+            fetchUsersByOffice(officeType, location, value);
+        }
+    };
+
+    // Handle search
+    const handleSearch = (query) => {
+        setSearchQuery(query);
+        if (!query.trim()) {
+            setDisplayedUsers(users);
+        } else {
+            const filtered = users.filter(user =>
+                (user.user_name || '').toLowerCase().includes(query.toLowerCase()) ||
+                (user.user_login_name || '').toLowerCase().includes(query.toLowerCase())
+            );
+            setDisplayedUsers(filtered);
+        }
+    };
+
+    const handleAddUserToGroup = async (userName, selectedRole) => {
+        const key = `${userName}-${selectedRole}`;
+        setAddingUser(key);
+        try {
+            const res = await api.post('/sfs/user-access/add-to-group', {
+                userName,
+                role: selectedRole,
+                officeType,
+                department: 'HRMD',
+                location: location || undefined
+            });
+            onToast({ type: 'success', message: res.data?.message || 'User added successfully' });
+
+            // Update membership state to reflect the change immediately
+            setUserMembership(prev => ({
+                ...prev,
+                [userName]: {
+                    ...prev[userName],
+                    [selectedRole]: !prev[userName]?.[selectedRole]
+                }
+            }));
+        } catch (err) {
+            onToast({ type: 'error', message: err.response?.data?.message || 'Failed to add user' });
+        } finally {
+            setAddingUser(null);
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            {/* Filters */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {/* Office Type */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Office Type</label>
+                            <div className="relative">
+                                <select value={officeType} onChange={e => handleOfficeTypeChange(e.target.value)}
+                                    className={selectCls(false, false)}>
+                                    <option value="">— Select —</option>
+                                    <option value="HO">HO — Head Office</option>
+                                    <option value="RO">RO — Regional Office</option>
+                                    <option value="TE">TE — Training Establishment</option>
+                                </select>
+                                <ChevronDown />
+                            </div>
+                        </div>
+
+                        {/* Location */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Location</label>
+                            <div className="relative">
+                                <select value={location} onChange={e => handleLocationChange(e.target.value)}
+                                    disabled={officeType === 'HO' || !officeType}
+                                    className={selectCls(false, officeType === 'HO' || !officeType)}>
+                                    <option value="">— Select —</option>
+                                    {locations.map(loc => {
+                                        const locStr = typeof loc === 'string' ? loc : loc.location;
+                                        return (
+                                            <option key={locStr} value={locStr}>{locStr}</option>
+                                        );
+                                    })}
+                                </select>
+                                <ChevronDown disabled={officeType === 'HO' || !officeType} />
+                            </div>
+                        </div>
+
+                        {/* Department */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Department</label>
+                            <div className="relative">
+                                <select disabled className={selectCls(false, true)}>
+                                    <option>HRMD</option>
+                                </select>
+                                <ChevronDown disabled />
+                            </div>
+                        </div>
+
+                        {/* Role */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Role</label>
+                            <div className="relative">
+                                <select value={role} onChange={e => handleRoleChange(e.target.value)}
+                                    disabled={!officeType}
+                                    className={selectCls(false, !officeType)}>
+                                    <option value="">— All Roles —</option>
+                                    {SFS_USER_ROLES.map(r => (
+                                        <option key={r} value={r}>{r}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown disabled={!officeType} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Search Box */}
+                    {officeType && (
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-2">Search</label>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Search by name, login, designation..."
+                                    value={searchQuery}
+                                    onChange={e => handleSearch(e.target.value)}
+                                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#0A66C2]"
+                                />
+                            </div>
+                            {displayedUsers.length > 0 && (
+                                <div className="text-xs text-slate-500 mt-2">{displayedUsers.length} users</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Users Table */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                {!officeType ? (
+                    <div className="px-6 py-8 text-center text-sm text-slate-400">
+                        Select office type to view users
+                    </div>
+                ) : loading ? (
+                    <div className="flex items-center justify-center gap-2 py-10 text-slate-400">
+                        <Loader2 size={18} className="animate-spin text-indigo-500" />
+                        <span className="text-sm">Loading…</span>
+                    </div>
+                ) : displayedUsers.length === 0 ? (
+                    <div className="px-6 py-8 text-center text-sm text-slate-400">
+                        {searchQuery ? 'No users match your search' : 'No users found'}
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500">#</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500">Name</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500">Login</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500">UIN</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500">SFS Roles</th>
+                                    <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {displayedUsers.map((user, idx) => {
+                                    const userMem = userMembership[user.user_name];
+                                    const assignedRoles = userMem ? SFS_USER_ROLES.filter(r => userMem[r]) : [];
+
+                                    return (
+                                        <tr key={user.r_object_id || idx} className="hover:bg-indigo-50/30">
+                                            <td className="px-6 py-3 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                            <td className="px-6 py-3 text-slate-900 font-medium">{user.user_name || '—'}</td>
+                                            <td className="px-6 py-3 text-slate-600 text-sm">{user.user_login_name || '—'}</td>
+                                            <td className="px-6 py-3 text-slate-600 font-mono text-xs">{user.uin || '—'}</td>
+                                            <td className="px-6 py-3">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {userMem ? (
+                                                        assignedRoles.length > 0 ? (
+                                                            assignedRoles.map(r => (
+                                                                <span key={r} className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                                                    {r.substring(0, 15)}
+                                                                </span>
+                                                            ))
+                                                        ) : (
+                                                            <span className="text-slate-400 text-xs">—</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-slate-300 text-xs">…</span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-3 text-center">
+                                                <>
+                                                    {!userMem ? (
+                                                        <span className="text-slate-300 text-xs">Loading…</span>
+                                                    ) : (
+                                                        <div className="flex flex-wrap gap-2 justify-center">
+                                                        {SFS_USER_ROLES.map(r => {
+                                                            const isMember = userMem[r];
+                                                            return (
+                                                                <button key={r} onClick={() => handleAddUserToGroup(user.user_name, r)}
+                                                                    disabled={addingUser === `${user.user_name}-${r}`}
+                                                                    className={`px-3 py-1.5 text-white text-xs font-semibold rounded transition-all inline-flex items-center gap-1 ${
+                                                                        isMember
+                                                                            ? 'bg-red-600 hover:bg-red-700'
+                                                                            : 'bg-blue-600 hover:bg-blue-700'
+                                                                    } disabled:opacity-60`}>
+                                                                    {addingUser === `${user.user_name}-${r}` ? (
+                                                                        <Loader2 size={11} className="animate-spin" />
+                                                                    ) : (
+                                                                        isMember ? `Remove ${r.substring(0, 12)}` : `Mark to ${r.substring(0, 12)}`
+                                                                    )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                    )}
+                                                </>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // ─── Top-level SFS page ───────────────────────────────────────────────────────
 const SFS_TABS = [
     { id: 'document_type', label: 'Document Type' },
     { id: 'document_category', label: 'Document Category' },
+    { id: 'user_access', label: 'User Access' },
 ];
 
 const SfsPage = () => {
@@ -772,6 +1126,7 @@ const SfsPage = () => {
             <div className="flex-1 overflow-y-auto p-6">
                 {activeTab === 'document_type' && <DocumentTypeTab onToast={setToast} />}
                 {activeTab === 'document_category' && <DocumentCategoryTab onToast={setToast} />}
+                {activeTab === 'user_access' && <SfsUserAccessTab onToast={setToast} />}
             </div>
         </div>
     );
