@@ -12,6 +12,7 @@ import Verticals2Page from './pages/Verticals2Page';
 import DepartmentPage from './pages/DepartmentPage';
 import InboxPage from './pages/InboxPage';
 import MetadataPage from './pages/MetadataPage';
+import SfsPage from './pages/SfsPage';
 import DelegatePage from './pages/DelegatePage';
 import CaseInbox2Page from './pages/CaseInbox2Page';
 import ReportsPage from './pages/ReportsPage';
@@ -34,6 +35,7 @@ function App() {
             <Route path="verticals2" element={<Verticals2Page />} />
             <Route path="departments" element={<DepartmentPage />} />
             <Route path="metadata" element={<MetadataPage />} />
+            <Route path="sfs" element={<SfsPage />} />
             <Route path="query" element={<QueryPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="delegate" element={<Navigate to="/dashboard/cases" replace />} />
