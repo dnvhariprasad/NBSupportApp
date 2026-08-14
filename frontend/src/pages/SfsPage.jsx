@@ -264,6 +264,20 @@ const DocumentTypeTab = ({ onToast }) => {
     const [errors, setErrors] = useState({});
     const [submitting, setSubmitting] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
+    const [existingTypes, setExistingTypes] = useState([]);
+
+    // Load existing document types for duplicate checking
+    useEffect(() => {
+        const fetchExisting = async () => {
+            try {
+                const res = await api.get('/sfs/document-types');
+                setExistingTypes(Array.isArray(res.data) ? res.data : []);
+            } catch (err) {
+                console.error('Failed to load existing types:', err);
+            }
+        };
+        fetchExisting();
+    }, [refreshKey]);
 
     const set = (field, val) => {
         setForm(f => ({ ...f, [field]: val }));
@@ -275,6 +289,18 @@ const DocumentTypeTab = ({ onToast }) => {
         if (!form.document_type.trim()) e.document_type = 'Document Type is required';
         if (!form.document_category.trim()) e.document_category = 'Document Category is required';
         if (!form.serial_number.trim()) e.serial_number = 'Serial Number is required';
+
+        // Check for duplicate document type (case-insensitive)
+        if (form.document_type.trim()) {
+            const isDuplicate = existingTypes.some(item =>
+                item.document_type &&
+                item.document_type.toLowerCase() === form.document_type.trim().toLowerCase()
+            );
+            if (isDuplicate) {
+                e.document_type = `Document Type "${form.document_type.trim()}" already exists`;
+            }
+        }
+
         return e;
     };
 
@@ -596,15 +622,25 @@ const DocumentCategoryTab = ({ onToast }) => {
     const [refreshKey, setRefreshKey] = useState(0);
     const [documentTypes, setDocumentTypes] = useState([]);
     const [loadingTypes, setLoadingTypes] = useState(false);
+    const [existingCategories, setExistingCategories] = useState([]);
 
-    // Fetch document types for dropdown
+    // Fetch document types for dropdown and existing categories for duplicate checking
     useEffect(() => {
         setLoadingTypes(true);
-        api.get('/sfs/document-types')
-            .then(res => setDocumentTypes(Array.isArray(res.data) ? res.data : []))
-            .catch(() => setDocumentTypes([]))
+        Promise.all([
+            api.get('/sfs/document-types'),
+            api.get('/sfs/document-categories')
+        ])
+            .then(([typesRes, catRes]) => {
+                setDocumentTypes(Array.isArray(typesRes.data) ? typesRes.data : []);
+                setExistingCategories(Array.isArray(catRes.data) ? catRes.data : []);
+            })
+            .catch(() => {
+                setDocumentTypes([]);
+                setExistingCategories([]);
+            })
             .finally(() => setLoadingTypes(false));
-    }, []);
+    }, [refreshKey]);
 
     const set = (field, val) => {
         setForm(f => ({ ...f, [field]: val }));
@@ -616,6 +652,20 @@ const DocumentCategoryTab = ({ onToast }) => {
         if (!form.document_type.trim()) e.document_type = 'Document Type is required';
         if (!form.document_category.trim()) e.document_category = 'Document Category is required';
         if (!form.serial_number.trim()) e.serial_number = 'Serial Number is required';
+
+        // Check for duplicate document category under the same document type
+        if (form.document_type.trim() && form.document_category.trim()) {
+            const isDuplicate = existingCategories.some(item =>
+                item.document_type &&
+                item.document_category &&
+                item.document_type.toLowerCase() === form.document_type.trim().toLowerCase() &&
+                item.document_category.toLowerCase() === form.document_category.trim().toLowerCase()
+            );
+            if (isDuplicate) {
+                e.document_category = `Category "${form.document_category.trim()}" already exists for this Document Type`;
+            }
+        }
+
         return e;
     };
 
