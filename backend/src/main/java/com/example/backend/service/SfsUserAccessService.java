@@ -77,7 +77,10 @@ public class SfsUserAccessService {
     }
 
     @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> getUsersByRole(String officeType, String department, String location, String role) {
+    /**
+     * Overloaded version with locationShortCode parameter
+     */
+    public List<Map<String, Object>> getUsersByRole(String officeType, String department, String location, String role, String locationShortCode) {
         String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
 
         try {
@@ -88,12 +91,16 @@ public class SfsUserAccessService {
             }
 
             // If role is specified, fetch users for that role filtered by office type
-            log.info("[SFS] Fetching users for role={}, officeType={}, department={}, location={}", role, officeType, department, location);
-            return fetchUsersForRole(repoUrl, role, officeType, department, location);
+            log.info("[SFS] Fetching users for role={}, officeType={}, department={}, location={}, locationShortCode={}", role, officeType, department, location, locationShortCode);
+            return fetchUsersForRole(repoUrl, role, officeType, department, location, locationShortCode);
         } catch (Exception e) {
             log.error("[SFS] Failed to fetch users: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to fetch users: " + e.getMessage(), e);
         }
+    }
+
+    public List<Map<String, Object>> getUsersByRole(String officeType, String department, String location, String role) {
+        return getUsersByRole(officeType, department, location, role, null);
     }
 
     @SuppressWarnings("unchecked")
@@ -176,9 +183,16 @@ public class SfsUserAccessService {
     }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> fetchUsersForRole(String repoUrl, String role, String officeType, String department, String location) {
+    private List<Map<String, Object>> fetchUsersForRole(String repoUrl, String role, String officeType, String department, String location, String locationShortCode) {
         // Map role to group name
-        String groupName = mapRoleToGroup(role, officeType, department);
+        String groupName;
+        if (locationShortCode != null) {
+            // Use the overloaded version with locationShortCode
+            groupName = mapRoleToGroup(role, officeType, department, location, locationShortCode);
+        } else {
+            // Fall back to location-based mapping
+            groupName = mapRoleToGroup(role, officeType, department, location);
+        }
         if (groupName == null) {
             throw new RuntimeException("Invalid role or parameters");
         }
@@ -283,6 +297,14 @@ public class SfsUserAccessService {
             log.error("[SFS] Failed to fetch users for role {}: {}", role, e.getMessage(), e);
             throw new RuntimeException("Failed to fetch users for role: " + role + " - " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Original version for backward compatibility
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> fetchUsersForRole(String repoUrl, String role, String officeType, String department, String location) {
+        return fetchUsersForRole(repoUrl, role, officeType, department, location, null);
     }
 
     @SuppressWarnings("unchecked")
@@ -415,15 +437,27 @@ public class SfsUserAccessService {
 
     @SuppressWarnings("unchecked")
     public boolean isUserInGroup(String userName, String role, String officeType, String department) {
+        return isUserInGroup(userName, role, officeType, department, null);
+    }
+
+    /**
+     * Version with locationShortCode parameter
+     */
+    public boolean isUserInGroup(String userName, String role, String officeType, String department, String location, String locationShortCode) {
         String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
-        String groupName = mapRoleToGroup(role, officeType, department);
+        String groupName;
+        if (locationShortCode != null) {
+            groupName = mapRoleToGroup(role, officeType, department, location, locationShortCode);
+        } else {
+            groupName = mapRoleToGroup(role, officeType, department, location);
+        }
 
         if (groupName == null) {
             return false;
         }
 
         try {
-            log.info("[SFS] Checking if user {} is in group {}", userName, groupName);
+            log.info("[SFS] Checking if user {} is in group {} (shortCode={})", userName, groupName, locationShortCode);
 
             String groupId = findGroupIdByName(repoUrl, groupName);
             if (groupId == null) {
@@ -458,10 +492,100 @@ public class SfsUserAccessService {
         }
     }
 
+    public boolean isUserInGroup(String userName, String role, String officeType, String department, String location) {
+        return isUserInGroup(userName, role, officeType, department, location, null);
+    }
+
     @SuppressWarnings("unchecked")
+    /**
+     * Overloaded version with locationShortCode parameter
+     */
+    public Map<String, Object> addUserToGroup(String userName, String role, String officeType, String department, String location, String locationShortCode) {
+        String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+        String groupName = mapRoleToGroup(role, officeType, department, location, locationShortCode);
+
+        if (groupName == null) {
+            throw new RuntimeException("Invalid role or parameters");
+        }
+
+        try {
+            // Step 1: Check if user is already in group
+            boolean isAlreadyMember = isUserInGroup(userName, role, officeType, department, location);
+            log.info("[SFS] User {} is {} in group {}", userName, isAlreadyMember ? "already" : "not", groupName);
+
+            // Step 2: Find the group using REST API
+            String groupId = findGroupIdByName(repoUrl, groupName);
+            if (groupId == null) {
+                log.error("[SFS] Group not found: {}", groupName);
+                throw new RuntimeException("Group not found: " + groupName);
+            }
+
+            log.info("[SFS] Found group {} with ID: {}", groupName, groupId);
+
+            String usersUrl = repoUrl + "/groups/" + groupId + "/users";
+            String userHref = "/repositories/" + dctmConfig.getRepository() + "/users/" + userName;
+
+            if (isAlreadyMember) {
+                // REMOVE user from group via DELETE
+                log.info("[SFS] Removing user {} from group {} (ID: {})", userName, groupName, groupId);
+
+                try {
+                    restClient.delete()
+                            .uri(usersUrl + "/" + userName)
+                            .header("Authorization", getAuthHeader())
+                            .header("Accept", "application/vnd.emc.documentum+json")
+                            .retrieve()
+                            .toBodilessEntity();
+
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("success", true);
+                    result.put("message", "User " + userName + " removed from " + groupName + " successfully");
+                    log.info("[SFS] Successfully removed user {} from group {}", userName, groupName);
+                    return result;
+                } catch (RestClientResponseException e) {
+                    String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+                    log.error("[SFS] Failed to remove user [{}]: {} - {}", e.getStatusCode(), rb, e.getMessage());
+                    throw new RuntimeException("Failed to remove user [" + e.getStatusCode() + "]: " + rb);
+                }
+            } else {
+                // ADD user to group via POST
+                log.info("[SFS] Adding user {} to group {} (ID: {})", userName, groupName, groupId);
+
+                String requestBody = String.format("{\"href\":\"%s\"}", userHref);
+
+                try {
+                    restClient.post()
+                            .uri(usersUrl)
+                            .header("Authorization", getAuthHeader())
+                            .header("Content-Type", "application/vnd.emc.documentum+json")
+                            .header("Accept", "application/vnd.emc.documentum+json")
+                            .body(requestBody)
+                            .retrieve()
+                            .toBodilessEntity();
+
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("success", true);
+                    result.put("message", "User " + userName + " added to " + groupName + " successfully");
+                    log.info("[SFS] Successfully added user {} to group {}", userName, groupName);
+                    return result;
+                } catch (RestClientResponseException e) {
+                    String rb = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+                    log.error("[SFS] Failed to add user [{}]: {} - {}", e.getStatusCode(), rb, e.getMessage());
+                    throw new RuntimeException("Failed to add user [" + e.getStatusCode() + "]: " + rb);
+                }
+            }
+        } catch (Exception e) {
+            log.error("[SFS] Error adding user to group: {}", e.getMessage(), e);
+            throw new RuntimeException("Error adding user to group: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Original version for backward compatibility
+     */
     public Map<String, Object> addUserToGroup(String userName, String role, String officeType, String department, String location) {
         String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
-        String groupName = mapRoleToGroup(role, officeType, department);
+        String groupName = mapRoleToGroup(role, officeType, department, location);
 
         if (groupName == null) {
             throw new RuntimeException("Invalid role or parameters");
@@ -580,6 +704,13 @@ public class SfsUserAccessService {
 
 
     private String mapRoleToGroup(String role, String officeType, String department) {
+        return mapRoleToGroup(role, officeType, department, null);
+    }
+
+    /**
+     * Version with locationShortCode - preferred when shortCode is available from frontend
+     */
+    private String mapRoleToGroup(String role, String officeType, String department, String location, String locationShortCode) {
         // Only support HRMD department for now
         if (!"HRMD".equals(department)) {
             return null;
@@ -594,8 +725,133 @@ public class SfsUserAccessService {
                 return "ecm_sfs_view";
             case "View Download":
                 return "ecm_sfs_view_download";
+            case "Maker":
+                if ("HO".equals(officeType)) {
+                    return "ecm_sfs_ho_maker";
+                } else if ("RO".equals(officeType) || "TE".equals(officeType)) {
+                    // Use locationShortCode directly if provided
+                    String shortCode = locationShortCode != null ? locationShortCode : getLocationShortCode(location);
+                    log.info("[SFS] Maker group mapping: officeType={}, location={}, shortCode={} -> group=ecm_sfs_{}_maker",
+                        officeType, location, shortCode, shortCode);
+                    return "ecm_sfs_" + shortCode + "_maker";
+                }
+                return null;
+            case "Checker":
+                if ("HO".equals(officeType)) {
+                    return "ecm_sfs_ho_checker";
+                } else if ("RO".equals(officeType) || "TE".equals(officeType)) {
+                    // Use locationShortCode directly if provided
+                    String shortCode = locationShortCode != null ? locationShortCode : getLocationShortCode(location);
+                    log.info("[SFS] Checker group mapping: officeType={}, location={}, shortCode={} -> group=ecm_sfs_{}_checker",
+                        officeType, location, shortCode, shortCode);
+                    return "ecm_sfs_" + shortCode + "_checker";
+                }
+                return null;
             default:
                 return null;
         }
+    }
+
+    private String mapRoleToGroup(String role, String officeType, String department, String location) {
+        // Only support HRMD department for now
+        if (!"HRMD".equals(department)) {
+            return null;
+        }
+
+        switch (role) {
+            case "Digitization":
+                return "ecm_sfs_digitization";
+            case "Request Document":
+                return "ecm_sfs_request_document";
+            case "View SFS Document":
+                return "ecm_sfs_view";
+            case "View Download":
+                return "ecm_sfs_view_download";
+            case "Maker":
+                if ("HO".equals(officeType)) {
+                    return "ecm_sfs_ho_maker";
+                } else if ("RO".equals(officeType) || "TE".equals(officeType)) {
+                    String shortCode = getLocationShortCode(location);
+                    log.info("[SFS] Maker group mapping: officeType={}, location={}, shortCode={} -> group=ecm_sfs_{}_maker",
+                        officeType, location, shortCode, shortCode);
+                    return "ecm_sfs_" + shortCode + "_maker";
+                }
+                return null;
+            case "Checker":
+                if ("HO".equals(officeType)) {
+                    return "ecm_sfs_ho_checker";
+                } else if ("RO".equals(officeType) || "TE".equals(officeType)) {
+                    String shortCode = getLocationShortCode(location);
+                    log.info("[SFS] Checker group mapping: officeType={}, location={}, shortCode={} -> group=ecm_sfs_{}_checker",
+                        officeType, location, shortCode, shortCode);
+                    return "ecm_sfs_" + shortCode + "_checker";
+                }
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    private String getLocationShortCode(String location) {
+        // Map location names to their short codes
+        // This matches the RO_LOCATIONS and TE_LOCATIONS from frontend
+        if (location == null || location.isEmpty()) {
+            log.warn("[SFS] Location is null or empty for RO/TE role mapping");
+            return "unknown";
+        }
+
+        String loc = location.toLowerCase().trim();
+
+        // RO Locations mapping
+        Map<String, String> roTeMap = new HashMap<>();
+        roTeMap.put("andaman and nicobar", "an");
+        roTeMap.put("andhra pradesh", "ad");
+        roTeMap.put("arunachal pradesh", "ar");
+        roTeMap.put("assam", "as");
+        roTeMap.put("bihar", "br");
+        roTeMap.put("chhattisgarh", "ch");
+        roTeMap.put("goa", "ga");
+        roTeMap.put("gujarat", "gj");
+        roTeMap.put("haryana", "hr");
+        roTeMap.put("himachal pradesh", "hp");
+        roTeMap.put("jammu and kashmir", "jk");
+        roTeMap.put("jharkhand", "jh");
+        roTeMap.put("karnataka", "ka");
+        roTeMap.put("kerala", "kl");
+        roTeMap.put("madhya pradesh", "mp");
+        roTeMap.put("maharashtra", "mh");
+        roTeMap.put("manipur", "mn");
+        roTeMap.put("meghalaya", "ml");
+        roTeMap.put("mizoram", "mz");
+        roTeMap.put("nagaland", "nl");
+        roTeMap.put("new delhi", "dl");
+        roTeMap.put("odisha", "or");
+        roTeMap.put("punjab", "pn");
+        roTeMap.put("rajasthan", "rj");
+        roTeMap.put("sikkim", "sk");
+        roTeMap.put("tamilnadu", "tn");
+        roTeMap.put("tamil nadu", "tn");  // Alternative format
+        roTeMap.put("telangana", "tg");
+        roTeMap.put("tripura", "tr");
+        roTeMap.put("uttarakhand", "uk");
+        roTeMap.put("uttar pradesh", "up");
+        roTeMap.put("west bengal", "wb");
+
+        // TE Locations mapping
+        roTeMap.put("bird kolkata", "bk");
+        roTeMap.put("bird lucknow", "bl");
+        roTeMap.put("bird mangalore", "bm");
+        roTeMap.put("nbsc lucknow", "nc");
+
+        String shortCode = roTeMap.get(loc);
+        if (shortCode != null) {
+            log.info("[SFS] Location '{}' mapped to short code '{}'", location, shortCode);
+            return shortCode;
+        }
+
+        // Fallback: use first 2 chars if not in map
+        String fallback = loc.substring(0, Math.min(2, loc.length()));
+        log.warn("[SFS] Location '{}' not found in map, using fallback: '{}'", location, fallback);
+        return fallback;
     }
 }

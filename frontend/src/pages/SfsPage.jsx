@@ -734,7 +734,7 @@ const DocumentCategoryTab = ({ onToast }) => {
 };
 
 // ─── SFS User Access Tab ──────────────────────────────────────────────────────
-const SFS_USER_ROLES = ['Digitization', 'Request Document', 'View SFS Document', 'View Download'];
+const SFS_USER_ROLES = ['Digitization', 'Request Document', 'View SFS Document', 'View Download', 'Maker', 'Checker'];
 
 const SfsUserAccessTab = ({ onToast }) => {
     const [officeType, setOfficeType] = useState('');
@@ -747,6 +747,16 @@ const SfsUserAccessTab = ({ onToast }) => {
     const [loading, setLoading] = useState(false);
     const [addingUser, setAddingUser] = useState(null);
     const [userMembership, setUserMembership] = useState({});
+
+    // Helper function to get shortCode from location
+    const getLocationShortCode = (loc) => {
+        if (!loc) return undefined;
+        const locObj = locations.find(l => (typeof l === 'string' ? l : l.location) === loc);
+        if (locObj && typeof locObj === 'object') {
+            return locObj.shortCode;
+        }
+        return undefined;
+    };
 
     // Get user profile for access control
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -785,17 +795,32 @@ const SfsUserAccessTab = ({ onToast }) => {
         setLocations(locs || []);
     }, [officeType]);
 
+    // Auto-fetch users for Local Admin when office type and location are populated
+    useEffect(() => {
+        if (isLocalAdmin && officeType && location && !users.length) {
+            console.log('[SFS] Auto-fetching users for Local Admin:', officeType, location);
+            fetchUsersByOffice(officeType, location, role);
+        }
+    }, [isLocalAdmin, officeType, location]);
+
     // Check membership for a user in a specific role
-    const checkUserMembership = async (userName, role, office) => {
+    const checkUserMembership = async (userName, role, office, loc) => {
         try {
-            const res = await api.get('/sfs/user-access/check-membership', {
-                params: {
-                    userName,
-                    role,
-                    officeType: office,
-                    department: 'HRMD'
+            const params = {
+                userName,
+                role,
+                officeType: office,
+                department: 'HRMD'
+            };
+            if (loc) {
+                params.location = loc;
+                // Pass locationShortCode for Maker/Checker roles
+                const shortCode = getLocationShortCode(loc);
+                if (shortCode) {
+                    params.locationShortCode = shortCode;
                 }
-            });
+            }
+            const res = await api.get('/sfs/user-access/check-membership', { params });
             return res.data?.isMember || false;
         } catch (err) {
             console.error('[SFS] Error checking membership:', err);
@@ -804,10 +829,10 @@ const SfsUserAccessTab = ({ onToast }) => {
     };
 
     // Check membership for a single user in all roles (lazy loading)
-    const checkUserAllRoles = async (userName, office) => {
+    const checkUserAllRoles = async (userName, office, loc) => {
         const membership = {};
         for (const role of SFS_USER_ROLES) {
-            membership[role] = await checkUserMembership(userName, role, office);
+            membership[role] = await checkUserMembership(userName, role, office, loc);
         }
         setUserMembership(prev => ({
             ...prev,
@@ -827,13 +852,23 @@ const SfsUserAccessTab = ({ onToast }) => {
 
         setLoading(true);
         try {
-            const res = await api.get('/sfs/user-access/users', {
-                params: {
-                    officeType: office,
-                    department: 'HRMD',
-                    location: loc || undefined,
-                    role: selectedRole || undefined
+            const params = {
+                officeType: office,
+                department: 'HRMD',
+                location: loc || undefined,
+                role: selectedRole || undefined
+            };
+
+            // Add locationShortCode for Maker/Checker roles
+            if (loc && (selectedRole === 'Maker' || selectedRole === 'Checker')) {
+                const shortCode = getLocationShortCode(loc);
+                if (shortCode) {
+                    params.locationShortCode = shortCode;
                 }
+            }
+
+            const res = await api.get('/sfs/user-access/users', {
+                params
             });
             const fetchedUsers = Array.isArray(res.data) ? res.data : [];
             setUsers(fetchedUsers);
@@ -842,7 +877,7 @@ const SfsUserAccessTab = ({ onToast }) => {
             // Pre-load membership for first 10 users
             setTimeout(() => {
                 for (let i = 0; i < Math.min(10, fetchedUsers.length); i++) {
-                    checkUserAllRoles(fetchedUsers[i].user_name, office);
+                    checkUserAllRoles(fetchedUsers[i].user_name, office, loc);
                 }
             }, 100);
         } catch (err) {
@@ -907,13 +942,25 @@ const SfsUserAccessTab = ({ onToast }) => {
         const key = `${userName}-${selectedRole}`;
         setAddingUser(key);
         try {
-            const res = await api.post('/sfs/user-access/add-to-group', {
+            // Find the location object to get shortCode
+            let locationShortCode = undefined;
+            if (location) {
+                const locObj = locations.find(l => (typeof l === 'string' ? l : l.location) === location);
+                if (locObj && typeof locObj === 'object') {
+                    locationShortCode = locObj.shortCode;
+                }
+            }
+
+            const payload = {
                 userName,
                 role: selectedRole,
                 officeType,
                 department: 'HRMD',
-                location: location || undefined
-            });
+                location: location || undefined,
+                locationShortCode: locationShortCode
+            };
+            console.log('[SFS] Adding user to group with payload:', payload);
+            const res = await api.post('/sfs/user-access/add-to-group', payload);
             onToast({ type: 'success', message: res.data?.message || 'User added successfully' });
 
             // Update membership state to reflect the change immediately

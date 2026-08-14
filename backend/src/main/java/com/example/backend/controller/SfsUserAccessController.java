@@ -38,15 +38,17 @@ public class SfsUserAccessController {
      * For RO/TE: GET /api/sfs/user-access/users?officeType=RO&department=HRMD&location=Chennai
      *
      * Optional role parameter to filter by SFS role group.
+     * Optional locationShortCode parameter for Maker/Checker roles.
      */
     @GetMapping("/users")
     public ResponseEntity<?> getUsersByRole(
             @RequestParam String officeType,
             @RequestParam String department,
             @RequestParam(required = false) String location,
-            @RequestParam(required = false) String role) {
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String locationShortCode) {
         try {
-            return ResponseEntity.ok(sfsUserAccessService.getUsersByRole(officeType, department, location, role));
+            return ResponseEntity.ok(sfsUserAccessService.getUsersByRole(officeType, department, location, role, locationShortCode));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage()));
@@ -62,9 +64,11 @@ public class SfsUserAccessController {
             @RequestParam String userName,
             @RequestParam String role,
             @RequestParam String officeType,
-            @RequestParam String department) {
+            @RequestParam String department,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String locationShortCode) {
         try {
-            boolean isMember = sfsUserAccessService.isUserInGroup(userName, role, officeType, department);
+            boolean isMember = sfsUserAccessService.isUserInGroup(userName, role, officeType, department, location, locationShortCode);
             return ResponseEntity.ok(Map.of("isMember", isMember));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
@@ -76,7 +80,7 @@ public class SfsUserAccessController {
      * Add a user to a group based on role.
      * POST /api/sfs/user-access/add-to-group
      *
-     * Body: { userName, role, officeType, department, location? }
+     * Body: { userName, role, officeType, department, location?, locationShortCode? }
      */
     @PostMapping("/add-to-group")
     public ResponseEntity<Map<String, Object>> addUserToGroup(@RequestBody Map<String, Object> request) {
@@ -86,8 +90,9 @@ public class SfsUserAccessController {
             String officeType = (String) request.get("officeType");
             String department = (String) request.get("department");
             String location = (String) request.get("location");
+            String locationShortCode = (String) request.get("locationShortCode");
 
-            return ResponseEntity.ok(sfsUserAccessService.addUserToGroup(userName, role, officeType, department, location));
+            return ResponseEntity.ok(sfsUserAccessService.addUserToGroup(userName, role, officeType, department, location, locationShortCode));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage()));
