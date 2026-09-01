@@ -5,6 +5,7 @@ import {
     Inbox, Loader2, X, User, Building2, MapPin, FolderOpen,
     FileText, Info, ClipboardList, ChevronLeft, ChevronRight, ChevronsLeft, ChevronDown
 } from 'lucide-react';
+import { formatDateTime } from '../utils/dateFormat';
 
 const PAGE_SIZE = 20;
 
@@ -108,14 +109,15 @@ const MovementRegisterModal = ({ caseItem, onClose }) => {
 
     if (!caseItem) return null;
 
+    // NEO-247: Completion Date is the only timestamp shown here. r_creation_date and
+    // r_modify_date were repository housekeeping fields — they sit a few seconds either
+    // side of the action and read as contradicting it, which is what the ticket reported.
     const movCols = [
         { key: 'object_name',    label: 'Object Name' },
         { key: 'performer',      label: 'Performer' },
         { key: 'decision',       label: 'Decision' },
         { key: 'assigned_user',  label: 'Assigned User' },
-        { key: 'completion_date',label: 'Completion Date' },
-        { key: 'r_creation_date',label: 'R Creation Date' },
-        { key: 'r_modify_date',  label: 'R Modify Date' },
+        { key: 'completion_date',label: 'Completion Date', format: formatDateTime },
         { key: 'acl_domain',     label: 'Acl Domain' },
         { key: 'acl_name',       label: 'Acl Name' },
         { key: 'owner_name',     label: 'Owner Name' },
@@ -179,12 +181,15 @@ const MovementRegisterModal = ({ caseItem, onClose }) => {
                                     {movement.map((rec, idx) => (
                                         <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
                                             <td className="px-3 py-2 text-slate-400 font-mono">{idx + 1}</td>
-                                            {movCols.map(col => (
-                                                <td key={col.key} className="px-3 py-2 text-slate-700 max-w-xs truncate"
-                                                    title={String(rec[col.key] ?? '')}>
-                                                    {rec[col.key] ?? '—'}
-                                                </td>
-                                            ))}
+                                            {movCols.map(col => {
+                                                const shown = col.format ? col.format(rec[col.key]) : (rec[col.key] ?? '—');
+                                                return (
+                                                    <td key={col.key} className="px-3 py-2 text-slate-700 max-w-xs truncate"
+                                                        title={String(shown)}>
+                                                        {shown}
+                                                    </td>
+                                                );
+                                            })}
                                         </tr>
                                     ))}
                                 </tbody>
