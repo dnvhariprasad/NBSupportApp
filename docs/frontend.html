@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBAdminApp — Frontend</title>
+<link rel="stylesheet" href="_style.css">
+</head>
+<body>
+<main>
+<nav class="crumbs"><a href="index.html">← Documentation</a></nav>
+
+<h1>Frontend</h1>
+<p class="sub">React 19 · Vite 7 · Tailwind 3 · React Router 7. 15 pages, 6 components, 2 hooks — ~21,000 lines.</p>
+
+<h2>Stack</h2>
+
+<div class="tablewrap"><table>
+<tr><th>Dependency</th><th>Version</th><th>Used for</th></tr>
+<tr><td>react / react-dom</td><td>19.2</td><td>—</td></tr>
+<tr><td>react-router-dom</td><td>7.13</td><td>Routing, <code>basename="/neoadmin/"</code></td></tr>
+<tr><td>axios</td><td>1.13</td><td>The single API instance</td></tr>
+<tr><td>lucide-react</td><td>0.563</td><td>All icons</td></tr>
+<tr><td>framer-motion</td><td>12.29</td><td>Animation</td></tr>
+<tr><td>xlsx</td><td>0.18</td><td>Report export</td></tr>
+<tr><td>tailwindcss</td><td>3.4</td><td>All styling; brand blue <code>#0A66C2</code></td></tr>
+</table></div>
+
+<p>No state-management library. No data-fetching library. No component library. Every page holds its own
+<code>useState</code> and calls <code>api</code> directly in <code>useEffect</code> or an event handler.</p>
+
+<h2>Directory layout</h2>
+
+<pre><code>src/
+├── App.jsx              router and route table
+├── main.jsx             entry
+├── api/axios.js         the one axios instance (19 lines)
+├── pages/               15 route components
+├── components/          5 shared components + layout/
+│   └── layout/          MainLayout, Sidebar, Topbar
+├── hooks/               useIdleTimeout, useQueryHistory
+├── data/nabardMetadata.js   office/department/location/grade vocabulary (1,057 lines)
+├── utils/               dateFormat.js, verticalHead.js
+└── services/            (empty)</code></pre>
+
+<h2>Routing</h2>
+
+<p>All application routes are children of a single protected layout:</p>
+
+<pre><code>/login                        LoginPage                (public)
+/dashboard                    MainLayout               (guard + chrome)
+  ├── (index)                 → redirect to /dashboard/cases
+  ├── cases                   CasesPage
+  ├── workflows               WorkflowsPage
+  ├── groups                  GroupsPage
+  ├── inbox                   InboxPage
+  ├── users                   UsersPage
+  ├── verticals               VerticalsPage            HO vertical management
+  ├── verticals2              Verticals2Page           RO/TE department head assignment
+  ├── departments             DepartmentPage
+  ├── metadata                MetadataPage
+  ├── sfs                     SfsPage
+  ├── query                   QueryPage
+  ├── reports                 ReportsPage
+  ├── delegate                → redirect to cases   (retired route)
+  └── inbox2                  → redirect to cases   (retired route)
+/                             → redirect to /login</code></pre>
+
+<div class="note">
+<p><code>DelegatePage.jsx</code> and <code>CaseInbox2Page.jsx</code> still exist and are still maintained — both were
+edited for <a href="https://sedin.atlassian.net/browse/NEO-247">NEO-247</a> — but their routes now redirect to
+<code>cases</code>. They are reached as embedded views rather than as pages, so changes to them are not visible by
+navigating to <code>/dashboard/delegate</code>.</p>
+</div>
+
+<h2>Pages</h2>
+
+<div class="tablewrap"><table>
+<tr><th>Page</th><th>Lines</th><th>Purpose</th></tr>
+<tr><td><code>UsersPage</code></td><td>2,984</td><td>User Creation wizard, User Directory, User Access, Password Update. Hosts <code>EditUserProfileModal</code></td></tr>
+<tr><td><code>ReportsPage</code></td><td>1,980</td><td>Reporting with xlsx export</td></tr>
+<tr><td><code>Verticals2Page</code></td><td>1,909</td><td>RO/TE department head assignment</td></tr>
+<tr><td><code>VerticalsPage</code></td><td>1,731</td><td>HO vertical management, member add/remove, vertical head assignment</td></tr>
+<tr><td><code>MetadataPage</code></td><td>1,497</td><td>Tabbed metadata administration (case types etc.)</td></tr>
+<tr><td><code>SfsPage</code></td><td>1,275</td><td>SFS configuration</td></tr>
+<tr><td><code>WorkflowsPage</code></td><td>1,029</td><td>Workflow monitoring</td></tr>
+<tr><td><code>CasesPage</code></td><td>916</td><td>Case search and listing</td></tr>
+<tr><td><code>DelegatePage</code></td><td>644</td><td>Case delegation; movement register grid</td></tr>
+<tr><td><code>CaseInbox2Page</code></td><td>630</td><td>Case inbox; movement register grid</td></tr>
+<tr><td><code>QueryPage</code></td><td>574</td><td>DQL console, backed by <code>useQueryHistory</code></td></tr>
+<tr><td><code>LoginPage</code></td><td>346</td><td>Credentials → OTDS token → <code>localStorage</code></td></tr>
+<tr><td><code>GroupsPage</code></td><td>294</td><td>Group browse and membership</td></tr>
+<tr><td><code>InboxPage</code></td><td>293</td><td>Task inbox</td></tr>
+<tr><td><code>DepartmentPage</code></td><td>278</td><td>NABARD department creation (Super Admin only)</td></tr>
+</table></div>
+
+<div class="warn">
+<p><strong>Page size is the main maintenance risk.</strong> <code>UsersPage</code> is nearly 3,000 lines and
+<code>EditUserProfileModal</code> just over 2,000. Both mix data fetching, form state, group arithmetic and rendering in
+one file. When changing them, locate the exact handler first — the same concept is often expressed twice in
+neighbouring branches.</p>
+</div>
+
+<h2>Components</h2>
+
+<div class="tablewrap"><table>
+<tr><th>Component</th><th>Lines</th><th>Role</th></tr>
+<tr><td><code>EditUserProfileModal</code></td><td>2,016</td><td>The profile editor. Office/location/department cascade, pending-case guards, group add/remove, vertical-head reassignment</td></tr>
+<tr><td><code>ManageMembersModal</code></td><td>380</td><td>Group membership editing</td></tr>
+<tr><td><code>MultiSelectDropdown</code></td><td>152</td><td>Shared multi-select</td></tr>
+<tr><td><code>AssignVerticalHeadModal</code></td><td>120</td><td>"Assign New Vertical Head" prompt (added for NEO-239)</td></tr>
+<tr><td><code>IdleWarningModal</code></td><td>75</td><td>Idle countdown</td></tr>
+<tr><td><code>layout/Topbar</code></td><td>296</td><td>Header, user menu</td></tr>
+<tr><td><code>layout/Sidebar</code></td><td>153</td><td>Role-filtered navigation</td></tr>
+<tr><td><code>layout/MainLayout</code></td><td>52</td><td>Route guard + chrome + idle timeout</td></tr>
+</table></div>
+
+<h2>The API layer</h2>
+
+<p>The entire client is 19 lines:</p>
+
+<pre><code>const api = axios.create({
+  baseURL: "http://localhost:8080/api",
+  headers: { "Content-Type": "application/json" },
+});
+
+api.interceptors.request.use((config) =&gt; {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});</code></pre>
+
+<div class="danger">
+<p><strong>The backend URL is hardcoded to <code>localhost:8080</code>.</strong> There is no environment variable and no
+proxy configuration in <code>vite.config.js</code>. Any non-local deployment depends on something outside this file —
+a reverse proxy, or an edited build. Do not assume the built bundle will reach a remote backend as-is.</p>
+</div>
+
+<p>There is no response interceptor, so there is no central handling of 401, no retry and no error normalisation.
+Every call site does its own <code>.catch</code>, and the prevailing style is <code>.catch(() =&gt; {})</code> —
+failures are frequently swallowed.</p>
+
+<h2>Session and role handling</h2>
+
+<p><code>localStorage</code> holds two keys: <code>user</code> (the profile object) and <code>token</code> (the OTDS
+token). The role is read defensively in several places because the shape varies:</p>
+
+<pre><code>const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+const adminRole  = storedUser.properties?.admin_role || storedUser.admin_role || null;</code></pre>
+
+<p><code>MainLayout</code> renders "Access Denied" unless the role is <code>Super Admin</code> or
+<code>Local Admin</code>. <code>Sidebar</code> filters navigation by role, with two extra rules: HO Vertical Management
+is hidden from RO/TE Local Admins, RO/TE Department Head Assignment from HO Local Admins, and SFS is Super Admin plus
+HRMD Local Admins only.</p>
+
+<h2>The metadata module</h2>
+
+<p><code>src/data/nabardMetadata.js</code> (1,057 lines) is the vocabulary the whole portal is built on:</p>
+
+<div class="tablewrap"><table>
+<tr><th>Export</th><th>Contents</th></tr>
+<tr><td><code>DESIGNATION_OPTIONS</code></td><td>DA, AM, MGR, AGM, DGM, GM, GM(OIC), CGM, DMD, CHAIRMAN</td></tr>
+<tr><td><code>USER_GRADES</code></td><td><code>group_b</code>(0) … <code>grade_f</code>(6), including <code>grade_e(oic)</code>(5)</td></tr>
+<tr><td><code>HO_DEPARTMENTS</code>, <code>RO_DEPARTMENTS</code>, <code>TE_DEPARTMENTS</code></td><td>Department lists per office type</td></tr>
+<tr><td><code>RO_LOCATIONS</code>, <code>TE_LOCATIONS</code></td><td>Locations</td></tr>
+<tr><td><code>DDM_DISTRICTS</code></td><td>Districts per location, for DDM users</td></tr>
+<tr><td><code>getDepartments()</code>, <code>getLocations()</code>, <code>fetchDepartments()</code>, <code>invalidateDeptCache()</code></td><td>Accessors with a cache</td></tr>
+</table></div>
+
+<div class="warn">
+<p>Designation and grade are kept in step by two mirrored maps in <code>EditUserProfileModal</code>
+(<code>DESIGNATION_GRADE_MAPPING</code> and its reverse). Adding a designation or grade means editing
+<strong>both</strong>, plus <code>USER_GRADES</code>. The CMS also consumes this grade vocabulary, so the blast radius
+extends beyond this repository.</p>
+</div>
+
+<h2>Utilities</h2>
+
+<div class="tablewrap"><table>
+<tr><th>File</th><th>Provides</th></tr>
+<tr><td><code>utils/dateFormat.js</code></td><td><code>parseDocumentumDate</code> (accepts ISO-8601 UTC from xCP REST and the day-first DFC form) and <code>formatDateTime</code> → <code>16/01/2026 05:44:00 PM</code>. Added for NEO-247 because the portal had no date helper and the CMS one could not be shared</td></tr>
+<tr><td><code>utils/verticalHead.js</code></td><td>Vertical-head group naming: <code>getVerticalHeadGroupName</code>, <code>getVerticalGroupFromHeadGroup</code>, <code>getVerticalHeadDept</code>, <code>isVerticalHeadGroup</code>, <code>buildVerticalHeadDisplayName</code>. Added for NEO-239</td></tr>
+</table></div>
+
+<h2>Hooks</h2>
+
+<ul>
+  <li><code>useIdleTimeout(warningMs, logoutMs)</code> — timer refs, activity listeners, countdown. Called from
+      <code>MainLayout</code> as <code>(30000, 1800000)</code>: warn 30 s before a 30-minute idle logout.</li>
+  <li><code>useQueryHistory()</code> — persists DQL console history.</li>
+</ul>
+
+<h2>Build</h2>
+
+<pre><code>cd frontend
+npm install
+npm run dev       # Vite dev server — 5173, or 5174 if 5173 is taken
+npm run build     # static assets under base /neoadmin/
+npm run lint      # eslint flat config
+npm run preview</code></pre>
+
+<div class="note">
+<p><code>npm run lint</code> currently reports <strong>one pre-existing error</strong>:
+<code>handleDepartmentChange</code> is assigned but never used in <code>EditUserProfileModal.jsx</code>. It is on
+<code>SFS</code> and unrelated to recent work — do not treat it as a regression from your change.</p>
+</div>
+
+<footer><p><a href="backend.html">← Backend</a> · <a href="patterns.html">Code patterns →</a></p></footer>
+</main>
+</body>
+</html>
