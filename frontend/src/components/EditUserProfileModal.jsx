@@ -2,6 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { X, Save, Loader2, User, Building2, MapPin, Tag, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
 import { USER_GRADES, DESIGNATION_OPTIONS, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS, DDM_DISTRICTS } from '../data/nabardMetadata.js';
+import AssignVerticalHeadModal from './AssignVerticalHeadModal.jsx';
+import {
+    buildVerticalHeadDisplayName,
+    getVerticalGroupFromHeadGroup,
+    getVerticalHeadDept,
+    isVerticalHeadGroup,
+} from '../utils/verticalHead.js';
 
 const USER_GRADE_OPTIONS = [
     { value: '', label: '— Select grade —', level: '' },
@@ -30,6 +37,32 @@ const GRADE_DESIGNATION_MAPPING = {
     'grade_e': 'GM',
     'grade_e(oic)': 'GM(OIC)',
     'grade_f': 'CGM',
+};
+
+// Vertical groups implied by an office type / RO code / department code set.
+// Hoisted to module scope so the save path and the vertical-head guard that runs
+// ahead of it derive the same group names.
+const getGroups = (offType, roCode, codes) => {
+    const groups = [];
+    if (offType === 'HO') {
+        for (const c of codes) if (c) groups.push(`ecm_ho_${c.toLowerCase()}`);
+    } else if (['RO', 'TE'].includes(offType) && roCode) {
+        const ro = roCode.toLowerCase();
+        if (codes.length > 0) groups.push(`ecm_${ro}`);
+        for (const c of codes) if (c) groups.push(`ecm_${ro}_${c.toLowerCase()}`);
+    }
+    return groups;
+};
+
+// Whether an existing group is dropped because its department was deselected.
+// Mirrors exactly what the save loop acts on, so the guard prompts if and only
+// if a removal will actually happen.
+const isGroupDroppedByDeptChange = (g, officeType, removedDepts) => {
+    const deptMatch = g.match(/ecm_ho_([a-z]+)/) || g.match(/ecm_([a-z]+)_([a-z]+)/);
+    if (!deptMatch) return false;
+    if (officeType === 'HO') return removedDepts.includes(deptMatch[1]);
+    if (['RO', 'TE'].includes(officeType)) return removedDepts.includes(deptMatch[2]);
+    return false;
 };
 
 const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
@@ -88,6 +121,21 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [locationPendingCases,   setLocationPendingCases]   = useState([]);
     const [showLocationBlock,      setShowLocationBlock]      = useState(false);
 
+    // Vertical head reassignment — a user who heads a vertical cannot lose that
+    // vertical's group until a replacement head is named. One queue entry per
+    // affected vertical, since a user may head more than one.
+    const [vhQueue,              setVhQueue]              = useState([]);   // [{ verticalGroup, headGroup }]
+    const [vhIndex,              setVhIndex]              = useState(0);
+    const [showVerticalHeadModal, setShowVerticalHeadModal] = useState(false);
+    const [availableHeads,       setAvailableHeads]       = useState([]);
+    const [selectedNewHead,      setSelectedNewHead]      = useState('');
+    const [updatingHead,         setUpdatingHead]         = useState(false);
+    const [vhError,              setVhError]              = useState(null);
+    const [checkingVerticalHead, setCheckingVerticalHead] = useState(false);
+    // Head groups already reassigned during this edit — so the re-entrant save
+    // does not prompt for them again if the repository read lags the write.
+    const handledHeadGroupsRef = useRef(new Set());
+
     // Delegate modal state
     const [delegateTask,         setDelegateTask]         = useState(null);
     const [delegateUsers,        setDelegateUsers]        = useState([]);
@@ -111,6 +159,14 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setDelegateTask(null);
         setDesignationChanged(false);
         setGradeChanged(false);
+        setVhQueue([]);
+        setVhIndex(0);
+        setShowVerticalHeadModal(false);
+        setAvailableHeads([]);
+        setSelectedNewHead('');
+        setVhError(null);
+        setCheckingVerticalHead(false);
+        handledHeadGroupsRef.current = new Set();
         lastManualChangeRef.current = null;
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
@@ -702,6 +758,154 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setGradeChanged(false);
     };
 
+    // ── Vertical head guard ─────────────────────────────────────────────────────
+    // A vertical must never be left headless. If this save would drop a vertical
+    // group that the user currently heads (i.e. they are a member of the matching
+    // `*_vertical_head_*` group), the save is held until a replacement head is
+    // chosen — the same rule the Verticals screen applies on "remove member".
+
+    /** Department codes this save will persist — mirrors payloadDeptCodes. */
+    const currentDeptCodes = () => {
+        const isDDMUser = form.department_name === 'DDM' && ['RO', 'TE'].includes(form.office_type);
+        if (isDDMUser) return form.department_short_code ? [form.department_short_code] : [];
+        return form.department_short_code_multi || [];
+    };
+
+    /**
+     * Whether this save costs the user vertical groups at all.
+     *
+     * Group cleanup is performed by the BACKEND on profile update
+     * (UserService.handleDepartmentChange), not by the loop further down this
+     * file — so this predicts that, rather than the frontend removal. For an HO
+     * user the backend drops every `ecm_ho_*` group whose leading segment is not
+     * a still-selected department; a vertical-head group's leading segment is
+     * literally "vertical", so it is dropped on any department change at all.
+     * Changing office type or RO code invalidates the whole prefix, so every
+     * group goes.
+     */
+    const groupLossContext = () => {
+        const old = originalGroupInfoRef.current;
+        const newDepts = currentDeptCodes().map(c => (c || '').toLowerCase());
+        const oldDepts = (old.deptCodes || []).map(c => (c || '').toLowerCase());
+        return {
+            officeChanged: (form.office_type || '') !== (old.officeType || ''),
+            roChanged: (form.ro_short_code || '').toLowerCase() !== (old.roShortCode || '').toLowerCase(),
+            deptsDropped: oldDepts.some(d => !newDepts.includes(d)),
+            newDepts,
+        };
+    };
+
+    // Group member lists are keyed on dm_user.user_name (e.g. "Sonny George"),
+    // which differs from user_login_name ("cto.dit"). cms_user_profile has no
+    // user_name attribute at all — it carries the display name in object_name —
+    // so match on every identifier this user could be known by.
+    const selfIdentifiers = () =>
+        [user?.object_name, user?.user_name, user?.user_login_name].filter(Boolean);
+
+    /** Name to show in the prompt: the person's name, not their login. */
+    const displayName = () =>
+        user?.object_name || user?.user_name || user?.user_login_name || '';
+
+    /** Members of a vertical eligible to take over as head. */
+    const fetchHeadCandidates = async (verticalGroup) => {
+        const self = selfIdentifiers();
+        try {
+            const res = await api.get(`/groups/${encodeURIComponent(verticalGroup)}/members`);
+            return (res.data?.users || []).filter(u => !self.includes(u.name));
+        } catch (err) {
+            console.warn(`Failed to load members of ${verticalGroup}:`, err.message);
+            return [];
+        }
+    };
+
+    /**
+     * Verticals the user heads that this save would take away.
+     * Throws if the user's group list cannot be read — the guard fails closed,
+     * because silently orphaning a vertical is the outcome it exists to prevent.
+     */
+    const collectVerticalHeadReassignments = async () => {
+        const memberName = user?.user_login_name;
+        if (!memberName) return [];
+
+        const { officeChanged, roChanged, deptsDropped, newDepts } = groupLossContext();
+        if (!officeChanged && !roChanged && !deptsDropped) return [];
+
+        const res = await api.get(`/groups/by-user?username=${encodeURIComponent(memberName)}`);
+        const headGroups = (Array.isArray(res.data) ? res.data : [])
+            .map(g => g.group_name || g.name)
+            .filter(isVerticalHeadGroup);
+
+        return headGroups
+            .filter(h => !handledHeadGroupsRef.current.has(h))
+            .filter(h => {
+                // A different office or RO invalidates every group the user holds.
+                if (officeChanged || roChanged) return true;
+                // Otherwise the head group goes with its department.
+                const dept = getVerticalHeadDept(h);
+                return dept === null || !newDepts.includes(dept);
+            })
+            .map(h => ({ headGroup: h, verticalGroup: getVerticalGroupFromHeadGroup(h) }));
+    };
+
+    /** Hand the head role to the selected user, then continue the queue or save. */
+    const handleConfirmNewHead = async () => {
+        const item = vhQueue[vhIndex];
+        const memberName = user?.user_login_name;
+        if (!selectedNewHead || !item || !memberName) return;
+
+        setUpdatingHead(true);
+        setVhError(null);
+        try {
+            // 1. Remove the outgoing head
+            await api.delete(`/groups/${encodeURIComponent(item.headGroup)}/members/${encodeURIComponent(memberName)}`, {
+                params: { memberType: 'user' },
+            });
+            // 2. Install the new head
+            await api.post(`/groups/${encodeURIComponent(item.headGroup)}/members`, {
+                memberName: selectedNewHead,
+                memberType: 'user',
+            });
+            // 3. Keep the group's display name in step (non-fatal if it fails)
+            try {
+                await api.put(`/groups/${encodeURIComponent(item.headGroup)}/display-name`, {
+                    displayName: buildVerticalHeadDisplayName(item.verticalGroup, selectedNewHead),
+                });
+            } catch (displayErr) {
+                console.warn('Failed to update vertical head display name:', displayErr);
+            }
+
+            handledHeadGroupsRef.current.add(item.headGroup);
+
+            const next = vhIndex + 1;
+            if (next < vhQueue.length) {
+                // Another vertical still needs a head before the save can run.
+                setVhIndex(next);
+                setSelectedNewHead('');
+                setAvailableHeads(await fetchHeadCandidates(vhQueue[next].verticalGroup));
+            } else {
+                setShowVerticalHeadModal(false);
+                setVhQueue([]);
+                setVhIndex(0);
+                setSelectedNewHead('');
+                setAvailableHeads([]);
+                await handleSubmit({ preventDefault: () => {} });
+            }
+        } catch (err) {
+            setVhError(err.response?.data?.message || err.message || 'Failed to assign the new vertical head.');
+        } finally {
+            setUpdatingHead(false);
+        }
+    };
+
+    const handleCancelNewHead = () => {
+        setShowVerticalHeadModal(false);
+        setVhQueue([]);
+        setVhIndex(0);
+        setSelectedNewHead('');
+        setAvailableHeads([]);
+        setVhError(null);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (showPendingBlock) return; // block save if pending cases exist
@@ -718,6 +922,30 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (isDDMUser && !form.department_short_code?.trim()) v.department_short_code = 'District is required';
         if (Object.keys(v).length > 0) { setErrors(v); return; }
         setErrors({});
+
+        // Hold the save if this change would leave a vertical without a head.
+        // Runs before the PATCH so nothing is written when the admin cancels.
+        setCheckingVerticalHead(true);
+        let pendingHeads = [];
+        try {
+            pendingHeads = await collectVerticalHeadReassignments();
+        } catch (err) {
+            console.error('Vertical head check failed:', err);
+            setError('Could not verify whether this user heads a vertical, so the change was not saved. Please retry.');
+            return;
+        } finally {
+            setCheckingVerticalHead(false);
+        }
+        if (pendingHeads.length > 0) {
+            setVhQueue(pendingHeads);
+            setVhIndex(0);
+            setSelectedNewHead('');
+            setVhError(null);
+            setAvailableHeads(await fetchHeadCandidates(pendingHeads[0].verticalGroup));
+            setShowVerticalHeadModal(true);
+            return;
+        }
+
         setLoading(true);
         setError(null);
         try {
@@ -737,18 +965,6 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             const payloadDeptCodes = isHO
                 ? (payload.department_short_code_multi || [])
                 : (payload.department_short_code_multi || []);
-
-            const getGroups = (offType, roCode, codes) => {
-                const groups = [];
-                if (offType === 'HO') {
-                    for (const c of codes) if (c) groups.push(`ecm_ho_${c.toLowerCase()}`);
-                } else if (['RO', 'TE'].includes(offType) && roCode) {
-                    const ro = roCode.toLowerCase();
-                    if (codes.length > 0) groups.push(`ecm_${ro}`);
-                    for (const c of codes) if (c) groups.push(`ecm_${ro}_${c.toLowerCase()}`);
-                }
-                return groups;
-            };
 
             const getDigidakGroups = (offType, roCode, codes) => {
                 const groups = [];
@@ -915,18 +1131,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
                 // Only remove groups for departments that were actually removed
                 for (const g of oldGroups) {
-                    const deptMatch = g.match(/ecm_ho_([a-z]+)/) || g.match(/ecm_([a-z]+)_([a-z]+)/);
-                    let shouldRemove = false;
-
-                    if (form.office_type === 'HO' && deptMatch) {
-                        const dept = deptMatch[1];
-                        shouldRemove = removedDepts.includes(dept);
-                    } else if (['RO', 'TE'].includes(form.office_type) && deptMatch) {
-                        const dept = deptMatch[2];
-                        shouldRemove = removedDepts.includes(dept);
-                    }
-
-                    if (shouldRemove) {
+                    if (isGroupDroppedByDeptChange(g, form.office_type, removedDepts)) {
                         console.log(`Removing user from group (dept removed): ${g}`);
                         api.delete(`/groups/${g}/members/${encodeURIComponent(memberName)}`).catch(err => {
                             console.error(`Failed to remove ${g}:`, err.response?.data || err.message);
@@ -1743,13 +1948,27 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                         Cancel
                     </button>
-                    <button type="submit" form="editProfileForm" disabled={loading || loadingForm || checkingInbox || checkingOfficeInbox || checkingDeptInbox || checkingLocationInbox || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock || showLocationBlock}
+                    <button type="submit" form="editProfileForm" disabled={loading || loadingForm || checkingInbox || checkingOfficeInbox || checkingDeptInbox || checkingLocationInbox || checkingVerticalHead || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock || showLocationBlock}
                         className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] disabled:opacity-50 flex items-center gap-2 transition-colors">
-                        {loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                        {(loading || checkingVerticalHead) ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                         Save Changes
                     </button>
                 </div>
             </div>
+
+            <AssignVerticalHeadModal
+                open={showVerticalHeadModal}
+                userName={displayName()}
+                verticalGroup={vhQueue[vhIndex]?.verticalGroup}
+                candidates={availableHeads}
+                selected={selectedNewHead}
+                onSelect={setSelectedNewHead}
+                onCancel={handleCancelNewHead}
+                onConfirm={handleConfirmNewHead}
+                busy={updatingHead}
+                error={vhError}
+                step={{ current: vhIndex + 1, total: vhQueue.length }}
+            />
         </div>
     );
 };
