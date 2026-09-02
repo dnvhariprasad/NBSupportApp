@@ -65,6 +65,12 @@ const isGroupDroppedByDeptChange = (g, officeType, removedDepts) => {
     return false;
 };
 
+// Office types that record a user having LEFT a posting rather than holding one.
+// Selecting either stamps the marker across the posting metadata (location,
+// department name/short code/multi) so no stale department is left behind.
+const EXIT_OFFICE_TYPES = ['RETIRED', 'TRANSFERRED'];
+const isExitOfficeType = (v) => EXIT_OFFICE_TYPES.includes(v);
+
 const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
 const readonlyCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 cursor-default font-mono';
 const selectCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer';
@@ -537,15 +543,26 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     };
 
     const handleOfficeTypeChange = async (v) => {
+        // RETIRED / TRANSFERRED stamp the marker across the posting fields
+        // instead of clearing them, and lock those controls.
+        const exiting = isExitOfficeType(v);
+        const wasHO = originalGroupInfoRef.current.officeType === 'HO';
+
         set('office_type',               v);
-        set('location',                  v === 'HO' ? 'Mumbai' : '');
+        if (exiting) {
+            // An HO user's location is always Mumbai and already read-only, so
+            // it carries no posting information and is left untouched.
+            if (!wasHO) set('location', v);
+        } else {
+            set('location',              v === 'HO' ? 'Mumbai' : '');
+        }
         set('ro_short_code',             '');
-        set('department_name',           '');
+        set('department_name',           exiting ? v : '');
         setShowDeptBlock(false);
         setDeptPendingCases([]);
-        set('department_short_code',     '');
-        set('department_names',          []);
-        set('department_short_code_multi', []);
+        set('department_short_code',     exiting ? v : '');
+        set('department_names',          exiting ? [v] : []);
+        set('department_short_code_multi', exiting ? [v] : []);
         if (v === 'HO') {
             setDeptOptions(await fetchDepartments('HO'));
         } else {
@@ -951,12 +968,16 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         try {
             const isROTE = ['RO', 'TE'].includes(form.office_type);
             const isHO = form.office_type === 'HO';
+            const isExit = isExitOfficeType(form.office_type);
             const { department_short_code_multi, ...rest } = form;
             const payload = {
                 ...rest,
                 ...(isHO && { department_short_code_multi: form.department_short_code_multi || [] }),
                 ...(isROTE && !isDDMUser && { department_short_code_multi }),
                 ...(isDDMUser && { department_short_code_multi: form.department_short_code ? [form.department_short_code] : [] }),
+                // Neither HO nor RO/TE, so the branches above do not fire and the
+                // destructured field would otherwise never be sent.
+                ...(isExit && { department_short_code_multi: [form.office_type] }),
             };
 
             await api.patch(`/users/profiles/${user.r_object_id}`, payload);
@@ -1243,6 +1264,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const isHO      = form.office_type === 'HO';
     const isROTE    = ['RO', 'TE'].includes(form.office_type);
     const isDDMUser = form.department_name === 'DDM' && isROTE;
+    const isExitOffice = isExitOfficeType(form.office_type);
+    // An originally-HO user keeps Mumbai, since HO location is never updated on exit.
+    const exitLocationLabel = originalGroupInfoRef.current.officeType === 'HO'
+        ? (form.location || 'Mumbai')
+        : form.office_type;
 
     // Delegate case modal
     const DelegateCaseModal = () => {
@@ -1501,6 +1527,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             <option value="HO">HO — Head Office</option>
                                             <option value="RO">RO — Regional Office</option>
                                             <option value="TE">TE — Training Establishment</option>
+                                            <option value="RETIRED">RETIRED</option>
+                                            <option value="TRANSFERRED">TRANSFERRED</option>
                                         </select>
                                     </SelectWrapper>
                                     {checkingOfficeInbox && (
@@ -1517,6 +1545,12 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             <SelectWrapper>
                                                 <select disabled className={disabledSelectCls}>
                                                     <option>Mumbai</option>
+                                                </select>
+                                            </SelectWrapper>
+                                        ) : isExitOffice ? (
+                                            <SelectWrapper>
+                                                <select disabled className={disabledSelectCls}>
+                                                    <option>{exitLocationLabel}</option>
                                                 </select>
                                             </SelectWrapper>
                                         ) : (
@@ -1549,7 +1583,13 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                         <Label><Layers size={10} className="inline mr-0.5" />{isDDMUser ? 'District' : 'Department'}</Label>
-                                        {isROTE ? (
+                                        {isExitOffice ? (
+                                            <SelectWrapper>
+                                                <select disabled className={disabledSelectCls}>
+                                                    <option>{form.office_type}</option>
+                                                </select>
+                                            </SelectWrapper>
+                                        ) : isROTE ? (
                                             // RO/TE: DDM option always visible, with conditional content below
                                             <div className="space-y-2">
                                                 {/* DDM option - always visible for RO/TE */}
