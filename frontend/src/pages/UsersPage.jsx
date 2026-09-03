@@ -2474,6 +2474,43 @@ const UserAccessTab = ({ onToast }) => {
         return [];
     };
 
+    /**
+     * Vertical groups belonging to a user's department.
+     *
+     * Verticals are an HO-only concept, held as folders under
+     * /ECM CONFIG/Office Type/HO/<DEPT> with the group name in the folder's
+     * `subject`. The endpoint is used rather than a name prefix because
+     * `ecm_ho_<dept>_*` also matches the per-vertical `_grade_e` / `_grade_f`
+     * groups and `_cgm_sec`, which must not be granted here.
+     */
+    const fetchDeptVerticalGroups = async (user) => {
+        if ((user.office_type || '').toUpperCase() !== 'HO') return [];
+
+        // Department folders are named by the upper-case short code (DDSI, DIT…).
+        const codes = Array.isArray(user.department_short_code_multi) && user.department_short_code_multi.length > 0
+            ? user.department_short_code_multi
+            : [user.department_short_code];
+        const deptNames = [...new Set(
+            codes.map(c => (c || '').trim().toUpperCase()).filter(Boolean)
+        )];
+        if (deptNames.length === 0 && user.department_name) {
+            deptNames.push(user.department_name.trim().toUpperCase());
+        }
+        if (deptNames.length === 0) return [];
+
+        const perDept = await Promise.all(deptNames.map(deptName =>
+            api.get('/groups/verticals', { params: { officeType: 'HO', deptName } })
+                .then(res => (Array.isArray(res.data) ? res.data : [])
+                    .map(v => v.group_name)
+                    .filter(Boolean))
+                .catch(err => {
+                    console.warn(`Failed to load verticals for ${deptName}:`, err.message);
+                    return [];
+                })
+        ));
+        return [...new Set(perDept.flat())];
+    };
+
     const handleMarkCGMSect = async (user) => {
         const groups = getCgmSecGroups(user);
         if (groups.length === 0) {
@@ -2482,11 +2519,38 @@ const UserAccessTab = ({ onToast }) => {
         }
         setActionInProgress({ user: user.object_name, action: 'markCgm' });
         try {
-            await Promise.all(groups.map(g =>
-                api.post(`/groups/${g}/members`, { memberName: user.object_name, memberType: 'user' })
+            // A CGM Sect. also gets every vertical of their department (NEO-195).
+            const verticalGroups = await fetchDeptVerticalGroups(user);
+            const allGroups = [...groups, ...verticalGroups];
+
+            // allSettled, not all: one group that the user already belongs to
+            // must not abort the rest. Group names may be non-ASCII, so encode.
+            const results = await Promise.allSettled(allGroups.map(g =>
+                api.post(`/groups/${encodeURIComponent(g)}/members`,
+                    { memberName: user.object_name, memberType: 'user' })
             ));
+
+            const failed = results
+                .map((r, i) => ({ r, g: allGroups[i] }))
+                .filter(x => x.r.status === 'rejected');
+
+            if (failed.length === allGroups.length) {
+                throw failed[0].r.reason;
+            }
+
             setCgmSects(prev => new Set([...prev, user.object_name]));
-            onToast({ type: 'success', message: `'${user.object_name}' marked as CGM Sect.` });
+            const vSuffix = verticalGroups.length > 0
+                ? ` and added to ${verticalGroups.length} vertical group${verticalGroups.length === 1 ? '' : 's'}`
+                : '';
+            if (failed.length > 0) {
+                failed.forEach(x => console.warn(`Failed to add to ${x.g}:`, x.r.reason?.message));
+                onToast({
+                    type: 'success',
+                    message: `'${user.object_name}' marked as CGM Sect.${vSuffix}. ${failed.length} group(s) could not be added — see console.`,
+                });
+            } else {
+                onToast({ type: 'success', message: `'${user.object_name}' marked as CGM Sect.${vSuffix}.` });
+            }
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Failed to mark as CGM Sect.';
             onToast({ type: 'error', message: msg });
