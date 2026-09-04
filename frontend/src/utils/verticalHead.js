@@ -53,8 +53,40 @@ export const getVerticalHeadDept = (headGroup) => {
 };
 
 /**
- * Display name written onto a vertical-head group after reassignment, matching
- * the format VerticalsPage already writes: `ECM-HO-DIT-ADM -jdoe`.
+ * Matches a display-name prefix that names the vertical-head group, in any of
+ * the separator and casing variants present in the repository — for example
+ * `ECM HO VERTICAL HEAD DDSI BPE`, `ECM-HO VERTICAL HEAD CPD-RPD`,
+ * `ECM HO Vertical HEAD DDSI AIF`.
  */
-export const buildVerticalHeadDisplayName = (verticalGroup, newHeadName) =>
-    `${verticalGroup.replace(/_/g, '-').toUpperCase()} -${newHeadName}`;
+const VERTICAL_HEAD_IN_LABEL = /vertical[-_\s]*head/i;
+
+/**
+ * Display name written onto a vertical-head group after reassignment.
+ *
+ * The convention is `<PREFIX> -<head name>`, and the prefix names the
+ * **head group**, not the vertical: `ECM HO VERTICAL HEAD DDSI BPE -User4`.
+ * Building it from the vertical group instead yields `ECM-HO-DDSI-BPE`, which
+ * silently drops the `VERTICAL HEAD` segment and makes the head group
+ * indistinguishable from the vertical it heads.
+ *
+ * Casing and separators vary across existing data, so a prefix that already
+ * names the head group is preserved verbatim and only the name after the last
+ * ` -` is replaced.
+ */
+export const buildVerticalHeadDisplayName = (headGroup, newHeadName, currentDisplayName) => {
+    const current = currentDisplayName || '';
+    const idx = current.lastIndexOf(' -');
+    const inherited = (idx >= 0 ? current.slice(0, idx) : current).trim();
+
+    // Inherit the existing prefix only when it actually names the vertical-head
+    // group. Two broken forms must NOT be carried forward:
+    //   ''                    — perpetuates itself as " -Someone" forever
+    //   'ECM-HO-DDSI-BPE'     — built from the vertical group, so the
+    //                           "VERTICAL HEAD" segment is missing
+    // Both are regenerated from the head group name instead.
+    const prefix = VERTICAL_HEAD_IN_LABEL.test(inherited)
+        ? inherited
+        : (headGroup || '').replace(/_/g, '-').toUpperCase();
+
+    return `${prefix} -${newHeadName}`;
+};

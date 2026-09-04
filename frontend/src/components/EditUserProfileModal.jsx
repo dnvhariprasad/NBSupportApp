@@ -882,10 +882,21 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                 memberName: selectedNewHead,
                 memberType: 'user',
             });
-            // 3. Keep the group's display name in step (non-fatal if it fails)
+            // 3. Keep the group's display name in step (non-fatal if it fails).
+            // Read the current label first so an existing prefix is preserved
+            // rather than regenerated — casing and separators vary across groups.
             try {
+                let currentHeadDisplayName = '';
+                try {
+                    const res = await api.get(`/groups/${encodeURIComponent(item.headGroup)}`);
+                    currentHeadDisplayName = res.data?.properties?.group_display_name || '';
+                } catch (readErr) {
+                    console.warn('Could not read current display name; it will be regenerated:',
+                        readErr.message);
+                }
                 await api.put(`/groups/${encodeURIComponent(item.headGroup)}/display-name`, {
-                    displayName: buildVerticalHeadDisplayName(item.verticalGroup, selectedNewHead),
+                    displayName: buildVerticalHeadDisplayName(
+                        item.headGroup, selectedNewHead, currentHeadDisplayName),
                 });
             } catch (displayErr) {
                 console.warn('Failed to update vertical head display name:', displayErr);
