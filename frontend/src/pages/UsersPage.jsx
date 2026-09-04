@@ -2538,19 +2538,47 @@ const UserAccessTab = ({ onToast }) => {
                 throw failed[0].r.reason;
             }
 
+            // Mirror the same verticals into cms_user_profile.vertical_ids.
+            //
+            // Sequential on purpose. The endpoint reads the profile's current
+            // vertical_ids, appends one folder id and PATCHes the whole list
+            // back, so issuing these concurrently would have each request
+            // overwrite the previous one's append and only the last would
+            // survive. It is idempotent, so an id already present is a no-op.
+            const vidFailed = [];
+            if (user.r_object_id && verticalGroups.length > 0) {
+                for (const g of verticalGroups) {
+                    try {
+                        await api.post(`/users/profiles/${user.r_object_id}/vertical-ids`,
+                            { verticalGroupName: g });
+                    } catch (err) {
+                        vidFailed.push(g);
+                        console.warn(`vertical_ids update failed for ${g}:`,
+                            err.response?.data?.message || err.message);
+                    }
+                }
+            } else if (verticalGroups.length > 0) {
+                console.warn('No profile r_object_id on user; vertical_ids not updated.');
+            }
+
             setCgmSects(prev => new Set([...prev, user.object_name]));
             const vSuffix = verticalGroups.length > 0
                 ? ` and added to ${verticalGroups.length} vertical group${verticalGroups.length === 1 ? '' : 's'}`
                 : '';
+            const problems = [];
             if (failed.length > 0) {
                 failed.forEach(x => console.warn(`Failed to add to ${x.g}:`, x.r.reason?.message));
-                onToast({
-                    type: 'success',
-                    message: `'${user.object_name}' marked as CGM Sect.${vSuffix}. ${failed.length} group(s) could not be added — see console.`,
-                });
-            } else {
-                onToast({ type: 'success', message: `'${user.object_name}' marked as CGM Sect.${vSuffix}.` });
+                problems.push(`${failed.length} group(s) could not be added`);
             }
+            if (vidFailed.length > 0) {
+                problems.push(`${vidFailed.length} vertical id(s) could not be recorded`);
+            }
+            onToast({
+                type: 'success',
+                message: problems.length > 0
+                    ? `'${user.object_name}' marked as CGM Sect.${vSuffix}. ${problems.join('; ')} — see console.`
+                    : `'${user.object_name}' marked as CGM Sect.${vSuffix}.`,
+            });
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Failed to mark as CGM Sect.';
             onToast({ type: 'error', message: msg });
