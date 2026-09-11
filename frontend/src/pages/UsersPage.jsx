@@ -2511,6 +2511,44 @@ const UserAccessTab = ({ onToast }) => {
         return [...new Set(perDept.flat())];
     };
 
+    /**
+     * Every department of an RO/TE user's own office, as group names and short
+     * codes — `ecm_tn_dos`, `ecm_tn_fsdd` / `dos`, `fsdd`.
+     *
+     * Built from the departments API rather than an `ecm_<ro>_` name prefix,
+     * because that prefix also matches role and vertical-head groups
+     * (`ecm_tn_cgm_sec`, `ecm_tn_alternate_cgm`, `ecm_tn_vertical_head_*`),
+     * which must not be granted here.
+     */
+    const fetchRoTeDepartments = async (user) => {
+        const officeType = (user.office_type || '').toUpperCase();
+        if (!['RO', 'TE'].includes(officeType)) return { groups: [], codes: [], location: '' };
+
+        const roCode = (user.ro_short_code || '').trim().toLowerCase();
+        if (!roCode) return { groups: [], codes: [], location: '' };
+
+        // The user directory query does not select `location`, and the
+        // departments endpoint requires it, so resolve it from the profile.
+        let location = (user.location || '').trim();
+        if (!location) {
+            try {
+                const res = await api.get('/users/profile-context', {
+                    params: { username: user.object_name },
+                });
+                location = (res.data?.location || '').trim();
+            } catch (err) {
+                console.warn('Could not resolve location for department lookup:', err.message);
+            }
+        }
+        if (!location) return { groups: [], codes: [], location: '' };
+
+        const depts = await fetchDepartments(officeType, location);
+        const codes = [...new Set(
+            (depts || []).map(d => (d.shortCode || '').trim().toLowerCase()).filter(Boolean)
+        )];
+        return { groups: codes.map(c => `ecm_${roCode}_${c}`), codes, location };
+    };
+
     const handleMarkCGMSect = async (user) => {
         const groups = getCgmSecGroups(user);
         if (groups.length === 0) {
@@ -2519,9 +2557,49 @@ const UserAccessTab = ({ onToast }) => {
         }
         setActionInProgress({ user: user.object_name, action: 'markCgm' });
         try {
-            // A CGM Sect. also gets every vertical of their department (NEO-195).
+            // A CGM Sect. also gets the whole of their office (NEO-195):
+            // at HO every vertical of their department, at RO/TE every
+            // department of that office.
             const verticalGroups = await fetchDeptVerticalGroups(user);
-            const allGroups = [...groups, ...verticalGroups];
+            const roTe = await fetchRoTeDepartments(user);
+
+            // Record the RO/TE departments on the profile BEFORE adding the
+            // groups. Patching department_short_code_multi makes the backend run
+            // its department-change cleanup, which removes group memberships —
+            // doing it afterwards could undo the adds below.
+            let deptCodesWritten = 0;
+            let deptCodesFailed = false;
+            if (roTe.codes.length > 0 && user.r_object_id) {
+                const existing = Array.isArray(user.department_short_code_multi)
+                    ? user.department_short_code_multi
+                    : [];
+                // Union, de-duplicated case-insensitively. Existing data already
+                // contains repeats (one profile lists 'ofdd' twice), so this
+                // also cleans those up rather than writing them back.
+                const merged = [];
+                const seen = new Set();
+                for (const c of [...existing, ...roTe.codes]) {
+                    const code = (c || '').trim();
+                    const key = code.toLowerCase();
+                    if (!code || seen.has(key)) continue;
+                    seen.add(key);
+                    merged.push(code);
+                }
+                if (merged.length !== existing.length) {
+                    try {
+                        await api.patch(`/users/profiles/${user.r_object_id}`, {
+                            department_short_code_multi: merged,
+                        });
+                        deptCodesWritten = merged.length - existing.length;
+                    } catch (err) {
+                        deptCodesFailed = true;
+                        console.warn('Failed to update department_short_code_multi:',
+                            err.response?.data?.message || err.message);
+                    }
+                }
+            }
+
+            const allGroups = [...groups, ...verticalGroups, ...roTe.groups];
 
             // allSettled, not all: one group that the user already belongs to
             // must not abort the rest. Group names may be non-ASCII, so encode.
@@ -2562,9 +2640,18 @@ const UserAccessTab = ({ onToast }) => {
             }
 
             setCgmSects(prev => new Set([...prev, user.object_name]));
-            const vSuffix = verticalGroups.length > 0
-                ? ` and added to ${verticalGroups.length} vertical group${verticalGroups.length === 1 ? '' : 's'}`
-                : '';
+            const added = [];
+            if (verticalGroups.length > 0) {
+                added.push(`${verticalGroups.length} vertical group${verticalGroups.length === 1 ? '' : 's'}`);
+            }
+            if (roTe.groups.length > 0) {
+                added.push(`${roTe.groups.length} department group${roTe.groups.length === 1 ? '' : 's'}`);
+            }
+            if (deptCodesWritten > 0) {
+                added.push(`${deptCodesWritten} department code${deptCodesWritten === 1 ? '' : 's'}`);
+            }
+            const vSuffix = added.length > 0 ? ` and added to ${added.join(', ')}` : '';
+
             const problems = [];
             if (failed.length > 0) {
                 failed.forEach(x => console.warn(`Failed to add to ${x.g}:`, x.r.reason?.message));
@@ -2572,6 +2659,17 @@ const UserAccessTab = ({ onToast }) => {
             }
             if (vidFailed.length > 0) {
                 problems.push(`${vidFailed.length} vertical id(s) could not be recorded`);
+            }
+            if (deptCodesFailed) {
+                problems.push('department codes could not be saved to the profile');
+            }
+            // RO/TE with no resolvable departments is silent otherwise — several
+            // profiles carry a blank or misspelt location, which yields none.
+            if (['RO', 'TE'].includes((user.office_type || '').toUpperCase())
+                && roTe.groups.length === 0) {
+                problems.push(roTe.location
+                    ? `no departments found for ${roTe.location}`
+                    : 'no location on profile, so departments could not be resolved');
             }
             onToast({
                 type: 'success',
