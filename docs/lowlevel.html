@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBAdminApp — Low-level reference</title>
+<link rel="stylesheet" href="_style.css">
+</head>
+<body>
+<main>
+<nav class="crumbs"><a href="index.html">← Documentation</a></nav>
+
+<h1>Low-level reference</h1>
+<p class="sub">Exact endpoints, object types, identifier rules and formats. Extracted from the working tree.</p>
+
+<h2>Endpoint catalogue</h2>
+<p class="small">All paths are relative to <code>http://&lt;host&gt;:8080/api</code>. 102 endpoints across 16 controllers.</p>
+
+<h3>Users — <code>/api/users</code> <span class="pill p-info">18</span></h3>
+<div class="tablewrap"><table>
+<tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+<tr><td>GET</td><td><code>/profiles</code></td><td>Search user profiles (User Directory)</td></tr>
+<tr><td>GET</td><td><code>/profiles/{objectId}</code></td><td>Single profile</td></tr>
+<tr><td>PATCH</td><td><code>/profiles/{objectId}</code></td><td>Update profile — <strong>also triggers backend group cleanup</strong></td></tr>
+<tr><td>POST</td><td><code>/profile</code></td><td>Create profile</td></tr>
+<tr><td>POST</td><td><code>/</code></td><td>Create user</td></tr>
+<tr><td>GET</td><td><code>/dm</code></td><td>Search <code>dm_user</code> records</td></tr>
+<tr><td>PATCH</td><td><code>/dm/{loginName:.+}</code></td><td>Update <code>dm_user</code> (the <code>:.+</code> matcher allows dots in login names)</td></tr>
+<tr><td>GET</td><td><code>/by-dept</code>, <code>/by-location</code></td><td>Users filtered by department / location</td></tr>
+<tr><td>GET</td><td><code>/profile-context</code></td><td>Office type, location and department codes for a username</td></tr>
+<tr><td>POST</td><td><code>/profiles/{objectId}/vertical-ids</code></td><td>Add a vertical to a user</td></tr>
+<tr><td>DELETE</td><td><code>/profile-vertical-ids</code></td><td>Remove vertical(s)</td></tr>
+<tr><td>PATCH</td><td><code>/{loginName:.+}/password</code>, <code>/{loginName:.+}/inline-password</code></td><td>Password update</td></tr>
+<tr><td>GET</td><td><code>/check-uin</code></td><td>UIN uniqueness check</td></tr>
+<tr><td>GET/POST</td><td><code>/otds/probe</code>, <code>/otds/inspect</code>, <code>/otds/setup</code></td><td>OTDS diagnostics and provisioning</td></tr>
+</table></div>
+
+<h3>Groups — <code>/api/groups</code> <span class="pill p-info">13</span></h3>
+<div class="tablewrap"><table>
+<tr><th>Method</th><th>Path</th><th>Notes</th></tr>
+<tr><td>GET</td><td><code>/{groupName}/members</code></td><td>Returns <code>{ users: [{name,…}], groups: […] }</code> — <code>name</code> is <code>dm_user.user_name</code></td></tr>
+<tr><td>POST</td><td><code>/{groupName}/members</code></td><td>Body <code>{ memberName, memberType, memberSrc? }</code>. Resolves login → <code>user_name</code></td></tr>
+<tr><td>DELETE</td><td><code>/{groupName}/members/{memberName}</code></td><td>Query <code>memberType</code> (default <code>user</code>)</td></tr>
+<tr><td>GET</td><td><code>/by-user?username=</code></td><td>All groups for a user. Accepts <strong>either</strong> login or display name — resolves internally</td></tr>
+<tr><td>GET</td><td><code>/by-prefix?prefix=&amp;size=</code></td><td>Groups by name prefix</td></tr>
+<tr><td>GET</td><td><code>/search</code>, <code>/search-members</code></td><td>Group / member search</td></tr>
+<tr><td>GET</td><td><code>/{groupName}</code>, <code>/exists/{groupName}</code></td><td>Fetch, existence check</td></tr>
+<tr><td>PUT</td><td><code>/{groupName}/display-name</code></td><td>Body <code>{ displayName }</code></td></tr>
+<tr><td>GET</td><td><code>/verticals?officeType=&amp;deptName=</code></td><td>Verticals from <code>/ECM CONFIG</code> folders (queries <code>dm_folder</code>, not <code>dm_group</code>)</td></tr>
+<tr><td>POST</td><td><code>/</code>, <code>/vertical-folder</code></td><td>Create group / vertical folder</td></tr>
+</table></div>
+
+<h3>Auth — <code>/api/auth</code> <span class="pill p-info">7</span></h3>
+<div class="tablewrap"><table>
+<tr><td>POST</td><td><code>/login</code></td><td>Credentials → OTDS token + profile</td></tr>
+<tr><td>GET</td><td><code>/profile</code>, <code>/current-user</code>, <code>/users</code></td><td>Identity reads</td></tr>
+<tr><td>GET</td><td><code>/config</code></td><td>Returns the OTDS token URL for this environment</td></tr>
+<tr><td>GET</td><td><code>/login-ticket</code></td><td>Service-account ticket (cached 9 min)</td></tr>
+<tr><td>GET</td><td><code>/login-ticket/{username}</code></td><td>Impersonation ticket for a named user</td></tr>
+</table></div>
+
+<h3>Metadata — <code>/api/metadata</code> <span class="pill p-info">15</span></h3>
+<div class="tablewrap"><table>
+<tr><td>GET/POST/PUT/DELETE</td><td><code>/file-numbers</code>, <code>/file-numbers/{objectId}</code></td><td>Plus <code>/check-duplicate</code> and <code>/validate-delete</code></td></tr>
+<tr><td>GET/POST/PUT/DELETE</td><td><code>/digidak/metadata</code>, <code>/digidak/metadata/{objectId}</code></td><td></td></tr>
+<tr><td>GET/POST</td><td><code>/case-types</code>, <code>/hindi-comments</code></td><td>The canonical metadata pattern</td></tr>
+<tr><td>GET</td><td><code>/digidak/filter-options</code></td><td></td></tr>
+</table></div>
+
+<h3>SFS — <code>/api/sfs</code> <span class="pill p-info">8</span> and <code>/api/sfs/user-access</code> <span class="pill p-info">4</span></h3>
+<div class="tablewrap"><table>
+<tr><td>GET/POST/PUT/DELETE</td><td><code>/document-types</code>, <code>/document-types/{objectId}</code></td><td>Folder id from <code>app.sfs.document-type-folder-id</code></td></tr>
+<tr><td>GET/POST/PUT/DELETE</td><td><code>/document-categories</code>, <code>/document-categories/{objectId}</code></td><td></td></tr>
+<tr><td>GET</td><td><code>/user-access/locations</code>, <code>/user-access/users</code>, <code>/user-access/check-membership</code></td><td></td></tr>
+<tr><td>POST</td><td><code>/user-access/add-to-group</code></td><td></td></tr>
+</table></div>
+
+<h3>Remaining controllers</h3>
+<div class="tablewrap"><table>
+<tr><th>Base</th><th>Endpoints</th></tr>
+<tr><td><code>/api/workflows</code></td><td><code>/processes</code>, <code>/instances</code>, <code>/case/{caseId}</code>, <code>/search/by-case</code>, <code>/{workflowId}</code>, POST <code>/{workflowId}/restart</code>, POST <code>/{workflowId}/activity/{activityId}/retry</code></td></tr>
+<tr><td><code>/api/digidak</code></td><td><code>/report</code>, <code>/metadata</code>, <code>/users</code>, <code>/inbox</code>, <code>/draft</code>, <code>/verticals</code>, <code>/{digidakId}/movement</code>, <code>/sent-to-options</code>, <code>/received-from-options</code>, <code>/count</code>, <code>/inbox/count</code>, <code>/draft/count</code></td></tr>
+<tr><td><code>/api/inbox</code></td><td><code>/</code>, <code>/tasklist</code>, <code>/tasklist/raw</code>, <code>/raw</code>, <code>/debug-name</code></td></tr>
+<tr><td><code>/api/cases</code></td><td><code>/report</code>, <code>/search</code>, <code>/count</code></td></tr>
+<tr><td><code>/api/delegate</code></td><td><code>/cases</code>, <code>/cases/{caseId}/movement</code>, POST <code>/</code></td></tr>
+<tr><td><code>/api/departments</code></td><td>GET <code>/</code>, POST <code>/</code></td></tr>
+<tr><td><code>/api/rajbhasha</code></td><td>2 endpoints — Hindi reporting via Apache POI</td></tr>
+<tr><td><code>/api/query</code></td><td>POST <code>/execute</code> — body <code>{ "dql": "…" }</code>, returns <code>{columns, rows, totalCount, limit}</code>, limit 10000</td></tr>
+<tr><td><code>/api/settings</code></td><td>1 endpoint — <strong>CORS allows only 5173</strong></td></tr>
+<tr><td><code>/api/transliterate</code></td><td>1 endpoint — <strong>CORS <code>*</code></strong></td></tr>
+</table></div>
+
+<h2>The DQL console</h2>
+<pre><code>POST /api/query/execute
+Content-Type: application/json
+
+{ "dql": "select r_object_id, object_name from cms_user_profile where user_login_name = 'cto.dit'" }</code></pre>
+<p>Response: <code>{"columns":[…],"rows":[{…}],"totalCount":n,"limit":10000}</code>. The fastest way to verify repository
+state when diagnosing. <code>r_object_id</code> is always included.</p>
+
+<h2>Identifier rules</h2>
+<div class="tablewrap"><table>
+<tr><th>Need</th><th>Use</th></tr>
+<tr><td>Compare a profile to a group member list</td><td><code>object_name</code> → falls back to <code>user_name</code>, then <code>user_login_name</code></td></tr>
+<tr><td>Call <code>by-user</code>, <code>addMember</code>, <code>removeMember</code></td><td>Either form — the backend resolves</td></tr>
+<tr><td>Query <code>cms_user_profile</code></td><td><code>user_login_name</code> or <code>object_name</code>. <strong><code>user_name</code> does not exist on this type</strong></td></tr>
+<tr><td>Query <code>dm_user</code></td><td><code>user_name</code> or <code>user_login_name</code></td></tr>
+<tr><td>Group membership in DQL</td><td><code>WHERE ANY users_names = '&lt;user_name&gt;'</code></td></tr>
+</table></div>
+
+<h2>Profile fields — <code>cms_user_profile</code></h2>
+<div class="tablewrap"><table>
+<tr><th>Field</th><th>Example</th><th>Note</th></tr>
+<tr><td><code>object_name</code></td><td><code>Sonny George</code></td><td>Display name; equals <code>dm_user.user_name</code></td></tr>
+<tr><td><code>user_login_name</code></td><td><code>cto.dit</code></td><td></td></tr>
+<tr><td><code>office_type</code></td><td><code>HO</code> · <code>RO</code> · <code>TE</code> · <code>RETIRED</code> · <code>TRANSFERRED</code></td><td>RETIRED/TRANSFERRED added by NEO-163; some rows already carried RETIRED, set by hand</td></tr>
+<tr><td><code>location</code></td><td><code>Mumbai</code></td><td>Always Mumbai for HO, and read-only</td></tr>
+<tr><td><code>ro_short_code</code></td><td><code>tn</code></td><td>Empty for HO</td></tr>
+<tr><td><code>department_short_code</code> / <code>department_name</code></td><td><code>ddsi</code> / <code>DDSI</code></td><td>Short code is lower-case, name upper-case</td></tr>
+<tr><td><code>department_short_code_multi</code></td><td><code>['ddsi']</code></td><td>Repeating; HO users may hold several</td></tr>
+<tr><td><code>user_grade</code> / <code>grade_level</code></td><td><code>grade_d</code> / <code>4</code></td><td></td></tr>
+<tr><td><code>designation</code></td><td><code>DGM</code></td><td>Values outside <code>DESIGNATION_OPTIONS</code> exist in data (e.g. <code>CTA</code>)</td></tr>
+<tr><td><code>uin</code></td><td><code>CTO01</code></td><td>Required, uniqueness checked</td></tr>
+<tr><td><code>hindi_user_name</code> / <code>hindi_designation</code></td><td><code>सन्नी जॉर्ज</code></td><td>Required by form validation</td></tr>
+<tr><td><code>is_active</code></td><td><code>true</code></td><td>Drives the Active toggle and OTDS enable/disable</td></tr>
+<tr><td><code>vertical_ids</code></td><td><code>null</code></td><td>Cleared when department changes</td></tr>
+</table></div>
+
+<h2>Grades and designations</h2>
+<div class="tablewrap"><table>
+<tr><th>Grade</th><th>Level</th><th>Designation</th></tr>
+<tr><td><code>group_b</code></td><td>0</td><td>DA</td></tr>
+<tr><td><code>grade_a</code></td><td>1</td><td>AM</td></tr>
+<tr><td><code>grade_b</code></td><td>2</td><td>MGR</td></tr>
+<tr><td><code>grade_c</code></td><td>3</td><td>AGM</td></tr>
+<tr><td><code>grade_d</code></td><td>4</td><td>DGM</td></tr>
+<tr><td><code>grade_e</code></td><td>5</td><td>GM</td></tr>
+<tr><td><code>grade_e(oic)</code></td><td>5</td><td>GM(OIC)</td></tr>
+<tr><td><code>grade_f</code></td><td>6</td><td>CGM</td></tr>
+</table></div>
+<p class="small">Also present as designations without a grade mapping: DMD, CHAIRMAN. The parentheses in
+<code>grade_e(oic)</code> are literal — quote it carefully in DQL.</p>
+
+<h2>Date formats</h2>
+<div class="tablewrap"><table>
+<tr><th>Source</th><th>Format</th><th>Example</th></tr>
+<tr><td>xCP REST (this portal)</td><td>ISO-8601 UTC</td><td><code>2026-09-01T12:58:24.717+00:00</code></td></tr>
+<tr><td>DFC (CMS middleware)</td><td>Day-first, 12-hour</td><td><code>1/9/2026 6:28:24 PM</code></td></tr>
+<tr><td>Display standard</td><td><code>DD/MM/YYYY hh:mm:ss AM/PM</code></td><td><code>16/01/2026 05:44:00 PM</code></td></tr>
+</table></div>
+
+<h2>Key configuration values</h2>
+<div class="tablewrap"><table>
+<tr><th>Property</th><th>Value</th></tr>
+<tr><td><code>spring.profiles.active</code></td><td><code>azure</code></td></tr>
+<tr><td><code>app.workflow.processes</code></td><td><code>4b02cba08000624a</code></td></tr>
+<tr><td><code>app.cases.default-load-months</code></td><td><code>3</code></td></tr>
+<tr><td><code>app.sfs.document-type-folder-id</code></td><td><code>0b02cba080140d1e</code></td></tr>
+<tr><td><code>app.mail.from-name</code></td><td><code>NB Support Admin Team</code></td></tr>
+<tr><td>Repository</td><td><code>NABARDUAT</code> @ <code>172.172.20.214</code>, dctm-rest on <code>:3030</code></td></tr>
+<tr><td>Service-account overrides</td><td><code>DCTM_SERVICE_USERNAME</code> / <code>DCTM_SERVICE_PASSWORD</code></td></tr>
+<tr><td>Login-ticket cache</td><td>9 minutes (tickets expire at 10)</td></tr>
+<tr><td>HTTP timeouts</td><td>30 s connect, 30 s read</td></tr>
+<tr><td>Idle timeout</td><td>warn at 30 min, logout 30 s later</td></tr>
+</table></div>
+
+<footer><p><a href="patterns.html">← Code patterns</a> · <a href="running.html">Running locally →</a></p></footer>
+</main>
+</body>
+</html>

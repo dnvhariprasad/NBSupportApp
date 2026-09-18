@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBAdminApp — Architecture</title>
+<link rel="stylesheet" href="_style.css">
+</head>
+<body>
+<main>
+<nav class="crumbs"><a href="index.html">← Documentation</a></nav>
+
+<h1>Architecture</h1>
+<p class="sub">High-level design: the request path, where authority sits, authentication, and deployment.</p>
+
+<h2>Three hops, no database</h2>
+
+<pre><code>┌──────────────────────────────────────────────────────────────┐
+│ Browser                                                       │
+│   React 19 SPA, Vite, router basename "/neoadmin/"            │
+│   localStorage: user, token                                   │
+└───────────────┬──────────────────────────────────────────────┘
+                │ axios, baseURL http://localhost:8080/api
+                │ Authorization: Bearer &lt;OTDS token&gt; (when present)
+                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Spring Boot 3.4.1 · Java 17 · war "neoadminBackend"           │
+│   @RestController  →  @Service  →  RestClient                 │
+│   No repository layer, no entities, no JPA                    │
+└───────────────┬──────────────────────────────────────────────┘
+                │ HTTPS, all certificates trusted (self-signed)
+                │ Basic Auth → login ticket, cached 9 minutes
+                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Documentum REST Services (dctm-rest 25.2)  :3030              │
+│   DQL over HTTP, object/folder/group/user resources           │
+└───────────────┬──────────────────────────────────────────────┘
+                │ DFC → DocBroker
+                ▼
+        ECM repository  NABARDUAT  @ 172.172.20.214</code></pre>
+
+<div class="note">
+<p>The consequence of having no persistence layer is that <strong>business rules live in service classes as DQL
+strings</strong>. Searching for a behaviour usually means grepping for a fragment of DQL, not for an entity or a
+repository method.</p>
+</div>
+
+<h2>Request lifecycle</h2>
+
+<ol>
+  <li>A page calls <code>api.get('/users/profiles')</code>. The axios instance prepends
+      <code>http://localhost:8080/api</code> and attaches <code>Authorization: Bearer …</code> if a token is in
+      <code>localStorage</code>.</li>
+  <li>The matching <code>@RestController</code> receives it. Controllers are thin — they unpack parameters and
+      delegate immediately.</li>
+  <li>The service builds a DQL string or a REST object path, and calls <code>RestClient</code> with an auth header
+      obtained from <code>DctmAuthService</code>.</li>
+  <li>dctm-rest returns Documentum's JSON envelope — <code>entries[].content.properties</code>. Services unwrap that
+      shape by hand into plain <code>Map</code> objects.</li>
+  <li>The controller returns the map; Jackson serialises it. <strong>There are almost no response DTOs</strong> —
+      only <code>AuthResponse</code> and <code>LoginRequest</code> exist.</li>
+</ol>
+
+<h2>Authentication and authorisation</h2>
+
+<h3>Two distinct identities</h3>
+
+<div class="tablewrap"><table>
+<tr><th>Identity</th><th>Purpose</th><th>Mechanism</th></tr>
+<tr><td><strong>Service account</strong></td><td>Almost every repository operation</td>
+    <td><code>DctmAuthService</code> obtains a login ticket via Basic Auth and caches it for <strong>9 minutes</strong> (tickets expire at 10)</td></tr>
+<tr><td><strong>End user</strong></td><td>Login, and impersonation for user-scoped reads</td>
+    <td>OTDS token; <code>generateUserLoginTicket</code> lets support act as a named user</td></tr>
+</table></div>
+
+<h3>Where authorisation is enforced</h3>
+
+<div class="danger">
+<p><strong>Access control is client-side only.</strong> <code>MainLayout</code> reads
+<code>admin_role</code> out of <code>localStorage</code> and renders an "Access Denied" panel unless the value is
+<code>Super Admin</code> or <code>Local Admin</code>. <strong>No Spring Security is configured and no endpoint checks a
+role.</strong> Anyone who can reach port 8080 can call all 102 endpoints directly.</p>
+<p>Treat the role gate as navigation convenience, not a security boundary. Do not rely on it when adding an operation
+that must be privileged.</p>
+</div>
+
+<p>The two roles differ in what the sidebar shows and in a few in-page checks:</p>
+
+<div class="tablewrap"><table>
+<tr><th>Role</th><th>Sees</th></tr>
+<tr><td><strong>Super Admin</strong></td><td>Everything, including NABARD Department Management and SFS</td></tr>
+<tr><td><strong>Local Admin</strong></td><td>Scoped by their own office type — HO Vertical Management is hidden for RO/TE admins and RO/TE Department Head Assignment is hidden for HO admins. SFS is visible only to HRMD Local Admins.</td></tr>
+</table></div>
+
+<h3>Session lifetime</h3>
+
+<p>Idle handling is entirely front-end: <code>useIdleTimeout(30000, 1800000)</code> in <code>MainLayout</code> warns
+after 30 minutes of inactivity and logs out 30 seconds later by clearing <code>localStorage</code> and navigating to
+<code>/login</code>. The backend holds no session state, so a stale tab simply starts failing rather than being
+rejected.</p>
+
+<h2>Cross-cutting configuration</h2>
+
+<div class="tablewrap"><table>
+<tr><th>Concern</th><th>Where</th><th>Note</th></tr>
+<tr><td>Documentum connection</td><td><code>DctmConfig</code></td><td>Repository, base URL, service-account credentials</td></tr>
+<tr><td>HTTP client</td><td><code>RestClientConfig</code></td><td>30s connect and read timeouts; <strong>trusts all certificates and disables hostname verification</strong></td></tr>
+<tr><td>CORS</td><td><code>@CrossOrigin</code> per controller, plus <code>WebConfig</code></td><td>Not centralised — see the inconsistency below</td></tr>
+<tr><td>OTDS</td><td><code>OtdsConfig</code>, <code>OtdsService</code></td><td>Token endpoint is environment-specific</td></tr>
+<tr><td>Mail</td><td><code>MailConfig</code>, <code>EmailService</code></td><td>From-name <code>NB Support Admin Team</code></td></tr>
+<tr><td>Workflow templates</td><td><code>ProcessConfig</code>, <code>app.workflow.processes</code></td><td>Hardcoded <code>r_object_id</code> values</td></tr>
+</table></div>
+
+<div class="warn">
+<p><strong>CORS is declared per controller and is not uniform.</strong> Most allow both <code>localhost:5173</code> and
+<code>localhost:5174</code>. <code>SettingsController</code> allows <strong>only 5173</strong>, and
+<code>TransliterateController</code> allows <strong><code>*</code></strong>. If the dev server starts on 5174 — which it
+does whenever 5173 is taken — Settings silently fails while everything else works.</p>
+</div>
+
+<h2>Environments</h2>
+
+<p>Configuration is split by Spring profile, selected with <code>spring.profiles.active</code> (currently
+<code>azure</code>):</p>
+
+<div class="tablewrap"><table>
+<tr><th>File</th><th>Use</th></tr>
+<tr><td><code>application.properties</code></td><td>Shared settings and the active-profile switch</td></tr>
+<tr><td><code>application-azure.properties</code></td><td>Azure environment</td></tr>
+<tr><td><code>application-uat.properties</code></td><td>UAT</td></tr>
+<tr><td><code>application-prod.properties</code></td><td>Production</td></tr>
+</table></div>
+
+<p>Environment-specific hosts and the OTDS token URL are overridden per profile. Service-account credentials can be
+supplied through <code>DCTM_SERVICE_USERNAME</code> / <code>DCTM_SERVICE_PASSWORD</code> environment variables;
+defaults sit in the properties files.</p>
+
+<h2>Packaging and deployment</h2>
+
+<ul>
+  <li>Backend builds to a <strong>war</strong> named <code>neoadminBackend</code>, with
+      <code>ServletInitializer</code> present for deployment into an external Tomcat. <code>spring-boot-starter-tomcat</code>
+      is declared, so it also runs standalone with <code>mvn spring-boot:run</code>.</li>
+  <li>Frontend builds with Vite to static assets served under the base path <code>/neoadmin/</code>. That base is set
+      in <code>vite.config.js</code> and mirrored by the router's <code>basename</code> — both must agree or deep links
+      break.</li>
+  <li><code>services/dctm-rest/</code> in this repository is the Documentum REST war. It is
+      <strong>reference only and must never be modified</strong>; its OpenAPI spec at
+      <code>services/dctm-rest/docs/rest.yaml</code> is the authority for what the repository layer accepts.</li>
+</ul>
+
+<h2>Relationship to the CMS stack</h2>
+
+<p>NBAdminApp and the CMS share the Documentum repository and nothing else — no code, no utilities, no build.
+Two consequences follow, and both have caused confusion:</p>
+
+<div class="tablewrap"><table>
+<tr><th></th><th>NBAdminApp</th><th>CMS</th></tr>
+<tr><td>Repository access</td><td>xCP REST over HTTP</td><td>DFC (middleware) and xCP</td></tr>
+<tr><td>Date format received</td><td>ISO-8601 UTC — <code>2026-09-01T12:58:24.717+00:00</code></td><td>Day-first string — <code>1/9/2026 6:28:24 PM</code></td></tr>
+<tr><td>Shared helpers</td><td colspan="2">None. <code>utils/dateFormat.js</code> here was written because the CMS helper could not be reused.</td></tr>
+</table></div>
+
+<p>The grade vocabulary in <code>src/data/nabardMetadata.js</code> (<code>grade_a</code> … <code>grade_f</code>,
+<code>grade_e(oic)</code>) is depended upon by the CMS as well, so changes there reach further than this repository.</p>
+
+<footer><p><a href="index.html">← Documentation index</a> · <a href="backend.html">Backend →</a></p></footer>
+</main>
+</body>
+</html>

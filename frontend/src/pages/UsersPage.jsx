@@ -2474,6 +2474,81 @@ const UserAccessTab = ({ onToast }) => {
         return [];
     };
 
+    /**
+     * Vertical groups belonging to a user's department.
+     *
+     * Verticals are an HO-only concept, held as folders under
+     * /ECM CONFIG/Office Type/HO/<DEPT> with the group name in the folder's
+     * `subject`. The endpoint is used rather than a name prefix because
+     * `ecm_ho_<dept>_*` also matches the per-vertical `_grade_e` / `_grade_f`
+     * groups and `_cgm_sec`, which must not be granted here.
+     */
+    const fetchDeptVerticalGroups = async (user) => {
+        if ((user.office_type || '').toUpperCase() !== 'HO') return [];
+
+        // Department folders are named by the upper-case short code (DDSI, DIT…).
+        const codes = Array.isArray(user.department_short_code_multi) && user.department_short_code_multi.length > 0
+            ? user.department_short_code_multi
+            : [user.department_short_code];
+        const deptNames = [...new Set(
+            codes.map(c => (c || '').trim().toUpperCase()).filter(Boolean)
+        )];
+        if (deptNames.length === 0 && user.department_name) {
+            deptNames.push(user.department_name.trim().toUpperCase());
+        }
+        if (deptNames.length === 0) return [];
+
+        const perDept = await Promise.all(deptNames.map(deptName =>
+            api.get('/groups/verticals', { params: { officeType: 'HO', deptName } })
+                .then(res => (Array.isArray(res.data) ? res.data : [])
+                    .map(v => v.group_name)
+                    .filter(Boolean))
+                .catch(err => {
+                    console.warn(`Failed to load verticals for ${deptName}:`, err.message);
+                    return [];
+                })
+        ));
+        return [...new Set(perDept.flat())];
+    };
+
+    /**
+     * Every department of an RO/TE user's own office, as group names and short
+     * codes — `ecm_tn_dos`, `ecm_tn_fsdd` / `dos`, `fsdd`.
+     *
+     * Built from the departments API rather than an `ecm_<ro>_` name prefix,
+     * because that prefix also matches role and vertical-head groups
+     * (`ecm_tn_cgm_sec`, `ecm_tn_alternate_cgm`, `ecm_tn_vertical_head_*`),
+     * which must not be granted here.
+     */
+    const fetchRoTeDepartments = async (user) => {
+        const officeType = (user.office_type || '').toUpperCase();
+        if (!['RO', 'TE'].includes(officeType)) return { groups: [], codes: [], location: '' };
+
+        const roCode = (user.ro_short_code || '').trim().toLowerCase();
+        if (!roCode) return { groups: [], codes: [], location: '' };
+
+        // The user directory query does not select `location`, and the
+        // departments endpoint requires it, so resolve it from the profile.
+        let location = (user.location || '').trim();
+        if (!location) {
+            try {
+                const res = await api.get('/users/profile-context', {
+                    params: { username: user.object_name },
+                });
+                location = (res.data?.location || '').trim();
+            } catch (err) {
+                console.warn('Could not resolve location for department lookup:', err.message);
+            }
+        }
+        if (!location) return { groups: [], codes: [], location: '' };
+
+        const depts = await fetchDepartments(officeType, location);
+        const codes = [...new Set(
+            (depts || []).map(d => (d.shortCode || '').trim().toLowerCase()).filter(Boolean)
+        )];
+        return { groups: codes.map(c => `ecm_${roCode}_${c}`), codes, location };
+    };
+
     const handleMarkCGMSect = async (user) => {
         const groups = getCgmSecGroups(user);
         if (groups.length === 0) {
@@ -2482,11 +2557,126 @@ const UserAccessTab = ({ onToast }) => {
         }
         setActionInProgress({ user: user.object_name, action: 'markCgm' });
         try {
-            await Promise.all(groups.map(g =>
-                api.post(`/groups/${g}/members`, { memberName: user.object_name, memberType: 'user' })
+            // A CGM Sect. also gets the whole of their office (NEO-195):
+            // at HO every vertical of their department, at RO/TE every
+            // department of that office.
+            const verticalGroups = await fetchDeptVerticalGroups(user);
+            const roTe = await fetchRoTeDepartments(user);
+
+            // Record the RO/TE departments on the profile BEFORE adding the
+            // groups. Patching department_short_code_multi makes the backend run
+            // its department-change cleanup, which removes group memberships —
+            // doing it afterwards could undo the adds below.
+            let deptCodesWritten = 0;
+            let deptCodesFailed = false;
+            if (roTe.codes.length > 0 && user.r_object_id) {
+                const existing = Array.isArray(user.department_short_code_multi)
+                    ? user.department_short_code_multi
+                    : [];
+                // Union, de-duplicated case-insensitively. Existing data already
+                // contains repeats (one profile lists 'ofdd' twice), so this
+                // also cleans those up rather than writing them back.
+                const merged = [];
+                const seen = new Set();
+                for (const c of [...existing, ...roTe.codes]) {
+                    const code = (c || '').trim();
+                    const key = code.toLowerCase();
+                    if (!code || seen.has(key)) continue;
+                    seen.add(key);
+                    merged.push(code);
+                }
+                if (merged.length !== existing.length) {
+                    try {
+                        await api.patch(`/users/profiles/${user.r_object_id}`, {
+                            department_short_code_multi: merged,
+                        });
+                        deptCodesWritten = merged.length - existing.length;
+                    } catch (err) {
+                        deptCodesFailed = true;
+                        console.warn('Failed to update department_short_code_multi:',
+                            err.response?.data?.message || err.message);
+                    }
+                }
+            }
+
+            const allGroups = [...groups, ...verticalGroups, ...roTe.groups];
+
+            // allSettled, not all: one group that the user already belongs to
+            // must not abort the rest. Group names may be non-ASCII, so encode.
+            const results = await Promise.allSettled(allGroups.map(g =>
+                api.post(`/groups/${encodeURIComponent(g)}/members`,
+                    { memberName: user.object_name, memberType: 'user' })
             ));
+
+            const failed = results
+                .map((r, i) => ({ r, g: allGroups[i] }))
+                .filter(x => x.r.status === 'rejected');
+
+            if (failed.length === allGroups.length) {
+                throw failed[0].r.reason;
+            }
+
+            // Mirror the same verticals into cms_user_profile.vertical_ids.
+            //
+            // Sequential on purpose. The endpoint reads the profile's current
+            // vertical_ids, appends one folder id and PATCHes the whole list
+            // back, so issuing these concurrently would have each request
+            // overwrite the previous one's append and only the last would
+            // survive. It is idempotent, so an id already present is a no-op.
+            const vidFailed = [];
+            if (user.r_object_id && verticalGroups.length > 0) {
+                for (const g of verticalGroups) {
+                    try {
+                        await api.post(`/users/profiles/${user.r_object_id}/vertical-ids`,
+                            { verticalGroupName: g });
+                    } catch (err) {
+                        vidFailed.push(g);
+                        console.warn(`vertical_ids update failed for ${g}:`,
+                            err.response?.data?.message || err.message);
+                    }
+                }
+            } else if (verticalGroups.length > 0) {
+                console.warn('No profile r_object_id on user; vertical_ids not updated.');
+            }
+
             setCgmSects(prev => new Set([...prev, user.object_name]));
-            onToast({ type: 'success', message: `'${user.object_name}' marked as CGM Sect.` });
+            const added = [];
+            if (verticalGroups.length > 0) {
+                added.push(`${verticalGroups.length} vertical group${verticalGroups.length === 1 ? '' : 's'}`);
+            }
+            if (roTe.groups.length > 0) {
+                added.push(`${roTe.groups.length} department group${roTe.groups.length === 1 ? '' : 's'}`);
+            }
+            if (deptCodesWritten > 0) {
+                added.push(`${deptCodesWritten} department code${deptCodesWritten === 1 ? '' : 's'}`);
+            }
+            const vSuffix = added.length > 0 ? ` and added to ${added.join(', ')}` : '';
+
+            const problems = [];
+            if (failed.length > 0) {
+                failed.forEach(x => console.warn(`Failed to add to ${x.g}:`, x.r.reason?.message));
+                problems.push(`${failed.length} group(s) could not be added`);
+            }
+            if (vidFailed.length > 0) {
+                problems.push(`${vidFailed.length} vertical id(s) could not be recorded`);
+            }
+            if (deptCodesFailed) {
+                problems.push('department codes could not be saved to the profile');
+            }
+            // RO/TE with no resolvable departments is silent otherwise — several
+            // profiles carry a blank or misspelt location, which yields none.
+            if (['RO', 'TE'].includes((user.office_type || '').toUpperCase())
+                && roTe.groups.length === 0) {
+                problems.push(roTe.location
+                    ? `no departments found for ${roTe.location}`
+                    : 'no location on profile, so departments could not be resolved');
+            }
+            onToast({
+                type: 'success',
+                message: problems.length > 0
+                    ? `'${user.object_name}' marked as CGM Sect.${vSuffix}. ${problems.join('; ')} — see console.`
+                    : `'${user.object_name}' marked as CGM Sect.${vSuffix}.`,
+            });
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Failed to mark as CGM Sect.';
             onToast({ type: 'error', message: msg });

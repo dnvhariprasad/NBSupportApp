@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBAdminApp — Code patterns</title>
+<link rel="stylesheet" href="_style.css">
+</head>
+<body>
+<main>
+<nav class="crumbs"><a href="index.html">← Documentation</a></nav>
+
+<h1>Code patterns</h1>
+<p class="sub">The conventions that repeat across this codebase, and the traps that have already produced defects.
+Read this before changing anything.</p>
+
+<h2>Backend conventions</h2>
+
+<h3>Constructor injection via Lombok</h3>
+<pre><code>@Service
+@Slf4j
+@RequiredArgsConstructor
+public class GroupService {
+    private final RestClient restClient;
+    private final DctmConfig dctmConfig;
+}</code></pre>
+<p>No <code>@Autowired</code> anywhere. Logging is <code>@Slf4j</code>; there is no <code>System.out.println</code>.</p>
+
+<h3>Thin controller, fat service</h3>
+<pre><code>@GetMapping("/{groupName}/members")
+public Map&lt;String, Object&gt; getGroupMembers(@PathVariable String groupName) {
+    return groupService.getGroupMembers(groupName);
+}</code></pre>
+<p>Controllers unpack parameters and delegate. All logic, all DQL and all response shaping live in services.</p>
+
+<h3>Maps, not DTOs</h3>
+<p>Only <code>AuthResponse</code> and <code>LoginRequest</code> exist. Everything else returns
+<code>Map&lt;String, Object&gt;</code> or <code>List&lt;Map&lt;String, String&gt;&gt;</code>. When adding an endpoint,
+follow the surrounding style rather than introducing a DTO for one response — but be aware the compiler gives you no
+protection over key names.</p>
+
+<h3>Unwrapping the Documentum envelope</h3>
+<pre><code>List&lt;Map&lt;String, Object&gt;&gt; entries = (List&lt;Map&lt;String, Object&gt;&gt;) response.get("entries");
+for (Map&lt;String, Object&gt; entry : entries) {
+    Map&lt;String, Object&gt; content = (Map&lt;String, Object&gt;) entry.get("content");
+    if (content == null) continue;
+    Map&lt;String, Object&gt; props = (Map&lt;String, Object&gt;) content.get("properties");
+    ...
+}</code></pre>
+<p>Repeated in nearly every service, with <code>@SuppressWarnings("unchecked")</code> on the method. Null-check
+<code>content</code> and <code>properties</code>: some rows legitimately lack them.</p>
+
+<h3>Escaping before interpolation</h3>
+<pre><code>String safe = value.replace("'", "''");</code></pre>
+<p>The only defence against DQL injection. Apply it to <em>every</em> interpolated value, not just the obvious one.</p>
+
+<h2>Identifier semantics — the biggest trap</h2>
+
+<div class="danger">
+<p>A user has <strong>three</strong> names, and they are not interchangeable.</p>
+<div class="tablewrap"><table>
+<tr><th>Field</th><th>On</th><th>Example</th><th>Used by</th></tr>
+<tr><td><code>user_name</code></td><td><code>dm_user</code></td><td><code>Sonny George</code></td><td><strong>Group membership</strong> (<code>dm_group.users_names</code>)</td></tr>
+<tr><td><code>user_login_name</code></td><td><code>dm_user</code>, <code>cms_user_profile</code></td><td><code>cto.dit</code></td><td>Login, OTDS</td></tr>
+<tr><td><code>object_name</code></td><td><code>cms_user_profile</code></td><td><code>Sonny George</code></td><td>The profile's display name — <strong>equals <code>user_name</code></strong></td></tr>
+</table></div>
+<p><code>cms_user_profile</code> has <strong>no <code>user_name</code> attribute at all</strong>. A DQL query selecting
+it fails with <code>DM_QUERY_E_NOT_ATTRIBUTE</code>.</p>
+</div>
+
+<h3>The rule</h3>
+<ul>
+  <li><strong>Server-side:</strong> pass either form. <code>GroupService.getGroupsByUser</code>,
+      <code>addMember</code> and <code>removeMember</code> all call <code>resolveDmUserName</code> first, so both work.</li>
+  <li><strong>Client-side:</strong> when comparing a user against a group member list, use
+      <code>object_name</code> (falling back to <code>user_name</code>, then <code>user_login_name</code>). Group member
+      lists return <code>user_name</code>; the profile object carries <code>object_name</code>. Comparing on
+      <code>user_login_name</code> <strong>fails silently</strong>.</li>
+</ul>
+
+<div class="warn">
+<p>This exact mistake shipped once: in the vertical-head prompt the outgoing head appeared in their own replacement
+dropdown, because the exclusion compared <code>user_login_name</code> ("cto.dit") against a member list containing
+<code>user_name</code> ("Sonny George").</p>
+</div>
+
+<h2>Group naming</h2>
+
+<div class="tablewrap"><table>
+<tr><th>Shape</th><th>Meaning</th></tr>
+<tr><td><code>ecm_ho_&lt;dept&gt;</code></td><td>HO department group</td></tr>
+<tr><td><code>ecm_ho_&lt;dept&gt;_&lt;vertical&gt;</code></td><td>HO vertical — one level below the department</td></tr>
+<tr><td><code>ecm_ho_vertical_head_&lt;dept&gt;_&lt;vertical&gt;</code></td><td>HO vertical head</td></tr>
+<tr><td><code>ecm_&lt;ro&gt;</code>, <code>ecm_&lt;ro&gt;_&lt;dept&gt;</code></td><td>RO/TE office and department</td></tr>
+<tr><td><code>ecm_&lt;ro&gt;_vertical_head_&lt;dept&gt;</code></td><td>RO/TE vertical head — the department <em>is</em> the vertical here</td></tr>
+<tr><td><code>ecm_digidak_ro_&lt;code&gt;_ddm</code>, <code>ecm_digidak_&lt;office&gt;_&lt;dept&gt;_cgm</code></td><td>Digidak role groups</td></tr>
+<tr><td><code>dm_superusers_dynamic</code>, <code>ecm_local_admin</code></td><td>Preserved by group cleanup</td></tr>
+</table></div>
+
+<div class="note">
+<p><strong>HO and RO/TE nest differently.</strong> At HO a vertical sits below a department, so matching a department
+group against a vertical-head group requires a <em>prefix</em> comparison with an underscore boundary
+(<code>head === derived || head.startsWith(derived + '_')</code>). At RO/TE the department group is itself the vertical,
+so equality suffices. Code that only handles equality silently misses every HO case.</p>
+</div>
+
+<h2>Non-ASCII group names</h2>
+
+<div class="danger">
+<p>Group names can contain Devanagari, e.g.
+<code>ecm_ho_vertical_head_ddsi_शिक्षण_प्रशिक्षण_और_कार्यशालाएँ</code>. <strong>Always
+<code>encodeURIComponent</code> a group name before putting it in a URL.</strong></p>
+<pre><code>api.get(`/groups/${encodeURIComponent(groupName)}/members`);</code></pre>
+<p><code>VerticalsPage.jsx</code> still interpolates group names unencoded and is likely affected.</p>
+</div>
+
+<h2>Dates</h2>
+
+<p>This portal reads xCP REST, which returns <strong>ISO-8601 UTC</strong>. DFC-backed screens elsewhere in the
+programme return a day-first string. Never format a Documentum date by hand — use
+<code>utils/dateFormat.js</code>:</p>
+
+<pre><code>import { formatDateTime } from '../utils/dateFormat.js';
+formatDateTime(row.completion_date);   // → 16/01/2026 05:44:00 PM</code></pre>
+
+<div class="note">
+<p>On the Movement Register, <code>r_creation_date</code>, <code>r_modify_date</code> and <code>completion_date</code>
+are <strong>genuinely different moments</strong>, typically 20–40 seconds apart. They are distinct events, not one
+timestamp formatted inconsistently. NEO-247 resolved the reported "mismatch" by showing only Completion Date.</p>
+</div>
+
+<h2>Frontend conventions</h2>
+
+<h3>Local state, direct calls</h3>
+<pre><code>const [rows, setRows] = useState([]);
+const [loading, setLoading] = useState(false);
+useEffect(() =&gt; { api.get('/…').then(r =&gt; setRows(r.data)).catch(() =&gt; {}); }, []);</code></pre>
+<p>No store, no query cache. Each page owns its own loading and error state.</p>
+
+<h3>Blocking guards before save</h3>
+<p><code>EditUserProfileModal</code> uses a consistent shape for "this change is not allowed yet": a boolean
+<code>show…Block</code> plus a pending list, checked at the top of <code>handleSubmit</code>.</p>
+<pre><code>if (showPendingBlock) return;
+if (showOfficeBlock)  return;
+if (showDeptBlock)    return;
+if (showLocationBlock) return;</code></pre>
+<p>Guards that must run <em>before persistence</em> belong ahead of the <code>api.patch</code> call, so that cancelling
+writes nothing. The vertical-head guard follows this rule deliberately.</p>
+
+<h3>Read-only controls</h3>
+<p>A disabled <code>&lt;select&gt;</code> with a single <code>&lt;option&gt;</code> and
+<code>disabledSelectCls</code>, wrapped in <code>SelectWrapper</code>. Used for HO location, auto-filled short codes,
+and the RETIRED/TRANSFERRED markers.</p>
+
+<h3>Do not define components inside components</h3>
+<div class="warn">
+<p><code>VerticalsPage</code> declares <code>VerticalHeadModal</code> inside the page body, so it is re-created on
+every render and its <code>&lt;select&gt;</code> remounts. <code>AssignVerticalHeadModal</code> was extracted to its own
+file specifically to avoid repeating that. Put new modals in <code>components/</code>.</p>
+</div>
+
+<h2>The payload-builder trap</h2>
+
+<div class="danger">
+<p><code>handleSubmit</code> destructures <code>department_short_code_multi</code> out of the form and re-adds it only
+inside office-type branches:</p>
+<pre><code>const { department_short_code_multi, ...rest } = form;
+const payload = {
+  ...rest,
+  ...(isHO    &amp;&amp; { department_short_code_multi: … }),
+  ...(isROTE  &amp;&amp; !isDDMUser &amp;&amp; { department_short_code_multi }),
+  ...(isDDMUser &amp;&amp; { department_short_code_multi: … }),
+  ...(isExit  &amp;&amp; { department_short_code_multi: [form.office_type] }),
+};</code></pre>
+<p><strong>Any new office type that matches none of these branches loses the field entirely</strong> — silently, with no
+error. The last branch exists because RETIRED and TRANSFERRED hit exactly that hole.</p>
+</div>
+
+<h2>Where authority actually lives</h2>
+
+<div class="danger">
+<p>Group cleanup on profile save is performed by the <strong>backend</strong>
+(<code>UserService.handleDepartmentChange</code>), not by the removal loop in
+<code>EditUserProfileModal</code>. Frontend logic that tries to predict what will be removed must model the
+<em>backend</em> rule. Mirroring the frontend loop produces a guard that stays silent exactly when it matters — that is
+how the first version of the NEO-239 guard missed every office-type change.</p>
+</div>
+
+<h2>Metadata pattern</h2>
+
+<p>For new metadata types, follow the Case Type implementation (<code>techdocs/case-type-metadata.md</code>):</p>
+<ol>
+  <li>Store entries as <code>dm_folder</code> objects under <code>/ECM CONFIG/&lt;Metadata Name&gt;/</code>.</li>
+  <li><code>MetadataService</code>: add <code>list&lt;Name&gt;()</code>
+      (<code>SELECT r_object_id, object_name FROM dm_folder WHERE FOLDER('/ECM CONFIG/&lt;Name&gt;')</code>) and
+      <code>create&lt;Name&gt;(String objectName)</code>, resolving the parent via <code>resolveFolderInfo()</code> and
+      inheriting its ACL.</li>
+  <li><code>MetadataController</code>: <code>GET</code> and <code>POST /api/metadata/&lt;name&gt;s</code>.</li>
+  <li><code>MetadataPage.jsx</code>: a <code>&lt;Name&gt;Tab</code> with a create form and list, wired into the right tab group.</li>
+</ol>
+
+<h2>UI conventions</h2>
+
+<ul>
+  <li>Functional components, PascalCase filenames.</li>
+  <li>Tailwind for all styling; brand blue <code>#0A66C2</code>.</li>
+  <li>Framer Motion timings: 150 ms hover, 300 ms modal, 500 ms page.</li>
+  <li>Modals: max 70 vh, fixed header and footer, scrollable body with <code>scrollbar-thin</code>.</li>
+  <li>Skeletons for initial load, spinners for actions.</li>
+  <li>Toasts top-center/right — 3 s success, 5 s error.</li>
+  <li>Server-side pagination beyond 50 rows.</li>
+  <li>Destructive actions use inline two-step confirmation — never <code>window.confirm()</code>.</li>
+</ul>
+
+<h2>Hard constraints</h2>
+
+<div class="danger">
+<ul>
+  <li><code>services/dctm-rest/</code> is <strong>read-only</strong>. Never modify it; use
+      <code>services/dctm-rest/docs/rest.yaml</code> as API reference.</li>
+  <li><code>RestClientConfig</code> trusts all TLS certificates. Required for the self-signed Documentum endpoint —
+      do not copy that pattern into anything internet-facing.</li>
+  <li><code>/api/query/execute</code> accepts arbitrary DQL. Useful for diagnosis, dangerous if exposed.</li>
+  <li>No tests exist. Verify by running the app and querying the repository.</li>
+</ul>
+</div>
+
+<footer><p><a href="frontend.html">← Frontend</a> · <a href="lowlevel.html">Low-level reference →</a></p></footer>
+</main>
+</body>
+</html>

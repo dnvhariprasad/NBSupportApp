@@ -6,6 +6,7 @@ import {
     UserCheck, UsersRound, Star, ClipboardList, ArrowRightLeft,
 } from 'lucide-react';
 import { RO_LOCATIONS, TE_LOCATIONS, getLocations, fetchDepartments } from '../data/nabardMetadata.js';
+import { buildVerticalHeadDisplayName } from '../utils/verticalHead.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -773,11 +774,16 @@ const AddMembersTab = ({ setToast }) => {
                     params: { memberType: 'user' },
                 });
             }
-            // 3. Update display name: replace part after last ' -' with new user's name
-            const dashIdx = vhCurrentDisplayName.lastIndexOf(' -');
-            const prefix  = dashIdx >= 0 ? vhCurrentDisplayName.substring(0, dashIdx) : vhCurrentDisplayName;
-            const newDisplayName = `${prefix} -${newObjectName}`;
-            await api.put(`/groups/${vhGroupName}/display-name`, { displayName: newDisplayName });
+            // 3. Update display name: keep the existing prefix, replace the name
+            // after the last ' -'. Falls back to the group name when there is no
+            // usable prefix, so a display name that has already lost one is
+            // repaired rather than perpetuated.
+            const newDisplayName = buildVerticalHeadDisplayName(
+                vhGroupName,
+                newObjectName,
+                vhCurrentDisplayName,
+            );
+            await api.put(`/groups/${encodeURIComponent(vhGroupName)}/display-name`, { displayName: newDisplayName });
 
             setModifyVHSelectedUser('');
             setToast({ type: 'success', message: `Vertical head updated to '${newObjectName}'.` });
@@ -1459,10 +1465,21 @@ const RemoveMembersTab = ({ setToast }) => {
                 memberType: 'user',
             });
 
-            // 3. Update the vertical head group's display name with new user
+            // 3. Update the vertical head group's display name with new user.
+            // Read the current label first so an existing prefix is preserved
+            // rather than regenerated — casing and separators vary per group.
             try {
-                const newDisplayName = selectedGroup.replace(/_/g, '-').toUpperCase() + ` -${newHeadDisplayName}`;
-                await api.put(`/groups/${verticalHeadGroup}/display-name`, { displayName: newDisplayName });
+                let currentLabel = '';
+                try {
+                    const dRes = await api.get(`/groups/${encodeURIComponent(verticalHeadGroup)}`);
+                    currentLabel = dRes.data?.properties?.group_display_name || '';
+                } catch (readErr) {
+                    console.warn('Could not read current display name:', readErr.message);
+                }
+                const newDisplayName = buildVerticalHeadDisplayName(
+                    verticalHeadGroup, newHeadDisplayName, currentLabel);
+                await api.put(`/groups/${encodeURIComponent(verticalHeadGroup)}/display-name`,
+                    { displayName: newDisplayName });
             } catch (displayErr) {
                 console.warn('Failed to update display name:', displayErr);
                 // Don't fail the entire operation if display name update fails

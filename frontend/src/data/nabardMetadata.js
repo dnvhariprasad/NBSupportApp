@@ -970,6 +970,9 @@ export const USER_GRADES = [
   { label: 'Grade B',      value: 'grade_b',        gradeLevel: 2 },
   { label: 'Grade C',      value: 'grade_c',        gradeLevel: 3 },
   { label: 'Grade D',      value: 'grade_d',        gradeLevel: 4 },
+  // OIC variants carry the same grade level as the grade they qualify —
+  // grade_e(oic) is level 5 like grade_e, so grade_d(oic) is level 4 like grade_d.
+  { label: 'Grade D (OIC)',value: 'grade_d(oic)',   gradeLevel: 4 },
   { label: 'Grade E',      value: 'grade_e',        gradeLevel: 5 },
   { label: 'Grade E (OIC)',value: 'grade_e(oic)',   gradeLevel: 5 },
   { label: 'Grade F',      value: 'grade_f',        gradeLevel: 6 },
