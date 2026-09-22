@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { X, Save, Loader2, User, Building2, MapPin, Tag, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
-import { USER_GRADES, DESIGNATION_OPTIONS, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS, DDM_DISTRICTS } from '../data/nabardMetadata.js';
+import { USER_GRADES, DESIGNATION_OPTIONS, OTHER_DESIGNATION, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS, DDM_DISTRICTS } from '../data/nabardMetadata.js';
 import AssignVerticalHeadModal from './AssignVerticalHeadModal.jsx';
 import {
     buildVerticalHeadDisplayName,
@@ -22,6 +22,7 @@ const DESIGNATION_GRADE_MAPPING = {
     'MGR': 'grade_b',     // Grade B
     'AGM': 'grade_c',     // Grade C
     'DGM': 'grade_d',     // Grade D
+    'DGM(OIC)': 'grade_d(oic)', // Grade D (OIC)
     'GM': 'grade_e',      // Grade E
     'GM(OIC)': 'grade_e(oic)', // Grade E (OIC)
     'CGM': 'grade_f',     // Grade F
@@ -34,6 +35,7 @@ const GRADE_DESIGNATION_MAPPING = {
     'grade_b': 'MGR',
     'grade_c': 'AGM',
     'grade_d': 'DGM',
+    'grade_d(oic)': 'DGM(OIC)',
     'grade_e': 'GM',
     'grade_e(oic)': 'GM(OIC)',
     'grade_f': 'CGM',
@@ -103,6 +105,9 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [errors, setErrors] = useState({});
     const [designationChanged, setDesignationChanged] = useState(false);
     const [gradeChanged, setGradeChanged] = useState(false);
+    // True when the designation is free text rather than one of the fixed
+    // options. form.designation then holds the typed text itself.
+    const [designationIsOther, setDesignationIsOther] = useState(false);
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
     const hindiTouched = useRef({});
     const lastManualChangeRef = useRef(null); // Track which field was last manually changed ('designation' or 'grade')
@@ -205,6 +210,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (!form.user_grade || lastManualChangeRef.current !== 'grade') return;
         const mappedDesignation = GRADE_DESIGNATION_MAPPING[form.user_grade];
         if (mappedDesignation) {
+            setDesignationIsOther(false);
             set('designation', mappedDesignation);
             const designationObj = DESIGNATION_OPTIONS.find(opt => opt.value === mappedDesignation);
             if (designationObj && designationObj.hindi) {
@@ -285,6 +291,13 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         };
         console.log('[initForm] Final form state:', finalForm);
         setForm(finalForm);
+        // Designations outside the fixed list (e.g. 'CTA', 'Consultant') used to
+        // render as a blank select; show them as OTHERS with the text filled in.
+        const storedDesignation = (finalForm.designation || '').trim();
+        setDesignationIsOther(
+            !!storedDesignation
+            && !DESIGNATION_OPTIONS.some(opt => opt.value === storedDesignation && opt.value !== OTHER_DESIGNATION)
+        );
         setError(null);
         setErrors({});
         setPendingCases([]);
@@ -941,7 +954,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (showDeptBlock) return;    // block save if department changed with pending cases
         if (showLocationBlock) return; // block save if location changed with pending cases
         const v = {};
-        if (!form.designation?.trim())        v.designation        = 'Designation is required';
+        if (!form.designation?.trim())        v.designation        = designationIsOther ? 'Please enter the designation' : 'Designation is required';
         if (!form.uin?.trim())                v.uin                = 'UIN is required';
         if (!form.user_email_address?.trim()) v.user_email_address = 'Email is required';
         if (!form.hindi_user_name?.trim())    v.hindi_user_name    = 'Hindi Name is required';
@@ -1442,8 +1455,20 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="space-y-1">
                                     <Label required>Designation</Label>
                                     <SelectWrapper>
-                                        <select value={form.designation}
+                                        <select value={designationIsOther ? OTHER_DESIGNATION : form.designation}
                                             onChange={e => {
+                                                if (e.target.value === OTHER_DESIGNATION) {
+                                                    // Free text: clear the designation and the Hindi
+                                                    // designation so neither keeps the previous value.
+                                                    setDesignationIsOther(true);
+                                                    lastManualChangeRef.current = 'other';
+                                                    set('designation', '');
+                                                    set('hindi_designation', '');
+                                                    setDesignationChanged(false);
+                                                    setErrors(p => ({ ...p, designation: undefined }));
+                                                    return;
+                                                }
+                                                setDesignationIsOther(false);
                                                 const newDesignation = e.target.value;
                                                 lastManualChangeRef.current = 'designation';
                                                 set('designation', newDesignation);
@@ -1459,6 +1484,16 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             ))}
                                         </select>
                                     </SelectWrapper>
+                                    {designationIsOther && (
+                                        <input type="text" value={form.designation}
+                                            onChange={e => {
+                                                set('designation', e.target.value);
+                                                setErrors(p => ({ ...p, designation: undefined }));
+                                            }}
+                                            placeholder="Enter designation"
+                                            maxLength={64}
+                                            className={`${errors.designation ? errorCls : inputCls} mt-2`} />
+                                    )}
                                     {errors.designation && <p className="text-xs text-red-500">{errors.designation}</p>}
                                     {designationChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 User grade has been auto-updated based on designation</p>}
                                 </div>
@@ -1515,8 +1550,16 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="space-y-1">
                                     <Label required>Hindi Designation</Label>
                                     <input type="text" value={form.hindi_designation}
-                                        readOnly
-                                        className={readonlyCls} />
+                                        readOnly={!designationIsOther}
+                                        onChange={e => {
+                                            set('hindi_designation', e.target.value);
+                                            setErrors(p => ({ ...p, hindi_designation: undefined }));
+                                        }}
+                                        placeholder={designationIsOther ? 'Enter Hindi designation' : undefined}
+                                        className={designationIsOther
+                                            ? (errors.hindi_designation ? errorCls : inputCls)
+                                            : readonlyCls} />
+                                    {errors.hindi_designation && <p className="text-xs text-red-500">{errors.hindi_designation}</p>}
                                 </div>
                             </div>
                         </div>
