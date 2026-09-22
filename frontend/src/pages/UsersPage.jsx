@@ -8,7 +8,7 @@ import {
     Briefcase, Building2, Hash, MapPin, ToggleLeft, GraduationCap, Layers, Save
 } from 'lucide-react';
 import EditUserProfileModal from '../components/EditUserProfileModal.jsx';
-import { USER_GRADES, DESIGNATION_OPTIONS, fetchDepartments, getLocations } from '../data/nabardMetadata.js';
+import { USER_GRADES, DESIGNATION_OPTIONS, OTHER_DESIGNATION, fetchDepartments, getLocations } from '../data/nabardMetadata.js';
 
 // ─── Fetch all users across pages (Documentum REST caps at 2000/page) ────────
 async function fetchAllUsers(officeTypeFilter, locationFilter, deptNames) {
@@ -1306,7 +1306,9 @@ const UserCreateTab = ({ onToast }) => {
                                         <FormField label="Designation" icon={Briefcase} required error={errors.profile_designation}>
                                             <SelectField value={form.profile_designation}
                                                 onChange={v => handleChange('profile_designation', v)}
-                                                options={DESIGNATION_OPTIONS} />
+                                                // OTHERS needs a free-text input, which only Edit
+                                                // User Profile has; here it would save the word itself.
+                                                options={DESIGNATION_OPTIONS.filter(o => o.value !== OTHER_DESIGNATION)} />
                                         </FormField>
                                         <FormField label="Hindi Designation" icon={Briefcase} required error={errors.profile_hindi_designation}>
                                             <input type="text" value={form.profile_hindi_designation}

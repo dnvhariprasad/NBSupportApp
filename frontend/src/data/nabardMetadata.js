@@ -3,6 +3,11 @@ import api from '../api/axios';
 // Nabard metadata: departments, locations, and grades for cascading dropdowns
 
 // ─── Designation Options ──────────────────────────────────────────────────────
+// Sentinel for the "OTHERS" designation option. A designation outside the
+// fixed list is stored as its own text, so this value never reaches the
+// repository — it only tells the form to show the free-text input.
+export const OTHER_DESIGNATION = 'OTHERS';
+
 export const DESIGNATION_OPTIONS = [
     { value: '',         hindi: '',              label: '— Select designation —' },
     { value: 'DA',       hindi: 'विस',           label: 'DA' },
@@ -10,11 +15,16 @@ export const DESIGNATION_OPTIONS = [
     { value: 'MGR',      hindi: 'प्रबंधक',       label: 'MGR' },
     { value: 'AGM',      hindi: 'समप्र',         label: 'AGM' },
     { value: 'DGM',      hindi: 'उमप्र',         label: 'DGM' },
+    // OIC variant formed the same way as GM(OIC): base abbreviation + (काप्र).
+    { value: 'DGM(OIC)', hindi: 'उमप्र(काप्र)',  label: 'DGM(OIC)' },
     { value: 'GM',       hindi: 'मप्र',          label: 'GM' },
     { value: 'GM(OIC)',  hindi: 'मप्र(काप्र)',   label: 'GM(OIC)' },
     { value: 'CGM',      hindi: 'मुमप्र',        label: 'CGM' },
     { value: 'DMD',      hindi: 'उप्रनि',        label: 'DMD' },
     { value: 'CHAIRMAN', hindi: 'अध्यक्ष',      label: 'CHAIRMAN' },
+    // Not a stored value: selecting it reveals a free-text designation, and the
+    // typed text is what gets saved. No Hindi equivalent — it is entered by hand.
+    { value: OTHER_DESIGNATION, hindi: '',      label: 'OTHERS' },
 ];
 
 export const HO_DEPARTMENTS = [
