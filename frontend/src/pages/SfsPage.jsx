@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api/axios';
 import { getLocations } from '../data/nabardMetadata.js';
 import {
@@ -853,42 +853,54 @@ const SfsUserAccessTab = ({ onToast }) => {
         }
     }, [isLocalAdmin, officeType, location]);
 
-    // Check membership for a user in a specific role
-    const checkUserMembership = async (userName, role, office, loc) => {
-        try {
-            const params = {
-                userName,
-                role,
-                officeType: office,
-                department: 'HRMD'
-            };
-            if (loc) {
-                params.location = loc;
-                // Pass locationShortCode for Maker/Checker roles
-                const shortCode = getLocationShortCode(loc);
-                if (shortCode) {
-                    params.locationShortCode = shortCode;
-                }
-            }
-            const res = await api.get('/sfs/user-access/check-membership', { params });
-            return res.data?.isMember || false;
-        } catch (err) {
-            console.error('[SFS] Error checking membership:', err);
-            return false;
-        }
-    };
+    // Guards against a slow membership response for an earlier filter
+    // overwriting the grid after the user has already changed office/location.
+    const membershipRequestRef = useRef(0);
 
-    // Check membership for a single user in all roles (lazy loading)
-    const checkUserAllRoles = async (userName, office, loc) => {
-        const membership = {};
-        for (const role of SFS_USER_ROLES) {
-            membership[role] = await checkUserMembership(userName, role, office, loc);
+    // Load every listed user's SFS roles in ONE request.
+    //
+    // This used to call /check-membership per user per role — 6 requests a
+    // user, with each role awaited in turn, and each request downloading the
+    // whole group just to look for one name. A 106-user office needed 636
+    // requests, so only the first 10 rows were ever loaded and the rest stayed
+    // on "Loading…" indefinitely. /role-members returns each role group's
+    // members once; membership for every row is then worked out locally.
+    const loadMembershipForUsers = async (userList, office, loc) => {
+        const requestId = ++membershipRequestRef.current;
+        if (!userList.length) return;
+
+        const params = {
+            roles: SFS_USER_ROLES.join(','),
+            officeType: office,
+            department: 'HRMD',
+        };
+        if (loc) {
+            params.location = loc;
+            // Same rule the per-user check used: pass the short code when known.
+            const shortCode = getLocationShortCode(loc);
+            if (shortCode) params.locationShortCode = shortCode;
         }
-        setUserMembership(prev => ({
-            ...prev,
-            [userName]: membership
-        }));
-        return membership;
+
+        try {
+            const res = await api.get('/sfs/user-access/role-members', { params });
+            if (requestId !== membershipRequestRef.current) return; // superseded
+            const roleMembers = res.data || {};
+            const memberSets = Object.fromEntries(
+                SFS_USER_ROLES.map(r => [r, new Set((roleMembers[r] || []).map(n => String(n).toLowerCase()))])
+            );
+            const membership = {};
+            for (const u of userList) {
+                const key = (u.user_name || '').toLowerCase();
+                membership[u.user_name] = Object.fromEntries(
+                    SFS_USER_ROLES.map(r => [r, memberSets[r].has(key)])
+                );
+            }
+            setUserMembership(prev => ({ ...prev, ...membership }));
+        } catch (err) {
+            if (requestId !== membershipRequestRef.current) return;
+            console.error('[SFS] Error loading role membership:', err);
+            onToast({ type: 'error', message: 'Could not load SFS roles for these users.' });
+        }
     };
 
     // Fetch users when office type or location changes
@@ -924,12 +936,8 @@ const SfsUserAccessTab = ({ onToast }) => {
             setUsers(fetchedUsers);
             setDisplayedUsers(fetchedUsers);
 
-            // Pre-load membership for first 10 users
-            setTimeout(() => {
-                for (let i = 0; i < Math.min(10, fetchedUsers.length); i++) {
-                    checkUserAllRoles(fetchedUsers[i].user_name, office, loc);
-                }
-            }, 100);
+            // Roles for every user, in one request.
+            loadMembershipForUsers(fetchedUsers, office, loc);
         } catch (err) {
             const errMsg = err.response?.data?.message || err.message || 'Failed to fetch users';
             console.error('[SFS] Error fetching users:', errMsg);
