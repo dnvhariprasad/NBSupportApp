@@ -534,6 +534,12 @@ const AddMembersTab = ({ setToast }) => {
         }
     }, []);
 
+    // Some cms_user_profile records have no login name and no name at all —
+    // orphaned profiles carrying only an id and a department list. They render
+    // as "()" and cannot be added (the value would be an empty login), so keep
+    // them out of the picker.
+    const selectableUsers = users.filter(u => (u.user_login_name || '').trim());
+
     // Get users already in the group
     const getUsersAlreadyInGroup = () => {
         return selectedUsers.filter(loginName =>
@@ -723,9 +729,12 @@ const AddMembersTab = ({ setToast }) => {
                                 <MultiSelectUsers
                                     value={selectedUsers}
                                     onChange={setSelectedUsers}
-                                    disabled={!officeType || users.length === 0}
-                                    placeholder={!officeType ? '— Select office type first —' : users.length === 0 ? 'No users found' : 'Search and select users...'}
-                                    options={users.map(u => ({ value: u.user_login_name, label: `${u.object_name} (${u.user_login_name})` }))}
+                                    disabled={!officeType || selectableUsers.length === 0}
+                                    placeholder={!officeType ? '— Select office type first —' : selectableUsers.length === 0 ? 'No users found' : 'Search and select users...'}
+                                    options={selectableUsers.map(u => ({
+                                        value: u.user_login_name,
+                                        label: u.object_name ? `${u.object_name} (${u.user_login_name})` : u.user_login_name,
+                                    }))}
                                 />
                                 {usersAlreadyInGroup.length > 0 && (
                                     <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
