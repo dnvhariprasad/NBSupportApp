@@ -22,6 +22,7 @@ const DESIGNATION_GRADE_MAPPING = {
     'MGR': 'grade_b',     // Grade B
     'AGM': 'grade_c',     // Grade C
     'DGM': 'grade_d',     // Grade D
+    'DGM(OIC)': 'grade_d(oic)', // Grade D (OIC)
     'GM': 'grade_e',      // Grade E
     'GM(OIC)': 'grade_e(oic)', // Grade E (OIC)
     'CGM': 'grade_f',     // Grade F
@@ -34,6 +35,7 @@ const GRADE_DESIGNATION_MAPPING = {
     'grade_b': 'MGR',
     'grade_c': 'AGM',
     'grade_d': 'DGM',
+    'grade_d(oic)': 'DGM(OIC)',
     'grade_e': 'GM',
     'grade_e(oic)': 'GM(OIC)',
     'grade_f': 'CGM',

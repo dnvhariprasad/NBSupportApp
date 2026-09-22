@@ -10,6 +10,8 @@ export const DESIGNATION_OPTIONS = [
     { value: 'MGR',      hindi: 'प्रबंधक',       label: 'MGR' },
     { value: 'AGM',      hindi: 'समप्र',         label: 'AGM' },
     { value: 'DGM',      hindi: 'उमप्र',         label: 'DGM' },
+    // OIC variant formed the same way as GM(OIC): base abbreviation + (काप्र).
+    { value: 'DGM(OIC)', hindi: 'उमप्र(काप्र)',  label: 'DGM(OIC)' },
     { value: 'GM',       hindi: 'मप्र',          label: 'GM' },
     { value: 'GM(OIC)',  hindi: 'मप्र(काप्र)',   label: 'GM(OIC)' },
     { value: 'CGM',      hindi: 'मुमप्र',        label: 'CGM' },
