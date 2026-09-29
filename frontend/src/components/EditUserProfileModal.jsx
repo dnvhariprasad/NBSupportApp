@@ -23,6 +23,7 @@ const DESIGNATION_GRADE_MAPPING = {
     'AGM': 'grade_c',     // Grade C
     'DGM': 'grade_d',     // Grade D
     'DGM(OIC)': 'grade_d(oic)', // Grade D (OIC)
+    'DGM(AIC)': 'grade_d(aic)', // Grade D (AIC)
     'GM': 'grade_e',      // Grade E
     'GM(OIC)': 'grade_e(oic)', // Grade E (OIC)
     'CGM': 'grade_f',     // Grade F
@@ -36,6 +37,7 @@ const GRADE_DESIGNATION_MAPPING = {
     'grade_c': 'AGM',
     'grade_d': 'DGM',
     'grade_d(oic)': 'DGM(OIC)',
+    'grade_d(aic)': 'DGM(AIC)',
     'grade_e': 'GM',
     'grade_e(oic)': 'GM(OIC)',
     'grade_f': 'CGM',
@@ -108,6 +110,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     // True when the designation is free text rather than one of the fixed
     // options. form.designation then holds the typed text itself.
     const [designationIsOther, setDesignationIsOther] = useState(false);
+    // Hindi Designation is normally filled from the chosen designation and left
+    // read-only. Some designations have no Hindi abbreviation on file — OTHERS,
+    // and DGM(AIC) until one is confirmed — so it is typed in for those.
+    const designationHindiIsManual = designationIsOther
+        || !DESIGNATION_OPTIONS.find(opt => opt.value === form.designation)?.hindi;
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
     const hindiTouched = useRef({});
     const lastManualChangeRef = useRef(null); // Track which field was last manually changed ('designation' or 'grade')
@@ -213,9 +220,9 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             setDesignationIsOther(false);
             set('designation', mappedDesignation);
             const designationObj = DESIGNATION_OPTIONS.find(opt => opt.value === mappedDesignation);
-            if (designationObj && designationObj.hindi) {
-                set('hindi_designation', designationObj.hindi);
-            }
+            // Clear rather than leave the previous designation's Hindi in place
+            // when the new one has no abbreviation on file (e.g. DGM(AIC)).
+            set('hindi_designation', designationObj?.hindi || '');
             setGradeChanged(true);
         }
     }, [form.user_grade]);
@@ -1477,6 +1484,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                 setDesignationChanged(newDesignation !== originalGroupInfoRef.current.designation);
                                                 // Reset hindi_designation touched so it can auto-populate
                                                 hindiTouched.current.hindi_designation = false;
+                                                // A designation with no Hindi on file must not inherit
+                                                // the previous one's; it is typed in instead.
+                                                if (!DESIGNATION_OPTIONS.find(opt => opt.value === newDesignation)?.hindi) {
+                                                    set('hindi_designation', '');
+                                                }
                                             }}
                                             className={errors.designation ? errorCls : selectCls} >
                                             {DESIGNATION_OPTIONS.map((opt) => (
@@ -1550,13 +1562,13 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="space-y-1">
                                     <Label required>Hindi Designation</Label>
                                     <input type="text" value={form.hindi_designation}
-                                        readOnly={!designationIsOther}
+                                        readOnly={!designationHindiIsManual}
                                         onChange={e => {
                                             set('hindi_designation', e.target.value);
                                             setErrors(p => ({ ...p, hindi_designation: undefined }));
                                         }}
-                                        placeholder={designationIsOther ? 'Enter Hindi designation' : undefined}
-                                        className={designationIsOther
+                                        placeholder={designationHindiIsManual ? 'Enter Hindi designation' : undefined}
+                                        className={designationHindiIsManual
                                             ? (errors.hindi_designation ? errorCls : inputCls)
                                             : readonlyCls} />
                                     {errors.hindi_designation && <p className="text-xs text-red-500">{errors.hindi_designation}</p>}

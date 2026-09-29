@@ -17,6 +17,10 @@ export const DESIGNATION_OPTIONS = [
     { value: 'DGM',      hindi: 'उमप्र',         label: 'DGM' },
     // OIC variant formed the same way as GM(OIC): base abbreviation + (काप्र).
     { value: 'DGM(OIC)', hindi: 'उमप्र(काप्र)',  label: 'DGM(OIC)' },
+    // AIC = अकादमिक प्रभारी (Academic In-charge). Hindi text supplied by NABARD;
+    // unlike the other entries it spells out the grade rather than abbreviating
+    // the designation, so it is used verbatim rather than derived.
+    { value: 'DGM(AIC)', hindi: 'ग्रेड डी (अकादमिक प्रभारी)', label: 'DGM(AIC)' },
     { value: 'GM',       hindi: 'मप्र',          label: 'GM' },
     { value: 'GM(OIC)',  hindi: 'मप्र(काप्र)',   label: 'GM(OIC)' },
     { value: 'CGM',      hindi: 'मुमप्र',        label: 'CGM' },
@@ -983,6 +987,7 @@ export const USER_GRADES = [
   // OIC variants carry the same grade level as the grade they qualify —
   // grade_e(oic) is level 5 like grade_e, so grade_d(oic) is level 4 like grade_d.
   { label: 'Grade D (OIC)',value: 'grade_d(oic)',   gradeLevel: 4 },
+  { label: 'Grade D (AIC)',value: 'grade_d(aic)',   gradeLevel: 4 },
   { label: 'Grade E',      value: 'grade_e',        gradeLevel: 5 },
   { label: 'Grade E (OIC)',value: 'grade_e(oic)',   gradeLevel: 5 },
   { label: 'Grade F',      value: 'grade_f',        gradeLevel: 6 },
