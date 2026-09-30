@@ -54,16 +54,17 @@ public class InboxController {
     }
 
     /**
-     * Case Inbox 2, "To be Verified" tab. The task name is the one the CMS uses for the
-     * department, e.g. "To be Verified Chairman" for CHMNS or "To be Verified DMDS2".
-     * GET /api/inbox/to-be-verified?username=Shaji+K+V&taskName=To+be+Verified+Chairman
+     * Case Inbox 2, both tabs. The task name is the one the CMS passes as
+     * input_task_name: "FYA" for the Inbox tab, and for the second tab
+     * "To be Verified Chairman" (CHMNS) or "To be Verified DMDS1/2/3".
+     * GET /api/inbox/by-task-name?username=Shaji+K+V&taskName=FYA
      */
-    @GetMapping("/to-be-verified")
-    public ResponseEntity<Map<String, Object>> getToBeVerified(
+    @GetMapping("/by-task-name")
+    public ResponseEntity<Map<String, Object>> getInboxByTaskName(
             @RequestParam String username,
             @RequestParam String taskName) {
         try {
-            return ResponseEntity.ok(inboxService.getToBeVerifiedTasklist(username, taskName));
+            return ResponseEntity.ok(inboxService.getInboxByTaskName(username, taskName));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", e.getMessage(),

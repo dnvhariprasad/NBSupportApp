@@ -293,37 +293,44 @@ public class InboxService {
         }
     }
 
-    // --- To be Verified inbox ------------------------------------------------
+    // --- Case Inbox, by task name --------------------------------------------
 
     /**
-     * "To be Verified" tasks for a user, matching what the CMS shows.
+     * A user's inbox tasks carrying one task name, matching what the CMS shows.
      *
-     * <p>The CMS builds this tab from the {@code cms_inbox} task-list query with
-     * {@code input_task_name IN ('To be Verified <DEPT>')}, which filters on the
-     * {@code cms_workflow_param} package joined to the task. We cannot reuse it: it is
-     * scoped to the caller's own worklist and the Admin Portal runs as a service account,
-     * and this repository's REST tier exposes no login-ticket endpoint to impersonate with.
+     * <p>Both CMS inbox tabs are this one query with a different name: the first passes
+     * {@code input_task_name = 'FYA'} and the second "To be Verified &lt;DEPT&gt;"
+     * (Inbox.jsx). It runs {@code cms_inbox}, whose {@code input_task_name} is an
+     * {@code IN} over the {@code cms_workflow_param} package joined to the task. We
+     * cannot reuse it: it is scoped to the caller's own worklist and the Admin Portal
+     * runs as a service account, and this repository's REST tier exposes no login-ticket
+     * endpoint to impersonate with.
      *
      * <p>{@code cms_all_user_inbox} is not a substitute either. It has no task-name input,
      * matches the performer with {@code EQUAL} so group-queued tasks are invisible, and
      * when a workflow has accumulated several {@code cms_workflow_param} packages it
-     * returns at most one row for the task and sometimes none at all. Both effects
-     * under-count: for Shaji K V it yields 6 of 18, for Ajay K Sood 4 of 5.
+     * returns at most one row for the task and sometimes none at all.
      *
      * <p>So the set is resolved against the repository instead, with the same join the
      * task-list query makes: queue item to work item to the packages of that work item's
      * activity, one of which is the {@code cms_workflow_param} carrying the task name and
-     * another the {@code cms_case_folder} to display. This reproduces the CMS figures
-     * exactly - Shaji K V 18, Goverdhan Singh Rawat 12, Ajay K Sood 5.
+     * another the {@code cms_case_folder} to display. Pinning the params to the work
+     * item's own activity is what makes the name mean "the task in hand" rather than
+     * "somewhere in this case's history" - a case that has been through an FYA hop keeps
+     * that param for good, so an any-activity join counts it twice.
+     *
+     * <p>Reproduces the CMS figures exactly:
+     * Shaji K V 25 FYA / 18 To be Verified Chairman,
+     * Ajay K Sood 15 FYA / 5 To be Verified DMDS2.
      */
-    public Map<String, Object> getToBeVerifiedTasklist(String username, String taskName) {
+    public Map<String, Object> getInboxByTaskName(String username, String taskName) {
         List<String> performers = new ArrayList<>();
         performers.add(username);
         performers.addAll(fetchGroupsOfUser(username));
 
         Map<String, Object> entries = new LinkedHashMap<>();   // queue item id -> entry
         for (List<String> batch : batches(performers, PERFORMER_BATCH)) {
-            for (Map<String, String> row : select(toBeVerifiedDql(batch, taskName), resultFields())) {
+            for (Map<String, String> row : select(inboxDql(batch, taskName), resultFields())) {
                 String queueId = row.get("queue_id");
                 if (queueId == null || queueId.isBlank() || entries.containsKey(queueId)) continue;
 
@@ -340,7 +347,7 @@ public class InboxService {
             }
         }
 
-        log.info("To be Verified '{}' for '{}': {} task(s) across {} performer(s)",
+        log.info("Inbox '{}' for '{}': {} task(s) across {} performer(s)",
                  taskName, username, entries.size(), performers.size());
 
         Map<String, Object> result = new HashMap<>();
@@ -364,7 +371,7 @@ public class InboxService {
      * evaluation also means one row per repeating value, so callers de-duplicate on the
      * queue item id.
      */
-    private String toBeVerifiedDql(List<String> performers, String taskName) {
+    private String inboxDql(List<String> performers, String taskName) {
         StringBuilder columns = new StringBuilder(
             "qi.r_object_id AS queue_id, qi.name AS performer, cf.r_object_id AS case_id");
         for (String field : CASE_FIELDS) {

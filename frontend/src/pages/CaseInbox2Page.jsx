@@ -9,25 +9,23 @@ import { formatDateTime } from '../utils/dateFormat';
 
 const PAGE_SIZE = 20;
 
-// Departments whose members also hold "To be Verified" tasks, shown as a second
-// inbox tab. The task name per department mirrors the CMS's own Inbox page, which
-// passes the same string as input_task_name to its cms_inbox query.
+// Both tabs are one query with a different task name, exactly as the CMS does it:
+// its Inbox page passes input_task_name 'FYA' for the first tab and
+// "To be Verified <DEPT>" for the second. The Inbox tab is FYA for every department,
+// not "everything in the inbox" — that distinction is what made the counts differ
+// (Ajay K Sood showed 16 against the CMS's 15).
 //
-// The two tabs are two different queries, not a split of one result set:
-//   Inbox          — /inbox/tasklist, cms_all_user_inbox for the user alone.
-//   To be Verified — /inbox/to-be-verified, resolved against the repository because
-//                    cms_all_user_inbox cannot express this set: it has no task-name
-//                    input, matches the performer with EQUAL so group-queued tasks are
-//                    invisible, and collapses workflows that carry several
-//                    cms_workflow_param packages. Filtering the Inbox rows client-side
-//                    under-counts badly — 6 of 18 for the Chairman, 4 of 5 for DMDS2.
+// cms_all_user_inbox cannot serve either tab: it has no task-name input, matches the
+// performer with EQUAL so group-queued tasks are invisible, and collapses workflows
+// carrying several cms_workflow_param packages. /inbox/by-task-name resolves the set
+// against the repository instead.
+const FYA_TASK_NAME = 'FYA';
 const VERIFY_TASK_NAMES = {
     chmns: 'To be Verified Chairman',
     dmds1: 'To be Verified DMDS1',
     dmds2: 'To be Verified DMDS2',
     dmds3: 'To be Verified DMDS3',
 };
-const VERIFY_TAB_DEPTS = Object.keys(VERIFY_TASK_NAMES);
 
 const selectCls         = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer pr-8';
 const disabledSelectCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-8';
@@ -272,13 +270,12 @@ const CaseInbox2Page = () => {
     const [selectedUser, setSelectedUser] = useState(null);
 
     // Cases state
+    // Both lists arrive whole and are paged client-side.
     const [cases,        setCases]        = useState([]);
-    const [total,        setTotal]        = useState(0);
     const [loadingCases, setLoadingCases] = useState(false);
-
-    // "To be Verified" tab — fetched whole (no server paging) and paged client-side.
     const [verifyCases,   setVerifyCases]   = useState([]);
     const [loadingVerify, setLoadingVerify] = useState(false);
+    const casesReqRef  = useRef(0);
     const verifyReqRef = useRef(0);
     const [page,         setPage]         = useState(1);
     const [error,        setError]        = useState(null);
@@ -339,20 +336,20 @@ const CaseInbox2Page = () => {
     // Office type change handler
     const handleOfficeTypeChange = (val) => {
         setOfficeType(val); setLocation(''); setDepartment(null);
-        setUsers([]); setFilteredUsers([]); setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
+        setUsers([]); setFilteredUsers([]); setSelectedUser(null); setCases([]); setVerifyCases([]); setPage(1);
     };
 
     // Location change handler
     const handleLocationChange = (val) => {
         setLocation(val); setDepartment(null); setSelectedUser(null); setFilteredUsers([]);
-        setCases([]); setTotal(0); setPage(1);
+        setCases([]); setVerifyCases([]); setPage(1);
         if (val) fetchUsersByLocation(val);
         else setUsers([]);
     };
 
     // Department change handler
     const handleDepartmentChange = (shortCode) => {
-        setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
+        setSelectedUser(null); setCases([]); setVerifyCases([]); setPage(1);
         setInboxTab('inbox');
         if (!shortCode) {
             setDepartment(null); setFilteredUsers([]);
@@ -382,58 +379,29 @@ const CaseInbox2Page = () => {
         }
     };
 
-    // Fetch cases for selected user
-    const fetchCases = useCallback(async (userName, pg) => {
-        if (!userName) { setCases([]); setTotal(0); return; }
-        setLoadingCases(true);
-        setError(null);
+    // One tab's worth of cases. The request ref guards against a slower earlier
+    // response landing after the user has moved on.
+    const fetchByTaskName = useCallback(async (userName, taskName, reqRef, setList, setBusy) => {
+        if (!userName || !taskName) { reqRef.current++; setList([]); return; }
+        const reqId = ++reqRef.current;
+        setBusy(true);
         try {
-            const start = (pg - 1) * PAGE_SIZE;
-            const res = await api.get('/inbox/tasklist', {
-                params: { username: userName, page: pg, start }
-            });
-            const data = res.data || {};
-            let items = [];
-            if (Array.isArray(data.entries)) {
-                items = data.entries.map(entry => {
-                    const props = entry?.content?.properties || entry?.properties || entry;
-                    return { ...props, _raw: entry };
-                });
-            } else if (Array.isArray(data.tasks)) {
-                items = data.tasks;
-            }
-            setCases(items);
-            setTotal(data.total || data.count || items.length);
-        } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to load inbox');
-            setCases([]);
-            setTotal(0);
-        } finally {
-            setLoadingCases(false);
-        }
-    }, []);
-
-    // Fetch the whole "To be Verified" list for a user. This fans out one tasklist
-    // call per group, so it is slower than the Inbox call — hence the separate
-    // loading flag and the stale-response guard.
-    const fetchVerifyCases = useCallback(async (userName, taskName) => {
-        if (!userName || !taskName) { setVerifyCases([]); return; }
-        const reqId = ++verifyReqRef.current;
-        setLoadingVerify(true);
-        try {
-            const res = await api.get('/inbox/to-be-verified', {
+            const res = await api.get('/inbox/by-task-name', {
                 params: { username: userName, taskName }
             });
-            if (reqId !== verifyReqRef.current) return;
-            const items = (res.data?.entries || []).map(entry => {
+            if (reqId !== reqRef.current) return;
+            setList((res.data?.entries || []).map(entry => {
                 const props = entry?.content?.properties || entry?.properties || entry;
                 return { ...props, _raw: entry };
-            });
-            setVerifyCases(items);
-        } catch {
-            if (reqId === verifyReqRef.current) setVerifyCases([]);
+            }));
+        } catch (err) {
+            if (reqId !== reqRef.current) return;
+            setList([]);
+            if (taskName === FYA_TASK_NAME) {
+                setError(err.response?.data?.message || err.message || 'Failed to load inbox');
+            }
         } finally {
-            if (reqId === verifyReqRef.current) setLoadingVerify(false);
+            if (reqId === reqRef.current) setBusy(false);
         }
     }, []);
 
@@ -441,37 +409,27 @@ const CaseInbox2Page = () => {
         setSelectedUser(userName);
         setPage(1);
         setInboxTab('inbox');
-        fetchCases(userName, 1);
-        const verifyTaskName = VERIFY_TASK_NAMES[(department?.shortCode || '').toLowerCase()];
-        if (verifyTaskName) {
-            fetchVerifyCases(userName, verifyTaskName);
-        } else {
-            verifyReqRef.current++;
-            setVerifyCases([]);
-        }
+        setError(null);
+        fetchByTaskName(userName, FYA_TASK_NAME, casesReqRef, setCases, setLoadingCases);
+        fetchByTaskName(userName, VERIFY_TASK_NAMES[(department?.shortCode || '').toLowerCase()],
+                        verifyReqRef, setVerifyCases, setLoadingVerify);
     };
 
-    const handlePageChange = (newPage) => {
-        setPage(newPage);
-        // The verify tab holds the full list already; only the Inbox tab pages server-side.
-        if (inboxTab !== 'verify') fetchCases(selectedUser, newPage);
-    };
+    // Both lists are held whole, so paging is just a slice.
+    const handlePageChange = (newPage) => setPage(newPage);
 
     const handleTabChange = (key) => {
         setInboxTab(key);
         setPage(1);
-        if (key === 'inbox' && page !== 1) fetchCases(selectedUser, 1);
     };
 
     // Two tabs only for the departments that receive verification tasks.
     const showVerifyTabs = Boolean(VERIFY_TASK_NAMES[(department?.shortCode || '').toLowerCase()]);
     const onVerifyTab    = showVerifyTabs && inboxTab === 'verify';
 
-    // The Inbox tab is paged by the server; the verify list arrives whole, so slice it.
-    const visibleCases = onVerifyTab
-        ? verifyCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-        : cases;
-    const activeTotal  = onVerifyTab ? verifyCases.length : total;
+    const activeCases  = onVerifyTab ? verifyCases : cases;
+    const visibleCases = activeCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    const activeTotal  = activeCases.length;
     const busy         = onVerifyTab ? loadingVerify : loadingCases;
 
     const rangeStart = visibleCases.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
@@ -578,7 +536,8 @@ const CaseInbox2Page = () => {
                 {selectedUser && showVerifyTabs && (
                     <div className="px-5 pt-2 border-b border-slate-100 flex items-center gap-1">
                         {[
-                            { key: 'inbox',  label: 'Inbox',          count: total },
+                            { key: 'inbox',  label: 'Inbox',
+                              count: loadingCases ? '\u2026' : cases.length },
                             { key: 'verify', label: 'To be Verified',
                               count: loadingVerify ? '…' : verifyCases.length },
                         ].map(t => (
