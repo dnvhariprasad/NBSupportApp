@@ -10,18 +10,24 @@ import { formatDateTime } from '../utils/dateFormat';
 const PAGE_SIZE = 20;
 
 // Departments whose members also hold "To be Verified" tasks, shown as a second
-// inbox tab.
+// inbox tab. The task name per department mirrors the CMS's own Inbox page, which
+// passes the same string as input_task_name to its cms_inbox query.
 //
 // The two tabs are two different queries, not a split of one result set:
 //   Inbox          — /inbox/tasklist, cms_all_user_inbox for the user alone.
-//   To be Verified — /inbox/to-be-verified, which unions cms_all_user_inbox over the
-//                    user *and* every group they belong to. Verification tasks are
-//                    queued to groups (ecm_chairman, ecm_chairman_<caseId>), and the
-//                    tasklist query matches the performer with EQUAL, so they are
-//                    invisible to the plain Inbox call.
-// Filtering the Inbox result by task name instead under-counts badly (18 -> 6 for
-// the Chairman) and would also hide rows the CMS shows in its own Inbox count.
-const VERIFY_TAB_DEPTS = ['chmns', 'dmds1', 'dmds2', 'dmds3'];
+//   To be Verified — /inbox/to-be-verified, resolved against the repository because
+//                    cms_all_user_inbox cannot express this set: it has no task-name
+//                    input, matches the performer with EQUAL so group-queued tasks are
+//                    invisible, and collapses workflows that carry several
+//                    cms_workflow_param packages. Filtering the Inbox rows client-side
+//                    under-counts badly — 6 of 18 for the Chairman, 4 of 5 for DMDS2.
+const VERIFY_TASK_NAMES = {
+    chmns: 'To be Verified Chairman',
+    dmds1: 'To be Verified DMDS1',
+    dmds2: 'To be Verified DMDS2',
+    dmds3: 'To be Verified DMDS3',
+};
+const VERIFY_TAB_DEPTS = Object.keys(VERIFY_TASK_NAMES);
 
 const selectCls         = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer pr-8';
 const disabledSelectCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-8';
@@ -410,12 +416,14 @@ const CaseInbox2Page = () => {
     // Fetch the whole "To be Verified" list for a user. This fans out one tasklist
     // call per group, so it is slower than the Inbox call — hence the separate
     // loading flag and the stale-response guard.
-    const fetchVerifyCases = useCallback(async (userName) => {
-        if (!userName) { setVerifyCases([]); return; }
+    const fetchVerifyCases = useCallback(async (userName, taskName) => {
+        if (!userName || !taskName) { setVerifyCases([]); return; }
         const reqId = ++verifyReqRef.current;
         setLoadingVerify(true);
         try {
-            const res = await api.get('/inbox/to-be-verified', { params: { username: userName } });
+            const res = await api.get('/inbox/to-be-verified', {
+                params: { username: userName, taskName }
+            });
             if (reqId !== verifyReqRef.current) return;
             const items = (res.data?.entries || []).map(entry => {
                 const props = entry?.content?.properties || entry?.properties || entry;
@@ -434,8 +442,9 @@ const CaseInbox2Page = () => {
         setPage(1);
         setInboxTab('inbox');
         fetchCases(userName, 1);
-        if (VERIFY_TAB_DEPTS.includes((department?.shortCode || '').toLowerCase())) {
-            fetchVerifyCases(userName);
+        const verifyTaskName = VERIFY_TASK_NAMES[(department?.shortCode || '').toLowerCase()];
+        if (verifyTaskName) {
+            fetchVerifyCases(userName, verifyTaskName);
         } else {
             verifyReqRef.current++;
             setVerifyCases([]);
@@ -455,7 +464,7 @@ const CaseInbox2Page = () => {
     };
 
     // Two tabs only for the departments that receive verification tasks.
-    const showVerifyTabs = VERIFY_TAB_DEPTS.includes((department?.shortCode || '').toLowerCase());
+    const showVerifyTabs = Boolean(VERIFY_TASK_NAMES[(department?.shortCode || '').toLowerCase()]);
     const onVerifyTab    = showVerifyTabs && inboxTab === 'verify';
 
     // The Inbox tab is paged by the server; the verify list arrives whole, so slice it.
