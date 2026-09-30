@@ -54,6 +54,25 @@ public class InboxController {
     }
 
     /**
+     * Case Inbox 2, both tabs. The task name is the one the CMS passes as
+     * input_task_name: "FYA" for the Inbox tab, and for the second tab
+     * "To be Verified Chairman" (CHMNS) or "To be Verified DMDS1/2/3".
+     * GET /api/inbox/by-task-name?username=Shaji+K+V&taskName=FYA
+     */
+    @GetMapping("/by-task-name")
+    public ResponseEntity<Map<String, Object>> getInboxByTaskName(
+            @RequestParam String username,
+            @RequestParam String taskName) {
+        try {
+            return ResponseEntity.ok(inboxService.getInboxByTaskName(username, taskName));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage(),
+                                 "entries", java.util.List.of(), "total", 0));
+        }
+    }
+
+    /**
      * Debug: returns the raw JSON from the CMS tasklist cms_all_user_inbox query.
      * GET /api/inbox/tasklist/raw?username=Dhinesh+S+R
      */
