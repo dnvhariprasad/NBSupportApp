@@ -9,6 +9,20 @@ import { formatDateTime } from '../utils/dateFormat';
 
 const PAGE_SIZE = 20;
 
+// Departments whose members also hold "To be Verified" tasks, shown as a second
+// inbox tab.
+//
+// The two tabs are two different queries, not a split of one result set:
+//   Inbox          — /inbox/tasklist, cms_all_user_inbox for the user alone.
+//   To be Verified — /inbox/to-be-verified, which unions cms_all_user_inbox over the
+//                    user *and* every group they belong to. Verification tasks are
+//                    queued to groups (ecm_chairman, ecm_chairman_<caseId>), and the
+//                    tasklist query matches the performer with EQUAL, so they are
+//                    invisible to the plain Inbox call.
+// Filtering the Inbox result by task name instead under-counts badly (18 -> 6 for
+// the Chairman) and would also hide rows the CMS shows in its own Inbox count.
+const VERIFY_TAB_DEPTS = ['chmns', 'dmds1', 'dmds2', 'dmds3'];
+
 const selectCls         = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer pr-8';
 const disabledSelectCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-8';
 
@@ -234,6 +248,7 @@ const CaseInbox2Page = () => {
     const [officeType,  setOfficeType]  = useState(() => isLocalAdmin ? '' : '');
     const [location,    setLocation]    = useState(() => isLocalAdmin ? '' : '');
     const [department,  setDepartment]  = useState(null);
+    const [inboxTab,    setInboxTab]    = useState('inbox');   // 'inbox' | 'verify'
     const [allDepartments, setAllDepartments] = useState([]);
 
     // Initialize filters for Local Admin when profile context loads
@@ -254,6 +269,11 @@ const CaseInbox2Page = () => {
     const [cases,        setCases]        = useState([]);
     const [total,        setTotal]        = useState(0);
     const [loadingCases, setLoadingCases] = useState(false);
+
+    // "To be Verified" tab — fetched whole (no server paging) and paged client-side.
+    const [verifyCases,   setVerifyCases]   = useState([]);
+    const [loadingVerify, setLoadingVerify] = useState(false);
+    const verifyReqRef = useRef(0);
     const [page,         setPage]         = useState(1);
     const [error,        setError]        = useState(null);
 
@@ -327,6 +347,7 @@ const CaseInbox2Page = () => {
     // Department change handler
     const handleDepartmentChange = (shortCode) => {
         setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
+        setInboxTab('inbox');
         if (!shortCode) {
             setDepartment(null); setFilteredUsers([]);
             if (isRoTe && location) fetchUsersByLocation(location);
@@ -386,20 +407,67 @@ const CaseInbox2Page = () => {
         }
     }, []);
 
+    // Fetch the whole "To be Verified" list for a user. This fans out one tasklist
+    // call per group, so it is slower than the Inbox call — hence the separate
+    // loading flag and the stale-response guard.
+    const fetchVerifyCases = useCallback(async (userName) => {
+        if (!userName) { setVerifyCases([]); return; }
+        const reqId = ++verifyReqRef.current;
+        setLoadingVerify(true);
+        try {
+            const res = await api.get('/inbox/to-be-verified', { params: { username: userName } });
+            if (reqId !== verifyReqRef.current) return;
+            const items = (res.data?.entries || []).map(entry => {
+                const props = entry?.content?.properties || entry?.properties || entry;
+                return { ...props, _raw: entry };
+            });
+            setVerifyCases(items);
+        } catch {
+            if (reqId === verifyReqRef.current) setVerifyCases([]);
+        } finally {
+            if (reqId === verifyReqRef.current) setLoadingVerify(false);
+        }
+    }, []);
+
     const handleSelectUser = (userName) => {
         setSelectedUser(userName);
         setPage(1);
+        setInboxTab('inbox');
         fetchCases(userName, 1);
+        if (VERIFY_TAB_DEPTS.includes((department?.shortCode || '').toLowerCase())) {
+            fetchVerifyCases(userName);
+        } else {
+            verifyReqRef.current++;
+            setVerifyCases([]);
+        }
     };
 
     const handlePageChange = (newPage) => {
         setPage(newPage);
-        fetchCases(selectedUser, newPage);
+        // The verify tab holds the full list already; only the Inbox tab pages server-side.
+        if (inboxTab !== 'verify') fetchCases(selectedUser, newPage);
     };
 
-    const rangeStart = cases.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
-    const rangeEnd   = (page - 1) * PAGE_SIZE + cases.length;
-    const hasNext    = rangeEnd < total;
+    const handleTabChange = (key) => {
+        setInboxTab(key);
+        setPage(1);
+        if (key === 'inbox' && page !== 1) fetchCases(selectedUser, 1);
+    };
+
+    // Two tabs only for the departments that receive verification tasks.
+    const showVerifyTabs = VERIFY_TAB_DEPTS.includes((department?.shortCode || '').toLowerCase());
+    const onVerifyTab    = showVerifyTabs && inboxTab === 'verify';
+
+    // The Inbox tab is paged by the server; the verify list arrives whole, so slice it.
+    const visibleCases = onVerifyTab
+        ? verifyCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+        : cases;
+    const activeTotal  = onVerifyTab ? verifyCases.length : total;
+    const busy         = onVerifyTab ? loadingVerify : loadingCases;
+
+    const rangeStart = visibleCases.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
+    const rangeEnd   = (page - 1) * PAGE_SIZE + visibleCases.length;
+    const hasNext    = rangeEnd < activeTotal;
     const hasPrev    = page > 1;
 
     const p               = (c, f) => c[`packagescase_folder${f}`] || c[f];
@@ -490,12 +558,36 @@ const CaseInbox2Page = () => {
                     <span className="text-sm font-semibold text-slate-700">
                         {selectedUser ? `Inbox — ${selectedUser}` : 'Inbox Tasks'}
                     </span>
-                    {selectedUser && !loadingCases && total > 0 && (
+                    {selectedUser && !busy && activeTotal > 0 && (
                         <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded-full">
-                            {total} case{total !== 1 ? 's' : ''}
+                            {activeTotal} case{activeTotal !== 1 ? 's' : ''}
                         </span>
                     )}
                 </div>
+
+                {/* Inbox / To be Verified tabs */}
+                {selectedUser && showVerifyTabs && (
+                    <div className="px-5 pt-2 border-b border-slate-100 flex items-center gap-1">
+                        {[
+                            { key: 'inbox',  label: 'Inbox',          count: total },
+                            { key: 'verify', label: 'To be Verified',
+                              count: loadingVerify ? '…' : verifyCases.length },
+                        ].map(t => (
+                            <button key={t.key}
+                                onClick={() => handleTabChange(t.key)}
+                                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                                    inboxTab === t.key
+                                        ? 'border-[#0A66C2] text-[#0A66C2]'
+                                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                                }`}>
+                                {t.label}
+                                <span className={`ml-2 px-1.5 py-0.5 text-xs rounded-full ${
+                                    inboxTab === t.key ? 'bg-blue-50 text-[#0A66C2]' : 'bg-slate-100 text-slate-500'
+                                }`}>{t.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {/* Table area */}
                 <div className="flex-1 overflow-auto">
@@ -506,26 +598,26 @@ const CaseInbox2Page = () => {
                         </div>
                     )}
 
-                    {selectedUser && loadingCases && (
+                    {selectedUser && busy && (
                         <div className="flex items-center justify-center h-full py-16">
                             <Loader2 size={24} className="animate-spin text-[#0A66C2]" />
                         </div>
                     )}
 
-                    {selectedUser && !loadingCases && error && (
+                    {selectedUser && !busy && error && (
                         <div className="flex flex-col items-center justify-center h-full gap-2 text-red-500 py-16">
                             <p className="text-sm">{error}</p>
                         </div>
                     )}
 
-                    {selectedUser && !loadingCases && !error && cases.length === 0 && (
+                    {selectedUser && !busy && !error && visibleCases.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 py-16">
                             <Inbox size={36} strokeWidth={1.5} />
                             <p className="text-sm">No pending cases found for this user</p>
                         </div>
                     )}
 
-                    {selectedUser && !loadingCases && !error && cases.length > 0 && (
+                    {selectedUser && !busy && !error && visibleCases.length > 0 && (
                         <table className="w-full text-left text-sm">
                             <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
                                 <tr>
@@ -538,7 +630,7 @@ const CaseInbox2Page = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {cases.map((c, idx) => (
+                                {visibleCases.map((c, idx) => (
                                     <tr key={getCaseId(c) || idx} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-4 py-3 text-slate-400 font-mono text-xs">
                                             {(page - 1) * PAGE_SIZE + idx + 1}
@@ -589,10 +681,10 @@ const CaseInbox2Page = () => {
                 </div>
 
                 {/* Pagination footer */}
-                {selectedUser && !loadingCases && cases.length > 0 && (hasPrev || hasNext) && (
+                {selectedUser && !busy && visibleCases.length > 0 && (hasPrev || hasNext) && (
                     <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-white">
                         <span className="text-xs text-slate-500">
-                            {rangeStart > 0 ? `Showing ${rangeStart}–${rangeEnd}${total > rangeEnd ? ` of ${total}` : ''}` : ''}
+                            {rangeStart > 0 ? `Showing ${rangeStart}–${rangeEnd}${activeTotal > rangeEnd ? ` of ${activeTotal}` : ''}` : ''}
                         </span>
                         <div className="flex items-center gap-1">
                             <button

@@ -54,6 +54,22 @@ public class InboxController {
     }
 
     /**
+     * Case Inbox 2, "To be Verified" tab — unions cms_all_user_inbox across the user and
+     * every group they belong to, then keeps only "To be Verified*" tasks.
+     * GET /api/inbox/to-be-verified?username=Shaji+K+V
+     */
+    @GetMapping("/to-be-verified")
+    public ResponseEntity<Map<String, Object>> getToBeVerified(@RequestParam String username) {
+        try {
+            return ResponseEntity.ok(inboxService.getToBeVerifiedTasklist(username));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage(),
+                                 "entries", java.util.List.of(), "total", 0));
+        }
+    }
+
+    /**
      * Debug: returns the raw JSON from the CMS tasklist cms_all_user_inbox query.
      * GET /api/inbox/tasklist/raw?username=Dhinesh+S+R
      */

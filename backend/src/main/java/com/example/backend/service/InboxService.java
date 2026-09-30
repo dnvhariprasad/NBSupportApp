@@ -10,8 +10,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -32,13 +38,16 @@ public class InboxService {
     private final TasklistConfig tasklistConfig;
     private final DctmConfig dctmConfig;
     private final RestClient restClient;
+    private final GroupService groupService;
 
     public InboxService(TasklistConfig tasklistConfig,
                         DctmConfig dctmConfig,
-                        RestClient.Builder restClientBuilder) {
+                        RestClient.Builder restClientBuilder,
+                        GroupService groupService) {
         this.tasklistConfig = tasklistConfig;
         this.dctmConfig = dctmConfig;
         this.restClient = restClientBuilder.build();
+        this.groupService = groupService;
     }
 
     private String getAuthHeader() {
@@ -292,6 +301,103 @@ public class InboxService {
         }
     }
 
+    // ─── To be Verified inbox (union over user + their groups) ───────────────
+
+    private static final String TO_BE_VERIFIED_PREFIX = "to be verified";
+
+    /**
+     * "To be Verified" tasks for a user.
+     *
+     * <p>The {@code cms_all_user_inbox} tasklist query filters the task performer with
+     * {@code EQUAL}, so a single call only returns tasks queued to the person. Verification
+     * tasks are queued to <em>groups</em> ({@code ecm_chairman} and the per-case
+     * {@code ecm_chairman_&lt;caseId&gt;} groups), which that call can never see. So we run the
+     * query once per performer — the user plus every group they belong to — and merge the
+     * results, de-duplicating on the task id.
+     *
+     * <p>Rows are then narrowed to task names beginning "To be Verified", which covers
+     * "To be Verified Chairman" as well as the DMDS1/2/3 variants.
+     */
+    public Map<String, Object> getToBeVerifiedTasklist(String username) {
+        List<String> performers = new ArrayList<>();
+        performers.add(username);
+        try {
+            for (Map<String, String> group : groupService.getGroupsByUser(username)) {
+                String name = group.get("group_name");
+                if (name != null && !name.isBlank() && !performers.contains(name)) {
+                    performers.add(name);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve groups for '{}', falling back to the user alone: {}",
+                     username, e.getMessage());
+        }
+
+        Map<String, Object> merged = new LinkedHashMap<>();
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(10, performers.size()));
+        try {
+            List<Callable<List<?>>> jobs = new ArrayList<>();
+            for (String performer : performers) {
+                jobs.add(() -> fetchTasklistEntries(performer));
+            }
+            for (Future<List<?>> future : pool.invokeAll(jobs, 120, TimeUnit.SECONDS)) {
+                List<?> entries;
+                try {
+                    entries = future.get();
+                } catch (Exception e) {
+                    continue;
+                }
+                for (Object entry : entries) {
+                    Map<?, ?> props = extractProps(entry);
+                    if (props == null) continue;
+                    String taskName = str(props.get("packagesworkflow_paramtask_name"));
+                    if (!taskName.trim().toLowerCase().startsWith(TO_BE_VERIFIED_PREFIX)) continue;
+                    String key = str(props.get("id"));
+                    if (key.isBlank()) key = String.valueOf(System.identityHashCode(entry));
+                    merged.putIfAbsent(key, entry);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("To-be-Verified fetch interrupted for '{}'", username);
+        } finally {
+            pool.shutdown();
+        }
+
+        List<Object> entries = new ArrayList<>(merged.values());
+        log.info("To be Verified for '{}': {} task(s) across {} performer(s)",
+                 username, entries.size(), performers.size());
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("entries", entries);
+        result.put("total", entries.size());
+        result.put("performers", performers.size());
+        return result;
+    }
+
+    /** One {@code cms_all_user_inbox} call for a single performer (user or group). */
+    @SuppressWarnings("unchecked")
+    private List<?> fetchTasklistEntries(String performer) {
+        try {
+            String url = tasklistConfig.getCmsInboxUrl()
+                    + "/cms_all_user_inbox"
+                    + "?inline=true&items-per-page=500&input_performer_name="
+                    + java.net.URLEncoder.encode(performer, StandardCharsets.UTF_8);
+            Map<String, Object> response = restClient.get()
+                    .uri(java.net.URI.create(url))
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/json")
+                    .retrieve()
+                    .body(Map.class);
+            if (response == null) return List.of();
+            Object entries = response.get("entries");
+            return entries instanceof List<?> list ? list : List.of();
+        } catch (Exception e) {
+            log.debug("Tasklist call failed for performer '{}': {}", performer, e.getMessage());
+            return List.of();
+        }
+    }
+
     // ─── Debug: raw dmi_queue_item response ──────────────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -352,5 +458,9 @@ public class InboxService {
         if (!(content instanceof Map<?, ?> contentMap)) return null;
         Object props = contentMap.get("properties");
         return props instanceof Map<?, ?> ? (Map<?, ?>) props : null;
+    }
+
+    private String str(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 }
