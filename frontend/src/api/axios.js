@@ -1,10 +1,7 @@
 import axios from "axios";
 
-// Spring Boot backend. Defaults to the local dev server, so nothing changes
-// unless a build sets VITE_API_BASE_URL — which is how a UAT or production
-// build points at its own backend instead of the developer's machine.
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api",
+  baseURL: "/neoadminBackend/api", // Spring Boot Backend
   headers: {
     "Content-Type": "application/json",
   },
