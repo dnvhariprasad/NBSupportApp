@@ -660,9 +660,10 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
-            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual')");
+            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
+            "AND (entry_type='Internal' AND region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
+            "OR (entry_type='External' AND state_of_sender in ('Andaman and Nicobar','Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','New Delhi','Rajasthan','Uttar Pradesh','Uttarakhand')))");
         log.info("Grid 3 Region A Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -671,9 +672,10 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
-            "and status!='Saved' and decision='Outward' and languages in ('English')");
+            "and status!='Saved' and decision='Outward' and languages in ('English') " +
+            "AND (entry_type='Internal' AND region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
+            "OR (entry_type='External' AND state_of_sender in ('Andaman and Nicobar','Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','New Delhi','Rajasthan','Uttar Pradesh','Uttarakhand')))");
         log.info("Grid 3 Region A Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -682,9 +684,10 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
-            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual')");
+            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
+            "AND (entry_type='Internal' AND region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
+            "OR (entry_type='External' AND state_of_sender in ('Gujarat','Maharashtra','Punjab')))");
         log.info("Grid 3 Region B Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -693,9 +696,10 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
-            "and status!='Saved' and decision='Outward' and languages in ('English')");
+            "and status!='Saved' and decision='Outward' and languages in ('English') " +
+            "AND (entry_type='Internal' AND region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
+            "OR (entry_type='External' AND state_of_sender in ('Gujarat','Maharashtra','Punjab')))");
         log.info("Grid 3 Region B Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -704,9 +708,11 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
-            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual')");
+            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
+            "AND (entry_type='Internal' AND region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
+            "OR (entry_type='External' AND received_from in ('External-GoI','External-RBI','External-RBI-EFD') " +
+            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Poducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
         log.info("Grid 3 Region C Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -715,9 +721,11 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
-            "and status!='Saved' and decision='Outward' and languages in ('English')");
+            "and status!='Saved' and decision='Outward' and languages in ('English') " +
+            "AND (entry_type='Internal' AND region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
+            "OR (entry_type='External' AND received_from in ('External-GoI','External-RBI','External-RBI-EFD') " +
+            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Poducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
         log.info("Grid 3 Region C Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
