@@ -137,7 +137,8 @@ public class RajbhashaService {
 
             Map<String, Object> row4 = new HashMap<>();
             row4.put("summary", "Out of above how many letters were not required to be replied to");
-            row4.put("total", count1 - count2 + count3);  // Calculated as count1 - count2 + count3
+            // Letters received in Hindi, less those replied to in either language.
+            row4.put("total", count1 - count2 - count3);  // count1 - count2 - count3
 
             grid1.put("rows", new Map[]{row1, row2, row3, row4});
             result.put("grid1", grid1);
@@ -161,15 +162,12 @@ public class RajbhashaService {
             long totalEnglish = (long) toRegionA.get("english_count") + (long) toRegionB.get("english_count") + (long) toRegionC.get("english_count");
             long totalLettersIssued = totalHindi + totalEnglish;
 
-            // Total percentage = sum of individual region percentages
-            String percentageA = (String) toRegionA.get("percentage");
-            String percentageB = (String) toRegionB.get("percentage");
-            String percentageC = (String) toRegionC.get("percentage");
-
-            double percentAValue = Double.parseDouble(percentageA.replace("%", ""));
-            double percentBValue = Double.parseDouble(percentageB.replace("%", ""));
-            double percentCValue = Double.parseDouble(percentageC.replace("%", ""));
-            double totalPercentage = percentAValue + percentBValue + percentCValue;
+            // The Total row's percentage is computed from the Total row's own counts, the
+            // same way each region's is - not by adding the three region percentages,
+            // which are ratios and do not sum to anything meaningful.
+            double totalPercentage = (totalLettersIssued > 0)
+                    ? (totalHindi * 100.0) / totalLettersIssued
+                    : 0;
 
             Map<String, Object> totalRow = new HashMap<>();
             totalRow.put("summary", "Total");
@@ -443,8 +441,8 @@ public class RajbhashaService {
         long replyEnglishCount = executeGrid2Query3RegionA(value1, value2, value3, fromDate, toDate);
         regionA.put("replied_in_english", replyEnglishCount);
 
-        // Not replied to = engCount - replyHindiCount + replyEnglishCount
-        long notRepliedCount = engCount - replyHindiCount + replyEnglishCount;
+        // Letters received in English, less those replied to in either language.
+        long notRepliedCount = engCount - replyHindiCount - replyEnglishCount;
         regionA.put("not_replied_to", notRepliedCount);
 
         return regionA;
@@ -473,8 +471,8 @@ public class RajbhashaService {
         long replyEnglishCount = executeGrid2Query3RegionB(value1, value2, value3, fromDate, toDate);
         regionB.put("replied_in_english", replyEnglishCount);
 
-        // Not replied to = engCount - replyHindiCount + replyEnglishCount
-        long notRepliedCount = engCount - replyHindiCount + replyEnglishCount;
+        // Letters received in English, less those replied to in either language.
+        long notRepliedCount = engCount - replyHindiCount - replyEnglishCount;
         regionB.put("not_replied_to", notRepliedCount);
 
         return regionB;
