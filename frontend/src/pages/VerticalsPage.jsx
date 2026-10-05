@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { RO_LOCATIONS, TE_LOCATIONS, getLocations, fetchDepartments } from '../data/nabardMetadata.js';
 import { buildVerticalHeadDisplayName } from '../utils/verticalHead.js';
+import { withDisplayName } from '../utils/users.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -1395,7 +1396,7 @@ const RemoveMembersTab = ({ setToast }) => {
                                         className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none pr-8 cursor-pointer"
                                     >
                                         <option value="">— Select user —</option>
-                                        {delegateUsers.map(u => (
+                                        {withDisplayName(delegateUsers).map(u => (
                                             <option key={u.r_object_id || u.user_login_name} value={u.object_name}>
                                                 {u.object_name}
                                             </option>

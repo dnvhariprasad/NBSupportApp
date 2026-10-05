@@ -6,6 +6,7 @@ import {
     FileText, Info, ClipboardList, ChevronLeft, ChevronRight, ChevronsLeft, ChevronDown
 } from 'lucide-react';
 import { formatDateTime } from '../utils/dateFormat';
+import { withDisplayName } from '../utils/users.js';
 
 const PAGE_SIZE = 20;
 
@@ -500,7 +501,7 @@ const CaseInbox2Page = () => {
                         <SelectWrapper>
                             {/* Show filtered users if department selected, otherwise show all users */}
                             {(() => {
-                                const displayUsers = department && isRoTe ? filteredUsers : users;
+                                const displayUsers = withDisplayName(department && isRoTe ? filteredUsers : users);
                                 const isEmpty = displayUsers.length === 0;
                                 return (
                                     <select value={selectedUser || ''} onChange={e => handleSelectUser(e.target.value)}
