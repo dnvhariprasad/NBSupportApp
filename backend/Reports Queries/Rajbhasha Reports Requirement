@@ -66,7 +66,9 @@ select count(*) from cms_digidak_folder where is_group=false and any responding_
 
 
 4. Out of above how many letters were not required to be replied to :
-  These to be calculated as count1 - count2 + count3
+  These to be calculated as count1 - count2 - count3
+  (i.e.) Total no. of letters received in Hindi count value - Out of above how many were
+  replied in Hindi count value - Out of above how many were replied in English count value
 
 ========================================================================================
 
@@ -115,8 +117,8 @@ Example for RO & TE:
 select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false  and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and selected_region in ('Tamilnadu') and selected_cgm_group = 'ecm_digidak_ro_tn_cgm' and login_region in ('Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','Rajasthan','Uttar Pradesh','Uttarakhand','New Delhi','Andaman and Nicobar','Bird Lucknow','NBSC Lucknow') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English')) and languages in ('English') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved'
 
 (iv). Out of these were not replied to
- With respective to 'From Region 'A' row' values, these to be calculated like No.of letters received in English count value - Out of these replied in Hindi count value + Out of these replied in English count value
- (i.e.) count1 - count2 + count3
+ With respective to 'From Region 'A' row' values, these to be calculated like No.of letters received in English count value - Out of these replied in Hindi count value - Out of these replied in English count value
+ (i.e.) count1 - count2 - count3
 
 
 
@@ -150,8 +152,8 @@ select count(*) as total from cms_digidak_folder where is_group=false and is_mig
 
 
 (iv). Out of these were not replied to
- With respective to 'From Region 'B' row' values, these to be calculated like No.of letters received in English count value - Out of these replied in Hindi count value + Out of these replied in English count value
- (i.e.) count1 - count2 + count3
+ With respective to 'From Region 'B' row' values, these to be calculated like No.of letters received in English count value - Out of these replied in Hindi count value - Out of these replied in English count value
+ (i.e.) count1 - count2 - count3
 
 ============================================================
 
@@ -255,9 +257,19 @@ In Hindi/Bilingual count value / Total Letters Issued * 100
 (i.e.) count1/count3 * 100
 
 
-4. Total 
+4. Total
 
-Count of In Hindi/Bilingual, In English Only, Total Letters Issued, Percentage of Letters Hindi/Bilingual  to be calculated as To Region 'A' + To Region 'B' + To Region 'C' values of respective columns.
+Count of In Hindi/Bilingual, In English Only, Total Letters Issued to be calculated as To Region 'A' + To Region 'B' + To Region 'C' values of respective columns.
+
+Percentage of Letters Hindi/Bilingual must NOT be summed across the three regions. It is
+calculated from the Total row's own counts, the same way each region's percentage is:
+
+In Hindi/Bilingual count value / Total Letters Issued * 100
+
+(i.e.) count1/count3 * 100
+
+where count1 and count3 are the Total row's In Hindi/Bilingual and Total Letters Issued
+values (the sums from To Region 'A' + 'B' + 'C').
 
 
 
