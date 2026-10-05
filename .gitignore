@@ -45,6 +45,14 @@ Thumbs.db
 *.bak
 *.backup
 
+# Rotated logs. *.log above does not catch these — log4j2 appends an index and
+# gzips the result, e.g. rajbhasha.log.2026-10-01.0.gz
+*.log.*
+
+# Build and run output captured to a file
+backend.out
+build_output.txt
+
 # Session notes (private)
 SESSION_NOTES.md
 frontend/package-lock.json
