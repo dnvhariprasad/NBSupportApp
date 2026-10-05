@@ -32,14 +32,18 @@ Count value for the grid to be generated based on below queries count. Below res
 
 Exclusion of letters already responded to
 -----------------------------------------
-The following clause is appended to the end of six of the fifteen queries:
+The following clause is appended to the end of nine of the eighteen queries:
 
 AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN
 ( SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
 
-It applies to the six "replied in" queries only:
+It applies to:
   Grid 1 - (2) replied in Hindi, (3) replied in English
   Grid 2 - Region 'A' (ii) and (iii), Region 'B' (ii) and (iii)
+  Grid 2 - Region 'C' (i), (ii) and (iii)
+
+Note that Region 'C' (i) carries the clause while Region 'A' (i) and Region 'B' (i)
+do not. That is as specified for Region 'C'.
 
 It does NOT apply anywhere else:
   Grid 1 - (1) Total no. of letters received in Hindi
@@ -95,7 +99,7 @@ select count(*) from cms_digidak_folder where is_group=false and any responding_
 
 Grid 2: 
 
-2. Below 2nd grid to be generated with 5 columns and 2 rows
+2. Below 2nd grid to be generated with 5 columns and 3 rows
 Column 1 : Summary
 Column 2 : No.of letters received in English
 Column 3 : Out of these replied in Hindi
@@ -107,8 +111,9 @@ Column 5 : Out of these were not replied to
 Below are the Summary column hardcoded values:
 From Region 'A'
 From Region 'B'
+From Region 'C'
 
-Count value for the grid to be generated based on below queries count. Below resulted count values to be updated in respective column. 
+Count value for the grid to be generated based on below queries count. Below resulted count values to be updated in respective column.
 
 1. Count for From Region 'A' row: 
 (i). Query for No.of letters received in English : 
@@ -175,6 +180,35 @@ select count(*) as total from cms_digidak_folder where is_group=false and is_mig
 (iv). Out of these were not replied to
  With respective to 'From Region 'B' row' values, these to be calculated like No.of letters received in English count value - Out of these replied in Hindi count value - Out of these replied in English count value
  (i.e.) count1 - count2 - count3
+
+3. Count for From Region 'C' row:
+(i). Query for No.of letters received in English :
+select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and selected_region in ('<value_1>') and selected_cgm_group = 'ecm_digidak_<value_2>_<value_3>_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('<value_4> 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('<value_5> 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English') AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+Example for HO: select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and selected_region in ('DDSI') and selected_cgm_group = 'ecm_digidak_ho_ddsi_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English') AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+Example for RO & TE : select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and selected_region in ('Tamilnadu') and selected_cgm_group = 'ecm_digidak_ro_tn_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English') AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+	(ii). Query for Out of these replied in Hindi :  select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and selected_region in ('<value_1>') and selected_cgm_group = 'ecm_digidak_<value_2>_<value_3>_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('<value_4> 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('<value_5> 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English')) and languages in ('Hindi', 'Bilingual') and ( r_creation_date>=DATE('<value_4> 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('<value_5> 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+Example for HO: 
+select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and selected_region in ('DDSI') and selected_cgm_group = 'ecm_digidak_ho_ddsi_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English')) and languages in ('Hindi', 'Bilingual') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+Example for RO & TE :
+select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and selected_region in ('Tamilnadu') and selected_cgm_group = 'ecm_digidak_ro_tn_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English')) and languages in ('Hindi', 'Bilingual') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+(iii). Query for Out of these replied in English :  select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and selected_region in ('<value_1>') and selected_cgm_group = 'ecm_digidak_<value_2>_<value_3>_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('<value_4> 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('<value_5> 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English')) and languages in ('English') and ( r_creation_date>=DATE('<value_4> 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('<value_5> 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+Example for HO: 
+select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and selected_region in ('DDSI') and selected_cgm_group = 'ecm_digidak_ho_ddsi_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English')) and languages in ('English') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+Example for RO & TE :
+select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and selected_region in ('Tamilnadu') and selected_cgm_group = 'ecm_digidak_ro_tn_cgm' and login_region in ('Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' and languages in ('English')) and languages in ('English') and ( r_creation_date>=DATE('01/01/2025 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('02/07/2026 23:59:59','dd/MM/yyyy hh:mi:ss') ) and status!='Saved' AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re WHERE status = 'Responded'))
+
+(iv). Out of these were not replied to
+ With respective to 'From Region 'C' row' values, these to be calculated like No.of letters received in English count value - Out of these replied in Hindi count value - Out of these replied in English count value
+ (i.e.) count1 - count2 - count3
+
 
 ============================================================
 
