@@ -3,6 +3,7 @@ import api from '../api/axios';
 import { X, Save, Loader2, User, Building2, MapPin, Tag, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
 import { USER_GRADES, DESIGNATION_OPTIONS, OTHER_DESIGNATION, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS, DDM_DISTRICTS } from '../data/nabardMetadata.js';
 import AssignVerticalHeadModal from './AssignVerticalHeadModal.jsx';
+import { withDisplayName } from '../utils/users.js';
 import {
     buildVerticalHeadDisplayName,
     getVerticalGroupFromHeadGroup,
@@ -1392,7 +1393,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none pr-8 cursor-pointer"
                                     >
                                         <option value="">— Select user —</option>
-                                        {delegateUsers.map(u => (
+                                        {withDisplayName(delegateUsers).map(u => (
                                             <option key={u.r_object_id || u.user_login_name} value={u.object_name}>
                                                 {u.object_name}
                                             </option>
