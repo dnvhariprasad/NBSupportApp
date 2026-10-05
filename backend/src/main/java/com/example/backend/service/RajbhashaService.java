@@ -194,6 +194,23 @@ public class RajbhashaService {
     /**
      * Query 1: Total no. of letters received in Hindi
      */
+    /**
+     * Letters already answered through the movement register.
+     *
+     * <p>Appended to the six "replied in …" counts: Grid 1 queries 2 and 3, and
+     * Grid 2 (ii) and (iii) for both regions.
+     *
+     * <p>It is deliberately NOT appended anywhere else. The three "letters
+     * received" totals - Grid 1 query 1 and Grid 2 (i) for both regions - count
+     * what arrived regardless of what happened to it afterwards. Grid 3 counts
+     * letters issued outward, which is a different question from whether an
+     * inbound letter has been answered.
+     */
+    private static final String EXCLUDE_RESPONDED =
+        " AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder "
+        + "WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re "
+        + "WHERE status = 'Responded'))";
+
     private long executeTotalLettersInHindi(String value1, String value2, String value3,
                                            String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
@@ -237,6 +254,8 @@ public class RajbhashaService {
         dql.append("AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) ");
         dql.append("and status!='Saved'");
 
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Query 2 - Replied in Hindi: {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -264,6 +283,8 @@ public class RajbhashaService {
         dql.append("and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') ");
         dql.append("AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) ");
         dql.append("and status!='Saved'");
+
+        dql.append(EXCLUDE_RESPONDED);
 
         log.info("Query 3 - Replied in English: {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -502,6 +523,8 @@ public class RajbhashaService {
             "and status!='Saved' and languages in ('English')) " +
             "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Grid 2 Region A Query 2 (Replied Hindi): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -517,6 +540,8 @@ public class RajbhashaService {
             "and status!='Saved' and languages in ('English')) " +
             "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Grid 2 Region A Query 3 (Replied English): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -543,6 +568,8 @@ public class RajbhashaService {
             "and status!='Saved' and languages in ('English')) " +
             "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Grid 2 Region B Query 2 (Replied Hindi): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -557,6 +584,8 @@ public class RajbhashaService {
             "and status!='Saved' and languages in ('English')) " +
             "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Grid 2 Region B Query 3 (Replied English): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
