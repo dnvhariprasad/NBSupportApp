@@ -374,14 +374,19 @@ const ReportsPage = () => {
             });
     }, [rajbhashaOfficeType, rajbhashaLocation, rajbhashaIsRoTe]);
 
+    // The Rajbhasha department owns this report for the whole organisation, so a Local
+    // Admin in RAJ gets Super Admin reach on this tab: every office type, every location
+    // and every department. Every other Local Admin stays pinned to their own office and
+    // sees only their own departments.
+    const rajbhashaOwnDepartments = (() => {
+        const raw = profileCtx?.department_short_code_multi;
+        return (Array.isArray(raw) ? raw : (raw ? [raw] : [])).map(s => String(s).toLowerCase());
+    })();
+    const isRajLocalAdmin = isLocalAdmin && rajbhashaOwnDepartments.includes('raj');
+
     // For Local Admin: filter departments to only those in their profile (HO only)
-    const filteredRajbhashaDepartments = isLocalAdmin && profileCtx && !rajbhashaIsRoTe
-        ? (() => {
-            const raw = profileCtx.department_short_code_multi;
-            const allowed = (Array.isArray(raw) ? raw : (raw ? [raw] : []))
-                .map(s => s.toLowerCase());
-            return rajbhashaDepartments.filter(d => allowed.includes(d.shortCode.toLowerCase()));
-          })()
+    const filteredRajbhashaDepartments = isLocalAdmin && profileCtx && !rajbhashaIsRoTe && !isRajLocalAdmin
+        ? rajbhashaDepartments.filter(d => rajbhashaOwnDepartments.includes(d.shortCode.toLowerCase()))
         : rajbhashaDepartments;
 
     // ── Fetch Digidak Source Verticals (Outbox only) ───────────────────────────
@@ -1083,7 +1088,6 @@ const ReportsPage = () => {
                 >
                     Digidak
                 </button>
-                {!isLocalAdmin && (
                 <button
                     onClick={() => setActiveTab('rajbhasha')}
                     className={`px-4 py-2 text-sm font-semibold transition-colors ${
@@ -1094,7 +1098,6 @@ const ReportsPage = () => {
                 >
                     Rajbhasha Report
                 </button>
-                )}
             </div>
 
             {/* Cases Report Section */}
@@ -1791,7 +1794,7 @@ const ReportsPage = () => {
             )}
 
             {/* Rajbhasha Report Section */}
-            {activeTab === 'rajbhasha' && !isLocalAdmin && (
+            {activeTab === 'rajbhasha' && (
             <>
             {/* Filter Card */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
@@ -1804,7 +1807,7 @@ const ReportsPage = () => {
                     {/* Office Type */}
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
-                        <select value={rajbhashaOfficeType} onChange={e => handleRajbhashaOfficeTypeChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
+                        <select value={rajbhashaOfficeType} onChange={e => handleRajbhashaOfficeTypeChange(e.target.value)} className={selectCls} disabled={isLocalAdmin && !isRajLocalAdmin}>
                             <option value="">Select</option>
                             <option value="HO">HO</option>
                             <option value="RO">RO</option>
@@ -1816,7 +1819,7 @@ const ReportsPage = () => {
                     {rajbhashaIsRoTe && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
-                            <select value={rajbhashaLocation} onChange={e => handleRajbhashaLocationChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
+                            <select value={rajbhashaLocation} onChange={e => handleRajbhashaLocationChange(e.target.value)} className={selectCls} disabled={isLocalAdmin && !isRajLocalAdmin}>
                                 <option value="">Select Location</option>
                                 {rajbhashaLocations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
                             </select>
