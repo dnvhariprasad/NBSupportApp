@@ -137,7 +137,8 @@ public class RajbhashaService {
 
             Map<String, Object> row4 = new HashMap<>();
             row4.put("summary", "Out of above how many letters were not required to be replied to");
-            row4.put("total", count1 - count2 + count3);  // Calculated as count1 - count2 + count3
+            // Letters received in Hindi, less those replied to in either language.
+            row4.put("total", count1 - count2 - count3);  // count1 - count2 - count3
 
             grid1.put("rows", new Map[]{row1, row2, row3, row4});
             result.put("grid1", grid1);
@@ -146,7 +147,8 @@ public class RajbhashaService {
             Map<String, Object> grid2 = new HashMap<>();
             Map<String, Object> regionA = executeGrid2RegionA(value1, value2, value3, fromDate, toDate);
             Map<String, Object> regionB = executeGrid2RegionB(value1, value2, value3, fromDate, toDate);
-            grid2.put("rows", new Map[]{regionA, regionB});
+            Map<String, Object> regionC = executeGrid2RegionC(value1, value2, value3, fromDate, toDate);
+            grid2.put("rows", new Map[]{regionA, regionB, regionC});
             result.put("grid2", grid2);
 
             // Grid 3: Outbound letters by region
@@ -161,15 +163,12 @@ public class RajbhashaService {
             long totalEnglish = (long) toRegionA.get("english_count") + (long) toRegionB.get("english_count") + (long) toRegionC.get("english_count");
             long totalLettersIssued = totalHindi + totalEnglish;
 
-            // Total percentage = sum of individual region percentages
-            String percentageA = (String) toRegionA.get("percentage");
-            String percentageB = (String) toRegionB.get("percentage");
-            String percentageC = (String) toRegionC.get("percentage");
-
-            double percentAValue = Double.parseDouble(percentageA.replace("%", ""));
-            double percentBValue = Double.parseDouble(percentageB.replace("%", ""));
-            double percentCValue = Double.parseDouble(percentageC.replace("%", ""));
-            double totalPercentage = percentAValue + percentBValue + percentCValue;
+            // The Total row's percentage is computed from the Total row's own counts, the
+            // same way each region's is - not by adding the three region percentages,
+            // which are ratios and do not sum to anything meaningful.
+            double totalPercentage = (totalLettersIssued > 0)
+                    ? (totalHindi * 100.0) / totalLettersIssued
+                    : 0;
 
             Map<String, Object> totalRow = new HashMap<>();
             totalRow.put("summary", "Total");
@@ -196,6 +195,27 @@ public class RajbhashaService {
     /**
      * Query 1: Total no. of letters received in Hindi
      */
+    /**
+     * Letters already answered through the movement register.
+     *
+     * <p>Appended to the six "replied in …" counts: Grid 1 queries 2 and 3, and
+     * Grid 2 (ii) and (iii) for both regions.
+     *
+     * <p>It is deliberately NOT appended anywhere else. The three "letters
+     * received" totals - Grid 1 query 1 and Grid 2 (i) for both regions - count
+     * what arrived regardless of what happened to it afterwards. Grid 3 counts
+     * letters issued outward, which is a different question from whether an
+     * inbound letter has been answered.
+     */
+    /** Grid 2 Region C: southern and eastern states, plus the two Bird centres. */
+    private static final String C_LOGIN_REGIONS =
+        "'Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore'";
+
+    private static final String EXCLUDE_RESPONDED =
+        " AND r_object_id NOT IN (SELECT r_object_id FROM cms_digidak_folder "
+        + "WHERE r_object_id IN (SELECT i_folder_id FROM cms_digidak_movement_re "
+        + "WHERE status = 'Responded'))";
+
     private long executeTotalLettersInHindi(String value1, String value2, String value3,
                                            String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
@@ -208,8 +228,8 @@ public class RajbhashaService {
 
         dql.append("and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' ");
         dql.append("and languages in ('Hindi', 'Bilingual') ");
-        dql.append("and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') ");
-        dql.append("AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1");
+        dql.append("and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') ");
+        dql.append("AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')");
 
         log.info("Query 1 - Total Letters in Hindi: {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -231,13 +251,15 @@ public class RajbhashaService {
 
         dql.append("and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' ");
         dql.append("and languages in ('Hindi', 'Bilingual') ");
-        dql.append("and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') ");
-        dql.append("AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) ");
+        dql.append("and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') ");
+        dql.append("AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) ");
 
         dql.append("and languages in ('Hindi', 'Bilingual') ");
-        dql.append("and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') ");
-        dql.append("AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) ");
+        dql.append("and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') ");
+        dql.append("AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) ");
         dql.append("and status!='Saved'");
+
+        dql.append(EXCLUDE_RESPONDED);
 
         log.info("Query 2 - Replied in Hindi: {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -259,13 +281,15 @@ public class RajbhashaService {
 
         dql.append("and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' ");
         dql.append("and languages in ('Hindi', 'Bilingual') ");
-        dql.append("and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') ");
-        dql.append("AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) ");
+        dql.append("and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') ");
+        dql.append("AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) ");
 
         dql.append("and languages in ('English') ");
-        dql.append("and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') ");
-        dql.append("AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')) ");
+        dql.append("and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') ");
+        dql.append("AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) ");
         dql.append("and status!='Saved'");
+
+        dql.append(EXCLUDE_RESPONDED);
 
         log.info("Query 3 - Replied in English: {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -443,8 +467,8 @@ public class RajbhashaService {
         long replyEnglishCount = executeGrid2Query3RegionA(value1, value2, value3, fromDate, toDate);
         regionA.put("replied_in_english", replyEnglishCount);
 
-        // Not replied to = engCount - replyHindiCount + replyEnglishCount
-        long notRepliedCount = engCount - replyHindiCount + replyEnglishCount;
+        // Letters received in English, less those replied to in either language.
+        long notRepliedCount = engCount - replyHindiCount - replyEnglishCount;
         regionA.put("not_replied_to", notRepliedCount);
 
         return regionA;
@@ -473,11 +497,42 @@ public class RajbhashaService {
         long replyEnglishCount = executeGrid2Query3RegionB(value1, value2, value3, fromDate, toDate);
         regionB.put("replied_in_english", replyEnglishCount);
 
-        // Not replied to = engCount - replyHindiCount + replyEnglishCount
-        long notRepliedCount = engCount - replyHindiCount + replyEnglishCount;
+        // Letters received in English, less those replied to in either language.
+        long notRepliedCount = engCount - replyHindiCount - replyEnglishCount;
         regionB.put("not_replied_to", notRepliedCount);
 
         return regionB;
+    }
+
+    /**
+     * Grid 2 - Region C queries for English letters.
+     *
+     * <p>Region C: the southern and eastern states, plus Bird Kolkata and Bird Mangalore.
+     */
+    private Map<String, Object> executeGrid2RegionC(String value1, String value2, String value3,
+                                                     String fromDate, String toDate) {
+        log.info("Executing Grid 2 - Region C queries");
+
+        Map<String, Object> regionC = new HashMap<>();
+        regionC.put("summary", "From Region 'C'");
+
+        // Letters received in English
+        long engCount = executeGrid2Query1RegionC(value1, value2, value3, fromDate, toDate);
+        regionC.put("no_of_letters_english", engCount);
+
+        // Replied in Hindi
+        long replyHindiCount = executeGrid2Query2RegionC(value1, value2, value3, fromDate, toDate);
+        regionC.put("replied_in_hindi", replyHindiCount);
+
+        // Replied in English
+        long replyEnglishCount = executeGrid2Query3RegionC(value1, value2, value3, fromDate, toDate);
+        regionC.put("replied_in_english", replyEnglishCount);
+
+        // Letters received in English, less those replied to in either language.
+        long notRepliedCount = engCount - replyHindiCount - replyEnglishCount;
+        regionC.put("not_replied_to", notRepliedCount);
+
+        return regionC;
     }
 
     private long executeGrid2Query1RegionA(String value1, String value2, String value3,
@@ -487,7 +542,7 @@ public class RajbhashaService {
             "and selected_region in ('").append(value1).append("') " +
             "and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in ('Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','Rajasthan','Uttar Pradesh','Uttarakhand','New Delhi','Andaman and Nicobar','Bird Lucknow','NBSC Lucknow') " +
-            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 ) " +
+            "and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') ) " +
             "and status!='Saved' and languages in ('English')");
         log.info("Grid 2 Region A Query 1 (English letters): {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -500,10 +555,12 @@ public class RajbhashaService {
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in ('Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','Rajasthan','Uttar Pradesh','Uttarakhand','New Delhi','Andaman and Nicobar','Bird Lucknow','NBSC Lucknow') " +
-            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved' and languages in ('English')) " +
-            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Grid 2 Region A Query 2 (Replied Hindi): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -515,10 +572,12 @@ public class RajbhashaService {
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in ('Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','Rajasthan','Uttar Pradesh','Uttarakhand','New Delhi','Andaman and Nicobar','Bird Lucknow','NBSC Lucknow') " +
-            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved' and languages in ('English')) " +
-            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Grid 2 Region A Query 3 (Replied English): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -529,7 +588,7 @@ public class RajbhashaService {
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
             "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD') " +
-            "and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved' and languages in ('English')");
         log.info("Grid 2 Region B Query 1 (English letters): {}", dql.toString());
         return executeCountQuery(dql.toString());
@@ -541,10 +600,12 @@ public class RajbhashaService {
             "select count (*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved' and languages in ('English')) " +
-            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Grid 2 Region B Query 2 (Replied Hindi): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -555,11 +616,67 @@ public class RajbhashaService {
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved' and languages in ('English')) " +
-            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1) " +
+            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
         log.info("Grid 2 Region B Query 3 (Replied English): {}", dql.toString());
+        return executeCountQuery(dql.toString());
+    }
+
+    /**
+     * Grid 2 Region C (i) - letters received in English.
+     *
+     * <p>Unlike the Region A and B (i) queries, this one carries EXCLUDE_RESPONDED,
+     * because the requirement specifies it for Region C. Left as specified.
+     */
+    private long executeGrid2Query1RegionC(String value1, String value2, String value3,
+                                          String fromDate, String toDate) {
+        StringBuilder dql = new StringBuilder(
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
+            "and selected_region in ('").append(value1).append("') and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
+            "and login_region in (" + "'Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore'" + ") " +
+            "and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') ) " +
+            "and status!='Saved' and languages in ('English')");
+        dql.append(EXCLUDE_RESPONDED);
+
+        log.info("Grid 2 Region C Query 1 (English letters): {}", dql.toString());
+        return executeCountQuery(dql.toString());
+    }
+
+    private long executeGrid2Query2RegionC(String value1, String value2, String value3,
+                                          String fromDate, String toDate) {
+        StringBuilder dql = new StringBuilder(
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
+            "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
+            "and selected_region in ('").append(value1).append("') and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
+            "and login_region in (" + "'Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore'" + ") " +
+            "and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') ) " +
+            "and status!='Saved' and languages in ('English')) " +
+            "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') ) " +
+            "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
+        log.info("Grid 2 Region C Query 2 (Replied Hindi): {}", dql.toString());
+        return executeCountQuery(dql.toString());
+    }
+
+    private long executeGrid2Query3RegionC(String value1, String value2, String value3,
+                                          String fromDate, String toDate) {
+        StringBuilder dql = new StringBuilder(
+            "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
+            "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false " +
+            "and selected_region in ('").append(value1).append("') and selected_cgm_group = 'ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
+            "and login_region in (" + "'Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore'" + ") " +
+            "and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') ) " +
+            "and status!='Saved' and languages in ('English')) " +
+            "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') ) " +
+            "and status!='Saved'");
+        dql.append(EXCLUDE_RESPONDED);
+
+        log.info("Grid 2 Region C Query 3 (Replied English): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
 
@@ -660,9 +777,10 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
-            "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
-            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual')");
+            "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
+            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
+            "AND (entry_type='Internal' AND region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
+            "OR (entry_type='External' AND state_of_sender in ('Andaman and Nicobar','Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','New Delhi','Rajasthan','Uttar Pradesh','Uttarakhand')))");
         log.info("Grid 3 Region A Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -671,9 +789,10 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
-            "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
-            "and status!='Saved' and decision='Outward' and languages in ('English')");
+            "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
+            "and status!='Saved' and decision='Outward' and languages in ('English') " +
+            "AND (entry_type='Internal' AND region in ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC') " +
+            "OR (entry_type='External' AND state_of_sender in ('Andaman and Nicobar','Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','New Delhi','Rajasthan','Uttar Pradesh','Uttarakhand')))");
         log.info("Grid 3 Region A Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -682,9 +801,10 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
-            "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
-            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual')");
+            "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
+            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
+            "AND (entry_type='Internal' AND region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
+            "OR (entry_type='External' AND state_of_sender in ('Gujarat','Maharashtra','Punjab')))");
         log.info("Grid 3 Region B Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -693,9 +813,10 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
-            "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
-            "and status!='Saved' and decision='Outward' and languages in ('English')");
+            "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
+            "and status!='Saved' and decision='Outward' and languages in ('English') " +
+            "AND (entry_type='Internal' AND region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
+            "OR (entry_type='External' AND state_of_sender in ('Gujarat','Maharashtra','Punjab')))");
         log.info("Grid 3 Region B Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -704,9 +825,11 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
-            "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
-            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual')");
+            "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
+            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
+            "AND (entry_type='Internal' AND region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
+            "OR (entry_type='External' AND received_from in ('External-GoI','External-RBI','External-RBI-EFD') " +
+            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Poducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
         log.info("Grid 3 Region C Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -715,9 +838,11 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
-            "and region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
-            "and r_creation_date>=DATE('").append(fromDate).append("','dd/MM/yyyy') AND r_creation_date<=DATE('").append(toDate).append("','dd/MM/yyyy')+1 " +
-            "and status!='Saved' and decision='Outward' and languages in ('English')");
+            "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
+            "and status!='Saved' and decision='Outward' and languages in ('English') " +
+            "AND (entry_type='Internal' AND region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
+            "OR (entry_type='External' AND received_from in ('External-GoI','External-RBI','External-RBI-EFD') " +
+            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Poducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
         log.info("Grid 3 Region C Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -888,7 +1013,8 @@ public class RajbhashaService {
         // Region labels as per template
         String[] regionLabels = {
             "'क' क्षेत्र से\nFrom Region A",
-            "'ख' क्षेत्र से\nFrom Region B"
+            "'ख' क्षेत्र से\nFrom Region B",
+            "'ग' क्षेत्र से\nFrom Region C"
         };
 
         // Data

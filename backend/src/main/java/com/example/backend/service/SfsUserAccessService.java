@@ -496,6 +496,98 @@ public class SfsUserAccessService {
         return isUserInGroup(userName, role, officeType, department, location, null);
     }
 
+    /**
+     * Members of every requested SFS role group, fetched once per group.
+     *
+     * The User Access grid used to call {@link #isUserInGroup} once per user per
+     * role. Each of those calls resolves the group and downloads its entire
+     * member list just to look for one name, so a 106-user office cost 636
+     * requests and ~1,270 Documentum calls to populate — slow enough that the
+     * page only ever loaded the first 10 rows. Returning each group's members
+     * once lets the client work out every user's roles from ~12 calls.
+     *
+     * Group resolution mirrors isUserInGroup exactly, including which
+     * mapRoleToGroup overload is used, so the answers match the per-user check.
+     *
+     * @return role -> member user_names (lower-cased). A role whose group cannot
+     *         be resolved maps to an empty list, which the client reads as
+     *         "not a member" — the same answer isUserInGroup gives.
+     */
+    public Map<String, List<String>> getRoleMembers(List<String> roles, String officeType, String department,
+                                                    String location, String locationShortCode) {
+        String repoUrl = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository();
+
+        // The role groups are independent, and each costs two Documentum round
+        // trips of roughly a second apiece, so fetch them in parallel rather than
+        // one after another. Everything used here is stateless — the auth header
+        // is rebuilt from config per call and RestClient is thread-safe.
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
+                Math.max(1, Math.min(roles.size(), 8)));
+        try {
+            Map<String, java.util.concurrent.Future<List<String>>> pending = new LinkedHashMap<>();
+            for (String role : roles) {
+                pending.put(role, pool.submit(
+                        () -> loadRoleMembers(repoUrl, role, officeType, department, location, locationShortCode)));
+            }
+            Map<String, List<String>> result = new LinkedHashMap<>();
+            for (Map.Entry<String, java.util.concurrent.Future<List<String>>> e : pending.entrySet()) {
+                try {
+                    result.put(e.getKey(), e.getValue().get());
+                } catch (Exception ex) {
+                    log.error("[SFS] Failed to load members for role {}: {}", e.getKey(), ex.getMessage());
+                    result.put(e.getKey(), List.of());
+                }
+            }
+            return result;
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    /** One role's group members, resolved exactly as isUserInGroup resolves the group. */
+    private List<String> loadRoleMembers(String repoUrl, String role, String officeType, String department,
+                                         String location, String locationShortCode) {
+        String groupName = locationShortCode != null
+                ? mapRoleToGroup(role, officeType, department, location, locationShortCode)
+                : mapRoleToGroup(role, officeType, department, location);
+        if (groupName == null) return List.of();
+        try {
+            String groupId = findGroupIdByName(repoUrl, groupName);
+            return groupId == null ? List.of() : fetchGroupUserTitles(repoUrl, groupId);
+        } catch (Exception e) {
+            log.error("[SFS] Failed to load members of {} for role {}: {}", groupName, role, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * All direct user members of a group, lower-cased, following dctm-rest
+     * pagination. The endpoint returns 100 entries per page by default; reading
+     * only the first page would report everyone beyond it as a non-member.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> fetchGroupUserTitles(String repoUrl, String groupId) {
+        final int pageSize = 500;
+        List<String> titles = new ArrayList<>();
+        for (int page = 1; page <= 50; page++) {
+            String url = repoUrl + "/groups/" + groupId + "/users?items-per-page=" + pageSize + "&page=" + page;
+            Map<String, Object> resp = restClient.get()
+                    .uri(url)
+                    .header("Authorization", getAuthHeader())
+                    .header("Accept", "application/vnd.emc.documentum+json")
+                    .retrieve()
+                    .body(Map.class);
+            List<Map<String, Object>> entries = resp == null ? null : (List<Map<String, Object>>) resp.get("entries");
+            if (entries == null || entries.isEmpty()) break;
+            for (Map<String, Object> entry : entries) {
+                Object title = entry.get("title");
+                if (title != null) titles.add(title.toString().toLowerCase(Locale.ROOT));
+            }
+            if (entries.size() < pageSize) break;
+        }
+        return titles;
+    }
+
     @SuppressWarnings("unchecked")
     /**
      * Overloaded version with locationShortCode parameter

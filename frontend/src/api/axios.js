@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "/neoadminBackend/api", // Spring Boot Backend
+  baseURL: "/neoadminBackend/api", // Spring Boot Backend, via the reverse proxy
   headers: {
     "Content-Type": "application/json",
   },

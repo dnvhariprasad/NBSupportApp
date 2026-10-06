@@ -1,0 +1,55 @@
+/* Shared styling for the NBAdminApp documentation set. */
+:root{
+  --bg:#fbfbfa; --panel:#fff; --ink:#1a1a18; --muted:#6b6b66; --line:#e4e4e0;
+  --accent:#0A66C2; --accent-soft:#eaf2fb; --code-bg:#f5f5f2;
+  --warn:#8a5a00; --warn-bg:#fdf6e6; --danger:#9a3232; --danger-bg:#fbecec;
+  --ok:#2f6f4e; --ok-bg:#eaf3ee;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#17171a; --panel:#1e1e22; --ink:#e8e8e4; --muted:#9c9c96; --line:#32323a;
+         --accent:#6aa9e9; --accent-soft:#16273a; --code-bg:#26262c;
+         --warn:#e0b464; --warn-bg:#2b2418; --danger:#e08b8b; --danger-bg:#2e1c1c;
+         --ok:#6fbf8f; --ok-bg:#1d2f26; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+main{max-width:1060px;margin:0 auto;padding:36px 32px 60px}
+h1{font-size:29px;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--muted);margin:0 0 26px}
+h2{font-size:20px;margin:34px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+h3{font-size:16px;margin:24px 0 8px}
+h4{font-size:14px;margin:18px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+p{margin:0 0 13px}
+code{background:var(--code-bg);padding:1.5px 5px;border-radius:4px;font-size:13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{background:var(--code-bg);padding:14px 16px;border-radius:8px;overflow-x:auto;
+  font-size:12.5px;line-height:1.55;margin:0 0 16px}
+pre code{background:none;padding:0}
+.tablewrap{overflow-x:auto;margin-bottom:18px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:650;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+a{color:var(--accent)}
+nav.crumbs{font-size:13px;margin-bottom:22px;color:var(--muted)}
+nav.crumbs a{text-decoration:none;font-weight:600}
+nav.crumbs a:hover{text-decoration:underline}
+.note{background:var(--accent-soft);border-left:3px solid var(--accent);padding:13px 17px;border-radius:0 8px 8px 0;margin:0 0 16px}
+.warn{background:var(--warn-bg);border-left:3px solid var(--warn);padding:13px 17px;border-radius:0 8px 8px 0;margin:0 0 16px}
+.danger{background:var(--danger-bg);border-left:3px solid var(--danger);padding:13px 17px;border-radius:0 8px 8px 0;margin:0 0 16px}
+.ok{background:var(--ok-bg);border-left:3px solid var(--ok);padding:13px 17px;border-radius:0 8px 8px 0;margin:0 0 16px}
+.note p:last-child,.warn p:last-child,.danger p:last-child,.ok p:last-child{margin-bottom:0}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.p-ok{background:var(--ok-bg);color:var(--ok)}
+.p-warn{background:var(--warn-bg);color:var(--warn)}
+.p-bad{background:var(--danger-bg);color:var(--danger)}
+.p-info{background:var(--accent-soft);color:var(--accent)}
+ul,ol{margin:0 0 13px;padding-left:22px} li{margin-bottom:6px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.card h3{margin:0 0 6px;font-size:15px}
+.card p{margin:0;font-size:13.5px;color:var(--muted)}
+.card a{text-decoration:none}
+footer{border-top:1px solid var(--line);padding-top:18px;margin-top:40px;color:var(--muted);font-size:13px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+.small{font-size:12.5px;color:var(--muted)}

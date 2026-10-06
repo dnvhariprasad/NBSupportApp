@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { X, Save, Loader2, User, Building2, MapPin, Tag, Layers, AlertCircle, ArrowRightLeft, Users, ChevronDown } from 'lucide-react';
-import { USER_GRADES, DESIGNATION_OPTIONS, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS, DDM_DISTRICTS } from '../data/nabardMetadata.js';
+import { USER_GRADES, DESIGNATION_OPTIONS, OTHER_DESIGNATION, getLocations, fetchDepartments, RO_LOCATIONS, TE_LOCATIONS, DDM_DISTRICTS } from '../data/nabardMetadata.js';
+import AssignVerticalHeadModal from './AssignVerticalHeadModal.jsx';
+import { withDisplayName } from '../utils/users.js';
+import {
+    buildVerticalHeadDisplayName,
+    getVerticalGroupFromHeadGroup,
+    getVerticalHeadDept,
+    isVerticalHeadGroup,
+} from '../utils/verticalHead.js';
 
 const USER_GRADE_OPTIONS = [
     { value: '', label: '— Select grade —', level: '' },
@@ -15,6 +23,8 @@ const DESIGNATION_GRADE_MAPPING = {
     'MGR': 'grade_b',     // Grade B
     'AGM': 'grade_c',     // Grade C
     'DGM': 'grade_d',     // Grade D
+    'DGM(OIC)': 'grade_d(oic)', // Grade D (OIC)
+    'DGM(AIC)': 'grade_d(aic)', // Grade D (AIC)
     'GM': 'grade_e',      // Grade E
     'GM(OIC)': 'grade_e(oic)', // Grade E (OIC)
     'CGM': 'grade_f',     // Grade F
@@ -27,10 +37,44 @@ const GRADE_DESIGNATION_MAPPING = {
     'grade_b': 'MGR',
     'grade_c': 'AGM',
     'grade_d': 'DGM',
+    'grade_d(oic)': 'DGM(OIC)',
+    'grade_d(aic)': 'DGM(AIC)',
     'grade_e': 'GM',
     'grade_e(oic)': 'GM(OIC)',
     'grade_f': 'CGM',
 };
+
+// Vertical groups implied by an office type / RO code / department code set.
+// Hoisted to module scope so the save path and the vertical-head guard that runs
+// ahead of it derive the same group names.
+const getGroups = (offType, roCode, codes) => {
+    const groups = [];
+    if (offType === 'HO') {
+        for (const c of codes) if (c) groups.push(`ecm_ho_${c.toLowerCase()}`);
+    } else if (['RO', 'TE'].includes(offType) && roCode) {
+        const ro = roCode.toLowerCase();
+        if (codes.length > 0) groups.push(`ecm_${ro}`);
+        for (const c of codes) if (c) groups.push(`ecm_${ro}_${c.toLowerCase()}`);
+    }
+    return groups;
+};
+
+// Whether an existing group is dropped because its department was deselected.
+// Mirrors exactly what the save loop acts on, so the guard prompts if and only
+// if a removal will actually happen.
+const isGroupDroppedByDeptChange = (g, officeType, removedDepts) => {
+    const deptMatch = g.match(/ecm_ho_([a-z]+)/) || g.match(/ecm_([a-z]+)_([a-z]+)/);
+    if (!deptMatch) return false;
+    if (officeType === 'HO') return removedDepts.includes(deptMatch[1]);
+    if (['RO', 'TE'].includes(officeType)) return removedDepts.includes(deptMatch[2]);
+    return false;
+};
+
+// Office types that record a user having LEFT a posting rather than holding one.
+// Selecting either stamps the marker across the posting metadata (location,
+// department name/short code/multi) so no stale department is left behind.
+const EXIT_OFFICE_TYPES = ['RETIRED', 'TRANSFERRED'];
+const isExitOfficeType = (v) => EXIT_OFFICE_TYPES.includes(v);
 
 const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white';
 const readonlyCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 cursor-default font-mono';
@@ -64,6 +108,14 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [errors, setErrors] = useState({});
     const [designationChanged, setDesignationChanged] = useState(false);
     const [gradeChanged, setGradeChanged] = useState(false);
+    // True when the designation is free text rather than one of the fixed
+    // options. form.designation then holds the typed text itself.
+    const [designationIsOther, setDesignationIsOther] = useState(false);
+    // Hindi Designation is normally filled from the chosen designation and left
+    // read-only. Some designations have no Hindi abbreviation on file — OTHERS,
+    // and DGM(AIC) until one is confirmed — so it is typed in for those.
+    const designationHindiIsManual = designationIsOther
+        || !DESIGNATION_OPTIONS.find(opt => opt.value === form.designation)?.hindi;
     const originalGroupInfoRef = useRef({ officeType: '', roShortCode: '', deptCodes: [], designation: '' });
     const hindiTouched = useRef({});
     const lastManualChangeRef = useRef(null); // Track which field was last manually changed ('designation' or 'grade')
@@ -88,6 +140,21 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const [locationPendingCases,   setLocationPendingCases]   = useState([]);
     const [showLocationBlock,      setShowLocationBlock]      = useState(false);
 
+    // Vertical head reassignment — a user who heads a vertical cannot lose that
+    // vertical's group until a replacement head is named. One queue entry per
+    // affected vertical, since a user may head more than one.
+    const [vhQueue,              setVhQueue]              = useState([]);   // [{ verticalGroup, headGroup }]
+    const [vhIndex,              setVhIndex]              = useState(0);
+    const [showVerticalHeadModal, setShowVerticalHeadModal] = useState(false);
+    const [availableHeads,       setAvailableHeads]       = useState([]);
+    const [selectedNewHead,      setSelectedNewHead]      = useState('');
+    const [updatingHead,         setUpdatingHead]         = useState(false);
+    const [vhError,              setVhError]              = useState(null);
+    const [checkingVerticalHead, setCheckingVerticalHead] = useState(false);
+    // Head groups already reassigned during this edit — so the re-entrant save
+    // does not prompt for them again if the repository read lags the write.
+    const handledHeadGroupsRef = useRef(new Set());
+
     // Delegate modal state
     const [delegateTask,         setDelegateTask]         = useState(null);
     const [delegateUsers,        setDelegateUsers]        = useState([]);
@@ -111,6 +178,14 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setDelegateTask(null);
         setDesignationChanged(false);
         setGradeChanged(false);
+        setVhQueue([]);
+        setVhIndex(0);
+        setShowVerticalHeadModal(false);
+        setAvailableHeads([]);
+        setSelectedNewHead('');
+        setVhError(null);
+        setCheckingVerticalHead(false);
+        handledHeadGroupsRef.current = new Set();
         lastManualChangeRef.current = null;
         api.get(`/users/profiles/${user.r_object_id}`)
             .then(res => initForm({ ...user, ...res.data }))
@@ -143,11 +218,12 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (!form.user_grade || lastManualChangeRef.current !== 'grade') return;
         const mappedDesignation = GRADE_DESIGNATION_MAPPING[form.user_grade];
         if (mappedDesignation) {
+            setDesignationIsOther(false);
             set('designation', mappedDesignation);
             const designationObj = DESIGNATION_OPTIONS.find(opt => opt.value === mappedDesignation);
-            if (designationObj && designationObj.hindi) {
-                set('hindi_designation', designationObj.hindi);
-            }
+            // Clear rather than leave the previous designation's Hindi in place
+            // when the new one has no abbreviation on file (e.g. DGM(AIC)).
+            set('hindi_designation', designationObj?.hindi || '');
             setGradeChanged(true);
         }
     }, [form.user_grade]);
@@ -223,6 +299,13 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         };
         console.log('[initForm] Final form state:', finalForm);
         setForm(finalForm);
+        // Designations outside the fixed list (e.g. 'CTA', 'Consultant') used to
+        // render as a blank select; show them as OTHERS with the text filled in.
+        const storedDesignation = (finalForm.designation || '').trim();
+        setDesignationIsOther(
+            !!storedDesignation
+            && !DESIGNATION_OPTIONS.some(opt => opt.value === storedDesignation && opt.value !== OTHER_DESIGNATION)
+        );
         setError(null);
         setErrors({});
         setPendingCases([]);
@@ -481,15 +564,26 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     };
 
     const handleOfficeTypeChange = async (v) => {
+        // RETIRED / TRANSFERRED stamp the marker across the posting fields
+        // instead of clearing them, and lock those controls.
+        const exiting = isExitOfficeType(v);
+        const wasHO = originalGroupInfoRef.current.officeType === 'HO';
+
         set('office_type',               v);
-        set('location',                  v === 'HO' ? 'Mumbai' : '');
+        if (exiting) {
+            // An HO user's location is always Mumbai and already read-only, so
+            // it carries no posting information and is left untouched.
+            if (!wasHO) set('location', v);
+        } else {
+            set('location',              v === 'HO' ? 'Mumbai' : '');
+        }
         set('ro_short_code',             '');
-        set('department_name',           '');
+        set('department_name',           exiting ? v : '');
         setShowDeptBlock(false);
         setDeptPendingCases([]);
-        set('department_short_code',     '');
-        set('department_names',          []);
-        set('department_short_code_multi', []);
+        set('department_short_code',     exiting ? v : '');
+        set('department_names',          exiting ? [v] : []);
+        set('department_short_code_multi', exiting ? [v] : []);
         if (v === 'HO') {
             setDeptOptions(await fetchDepartments('HO'));
         } else {
@@ -702,6 +796,165 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         setGradeChanged(false);
     };
 
+    // ── Vertical head guard ─────────────────────────────────────────────────────
+    // A vertical must never be left headless. If this save would drop a vertical
+    // group that the user currently heads (i.e. they are a member of the matching
+    // `*_vertical_head_*` group), the save is held until a replacement head is
+    // chosen — the same rule the Verticals screen applies on "remove member".
+
+    /** Department codes this save will persist — mirrors payloadDeptCodes. */
+    const currentDeptCodes = () => {
+        const isDDMUser = form.department_name === 'DDM' && ['RO', 'TE'].includes(form.office_type);
+        if (isDDMUser) return form.department_short_code ? [form.department_short_code] : [];
+        return form.department_short_code_multi || [];
+    };
+
+    /**
+     * Whether this save costs the user vertical groups at all.
+     *
+     * Group cleanup is performed by the BACKEND on profile update
+     * (UserService.handleDepartmentChange), not by the loop further down this
+     * file — so this predicts that, rather than the frontend removal. For an HO
+     * user the backend drops every `ecm_ho_*` group whose leading segment is not
+     * a still-selected department; a vertical-head group's leading segment is
+     * literally "vertical", so it is dropped on any department change at all.
+     * Changing office type or RO code invalidates the whole prefix, so every
+     * group goes.
+     */
+    const groupLossContext = () => {
+        const old = originalGroupInfoRef.current;
+        const newDepts = currentDeptCodes().map(c => (c || '').toLowerCase());
+        const oldDepts = (old.deptCodes || []).map(c => (c || '').toLowerCase());
+        return {
+            officeChanged: (form.office_type || '') !== (old.officeType || ''),
+            roChanged: (form.ro_short_code || '').toLowerCase() !== (old.roShortCode || '').toLowerCase(),
+            deptsDropped: oldDepts.some(d => !newDepts.includes(d)),
+            newDepts,
+        };
+    };
+
+    // Group member lists are keyed on dm_user.user_name (e.g. "Sonny George"),
+    // which differs from user_login_name ("cto.dit"). cms_user_profile has no
+    // user_name attribute at all — it carries the display name in object_name —
+    // so match on every identifier this user could be known by.
+    const selfIdentifiers = () =>
+        [user?.object_name, user?.user_name, user?.user_login_name].filter(Boolean);
+
+    /** Name to show in the prompt: the person's name, not their login. */
+    const displayName = () =>
+        user?.object_name || user?.user_name || user?.user_login_name || '';
+
+    /** Members of a vertical eligible to take over as head. */
+    const fetchHeadCandidates = async (verticalGroup) => {
+        const self = selfIdentifiers();
+        try {
+            const res = await api.get(`/groups/${encodeURIComponent(verticalGroup)}/members`);
+            return (res.data?.users || []).filter(u => !self.includes(u.name));
+        } catch (err) {
+            console.warn(`Failed to load members of ${verticalGroup}:`, err.message);
+            return [];
+        }
+    };
+
+    /**
+     * Verticals the user heads that this save would take away.
+     * Throws if the user's group list cannot be read — the guard fails closed,
+     * because silently orphaning a vertical is the outcome it exists to prevent.
+     */
+    const collectVerticalHeadReassignments = async () => {
+        const memberName = user?.user_login_name;
+        if (!memberName) return [];
+
+        const { officeChanged, roChanged, deptsDropped, newDepts } = groupLossContext();
+        if (!officeChanged && !roChanged && !deptsDropped) return [];
+
+        const res = await api.get(`/groups/by-user?username=${encodeURIComponent(memberName)}`);
+        const headGroups = (Array.isArray(res.data) ? res.data : [])
+            .map(g => g.group_name || g.name)
+            .filter(isVerticalHeadGroup);
+
+        return headGroups
+            .filter(h => !handledHeadGroupsRef.current.has(h))
+            .filter(h => {
+                // A different office or RO invalidates every group the user holds.
+                if (officeChanged || roChanged) return true;
+                // Otherwise the head group goes with its department.
+                const dept = getVerticalHeadDept(h);
+                return dept === null || !newDepts.includes(dept);
+            })
+            .map(h => ({ headGroup: h, verticalGroup: getVerticalGroupFromHeadGroup(h) }));
+    };
+
+    /** Hand the head role to the selected user, then continue the queue or save. */
+    const handleConfirmNewHead = async () => {
+        const item = vhQueue[vhIndex];
+        const memberName = user?.user_login_name;
+        if (!selectedNewHead || !item || !memberName) return;
+
+        setUpdatingHead(true);
+        setVhError(null);
+        try {
+            // 1. Remove the outgoing head
+            await api.delete(`/groups/${encodeURIComponent(item.headGroup)}/members/${encodeURIComponent(memberName)}`, {
+                params: { memberType: 'user' },
+            });
+            // 2. Install the new head
+            await api.post(`/groups/${encodeURIComponent(item.headGroup)}/members`, {
+                memberName: selectedNewHead,
+                memberType: 'user',
+            });
+            // 3. Keep the group's display name in step (non-fatal if it fails).
+            // Read the current label first so an existing prefix is preserved
+            // rather than regenerated — casing and separators vary across groups.
+            try {
+                let currentHeadDisplayName = '';
+                try {
+                    const res = await api.get(`/groups/${encodeURIComponent(item.headGroup)}`);
+                    currentHeadDisplayName = res.data?.properties?.group_display_name || '';
+                } catch (readErr) {
+                    console.warn('Could not read current display name; it will be regenerated:',
+                        readErr.message);
+                }
+                await api.put(`/groups/${encodeURIComponent(item.headGroup)}/display-name`, {
+                    displayName: buildVerticalHeadDisplayName(
+                        item.headGroup, selectedNewHead, currentHeadDisplayName),
+                });
+            } catch (displayErr) {
+                console.warn('Failed to update vertical head display name:', displayErr);
+            }
+
+            handledHeadGroupsRef.current.add(item.headGroup);
+
+            const next = vhIndex + 1;
+            if (next < vhQueue.length) {
+                // Another vertical still needs a head before the save can run.
+                setVhIndex(next);
+                setSelectedNewHead('');
+                setAvailableHeads(await fetchHeadCandidates(vhQueue[next].verticalGroup));
+            } else {
+                setShowVerticalHeadModal(false);
+                setVhQueue([]);
+                setVhIndex(0);
+                setSelectedNewHead('');
+                setAvailableHeads([]);
+                await handleSubmit({ preventDefault: () => {} });
+            }
+        } catch (err) {
+            setVhError(err.response?.data?.message || err.message || 'Failed to assign the new vertical head.');
+        } finally {
+            setUpdatingHead(false);
+        }
+    };
+
+    const handleCancelNewHead = () => {
+        setShowVerticalHeadModal(false);
+        setVhQueue([]);
+        setVhIndex(0);
+        setSelectedNewHead('');
+        setAvailableHeads([]);
+        setVhError(null);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (showPendingBlock) return; // block save if pending cases exist
@@ -709,7 +962,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (showDeptBlock) return;    // block save if department changed with pending cases
         if (showLocationBlock) return; // block save if location changed with pending cases
         const v = {};
-        if (!form.designation?.trim())        v.designation        = 'Designation is required';
+        if (!form.designation?.trim())        v.designation        = designationIsOther ? 'Please enter the designation' : 'Designation is required';
         if (!form.uin?.trim())                v.uin                = 'UIN is required';
         if (!form.user_email_address?.trim()) v.user_email_address = 'Email is required';
         if (!form.hindi_user_name?.trim())    v.hindi_user_name    = 'Hindi Name is required';
@@ -718,17 +971,45 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
         if (isDDMUser && !form.department_short_code?.trim()) v.department_short_code = 'District is required';
         if (Object.keys(v).length > 0) { setErrors(v); return; }
         setErrors({});
+
+        // Hold the save if this change would leave a vertical without a head.
+        // Runs before the PATCH so nothing is written when the admin cancels.
+        setCheckingVerticalHead(true);
+        let pendingHeads = [];
+        try {
+            pendingHeads = await collectVerticalHeadReassignments();
+        } catch (err) {
+            console.error('Vertical head check failed:', err);
+            setError('Could not verify whether this user heads a vertical, so the change was not saved. Please retry.');
+            return;
+        } finally {
+            setCheckingVerticalHead(false);
+        }
+        if (pendingHeads.length > 0) {
+            setVhQueue(pendingHeads);
+            setVhIndex(0);
+            setSelectedNewHead('');
+            setVhError(null);
+            setAvailableHeads(await fetchHeadCandidates(pendingHeads[0].verticalGroup));
+            setShowVerticalHeadModal(true);
+            return;
+        }
+
         setLoading(true);
         setError(null);
         try {
             const isROTE = ['RO', 'TE'].includes(form.office_type);
             const isHO = form.office_type === 'HO';
+            const isExit = isExitOfficeType(form.office_type);
             const { department_short_code_multi, ...rest } = form;
             const payload = {
                 ...rest,
                 ...(isHO && { department_short_code_multi: form.department_short_code_multi || [] }),
                 ...(isROTE && !isDDMUser && { department_short_code_multi }),
                 ...(isDDMUser && { department_short_code_multi: form.department_short_code ? [form.department_short_code] : [] }),
+                // Neither HO nor RO/TE, so the branches above do not fire and the
+                // destructured field would otherwise never be sent.
+                ...(isExit && { department_short_code_multi: [form.office_type] }),
             };
 
             await api.patch(`/users/profiles/${user.r_object_id}`, payload);
@@ -737,18 +1018,6 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
             const payloadDeptCodes = isHO
                 ? (payload.department_short_code_multi || [])
                 : (payload.department_short_code_multi || []);
-
-            const getGroups = (offType, roCode, codes) => {
-                const groups = [];
-                if (offType === 'HO') {
-                    for (const c of codes) if (c) groups.push(`ecm_ho_${c.toLowerCase()}`);
-                } else if (['RO', 'TE'].includes(offType) && roCode) {
-                    const ro = roCode.toLowerCase();
-                    if (codes.length > 0) groups.push(`ecm_${ro}`);
-                    for (const c of codes) if (c) groups.push(`ecm_${ro}_${c.toLowerCase()}`);
-                }
-                return groups;
-            };
 
             const getDigidakGroups = (offType, roCode, codes) => {
                 const groups = [];
@@ -915,18 +1184,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
 
                 // Only remove groups for departments that were actually removed
                 for (const g of oldGroups) {
-                    const deptMatch = g.match(/ecm_ho_([a-z]+)/) || g.match(/ecm_([a-z]+)_([a-z]+)/);
-                    let shouldRemove = false;
-
-                    if (form.office_type === 'HO' && deptMatch) {
-                        const dept = deptMatch[1];
-                        shouldRemove = removedDepts.includes(dept);
-                    } else if (['RO', 'TE'].includes(form.office_type) && deptMatch) {
-                        const dept = deptMatch[2];
-                        shouldRemove = removedDepts.includes(dept);
-                    }
-
-                    if (shouldRemove) {
+                    if (isGroupDroppedByDeptChange(g, form.office_type, removedDepts)) {
                         console.log(`Removing user from group (dept removed): ${g}`);
                         api.delete(`/groups/${g}/members/${encodeURIComponent(memberName)}`).catch(err => {
                             console.error(`Failed to remove ${g}:`, err.response?.data || err.message);
@@ -1038,6 +1296,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
     const isHO      = form.office_type === 'HO';
     const isROTE    = ['RO', 'TE'].includes(form.office_type);
     const isDDMUser = form.department_name === 'DDM' && isROTE;
+    const isExitOffice = isExitOfficeType(form.office_type);
+    // An originally-HO user keeps Mumbai, since HO location is never updated on exit.
+    const exitLocationLabel = originalGroupInfoRef.current.officeType === 'HO'
+        ? (form.location || 'Mumbai')
+        : form.office_type;
 
     // Delegate case modal
     const DelegateCaseModal = () => {
@@ -1130,7 +1393,7 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                         className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none pr-8 cursor-pointer"
                                     >
                                         <option value="">— Select user —</option>
-                                        {delegateUsers.map(u => (
+                                        {withDisplayName(delegateUsers).map(u => (
                                             <option key={u.r_object_id || u.user_login_name} value={u.object_name}>
                                                 {u.object_name}
                                             </option>
@@ -1200,8 +1463,20 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="space-y-1">
                                     <Label required>Designation</Label>
                                     <SelectWrapper>
-                                        <select value={form.designation}
+                                        <select value={designationIsOther ? OTHER_DESIGNATION : form.designation}
                                             onChange={e => {
+                                                if (e.target.value === OTHER_DESIGNATION) {
+                                                    // Free text: clear the designation and the Hindi
+                                                    // designation so neither keeps the previous value.
+                                                    setDesignationIsOther(true);
+                                                    lastManualChangeRef.current = 'other';
+                                                    set('designation', '');
+                                                    set('hindi_designation', '');
+                                                    setDesignationChanged(false);
+                                                    setErrors(p => ({ ...p, designation: undefined }));
+                                                    return;
+                                                }
+                                                setDesignationIsOther(false);
                                                 const newDesignation = e.target.value;
                                                 lastManualChangeRef.current = 'designation';
                                                 set('designation', newDesignation);
@@ -1210,6 +1485,11 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                                 setDesignationChanged(newDesignation !== originalGroupInfoRef.current.designation);
                                                 // Reset hindi_designation touched so it can auto-populate
                                                 hindiTouched.current.hindi_designation = false;
+                                                // A designation with no Hindi on file must not inherit
+                                                // the previous one's; it is typed in instead.
+                                                if (!DESIGNATION_OPTIONS.find(opt => opt.value === newDesignation)?.hindi) {
+                                                    set('hindi_designation', '');
+                                                }
                                             }}
                                             className={errors.designation ? errorCls : selectCls} >
                                             {DESIGNATION_OPTIONS.map((opt) => (
@@ -1217,6 +1497,16 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             ))}
                                         </select>
                                     </SelectWrapper>
+                                    {designationIsOther && (
+                                        <input type="text" value={form.designation}
+                                            onChange={e => {
+                                                set('designation', e.target.value);
+                                                setErrors(p => ({ ...p, designation: undefined }));
+                                            }}
+                                            placeholder="Enter designation"
+                                            maxLength={64}
+                                            className={`${errors.designation ? errorCls : inputCls} mt-2`} />
+                                    )}
                                     {errors.designation && <p className="text-xs text-red-500">{errors.designation}</p>}
                                     {designationChanged && <p className="text-xs text-amber-600 font-medium mt-1">💡 User grade has been auto-updated based on designation</p>}
                                 </div>
@@ -1273,8 +1563,16 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="space-y-1">
                                     <Label required>Hindi Designation</Label>
                                     <input type="text" value={form.hindi_designation}
-                                        readOnly
-                                        className={readonlyCls} />
+                                        readOnly={!designationHindiIsManual}
+                                        onChange={e => {
+                                            set('hindi_designation', e.target.value);
+                                            setErrors(p => ({ ...p, hindi_designation: undefined }));
+                                        }}
+                                        placeholder={designationHindiIsManual ? 'Enter Hindi designation' : undefined}
+                                        className={designationHindiIsManual
+                                            ? (errors.hindi_designation ? errorCls : inputCls)
+                                            : readonlyCls} />
+                                    {errors.hindi_designation && <p className="text-xs text-red-500">{errors.hindi_designation}</p>}
                                 </div>
                             </div>
                         </div>
@@ -1296,6 +1594,8 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             <option value="HO">HO — Head Office</option>
                                             <option value="RO">RO — Regional Office</option>
                                             <option value="TE">TE — Training Establishment</option>
+                                            <option value="RETIRED">RETIRED</option>
+                                            <option value="TRANSFERRED">TRANSFERRED</option>
                                         </select>
                                     </SelectWrapper>
                                     {checkingOfficeInbox && (
@@ -1312,6 +1612,12 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                             <SelectWrapper>
                                                 <select disabled className={disabledSelectCls}>
                                                     <option>Mumbai</option>
+                                                </select>
+                                            </SelectWrapper>
+                                        ) : isExitOffice ? (
+                                            <SelectWrapper>
+                                                <select disabled className={disabledSelectCls}>
+                                                    <option>{exitLocationLabel}</option>
                                                 </select>
                                             </SelectWrapper>
                                         ) : (
@@ -1344,7 +1650,13 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                         <Label><Layers size={10} className="inline mr-0.5" />{isDDMUser ? 'District' : 'Department'}</Label>
-                                        {isROTE ? (
+                                        {isExitOffice ? (
+                                            <SelectWrapper>
+                                                <select disabled className={disabledSelectCls}>
+                                                    <option>{form.office_type}</option>
+                                                </select>
+                                            </SelectWrapper>
+                                        ) : isROTE ? (
                                             // RO/TE: DDM option always visible, with conditional content below
                                             <div className="space-y-2">
                                                 {/* DDM option - always visible for RO/TE */}
@@ -1743,13 +2055,27 @@ const EditUserProfileModal = ({ user, isOpen, onClose, onUpdate }) => {
                         className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                         Cancel
                     </button>
-                    <button type="submit" form="editProfileForm" disabled={loading || loadingForm || checkingInbox || checkingOfficeInbox || checkingDeptInbox || checkingLocationInbox || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock || showLocationBlock}
+                    <button type="submit" form="editProfileForm" disabled={loading || loadingForm || checkingInbox || checkingOfficeInbox || checkingDeptInbox || checkingLocationInbox || checkingVerticalHead || (isSuperAdmin && showPendingBlock) || showOfficeBlock || showDeptBlock || showLocationBlock}
                         className="px-4 py-2 bg-[#0A66C2] text-white rounded-lg text-sm font-medium hover:bg-[#094d92] disabled:opacity-50 flex items-center gap-2 transition-colors">
-                        {loading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                        {(loading || checkingVerticalHead) ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                         Save Changes
                     </button>
                 </div>
             </div>
+
+            <AssignVerticalHeadModal
+                open={showVerticalHeadModal}
+                userName={displayName()}
+                verticalGroup={vhQueue[vhIndex]?.verticalGroup}
+                candidates={availableHeads}
+                selected={selectedNewHead}
+                onSelect={setSelectedNewHead}
+                onCancel={handleCancelNewHead}
+                onConfirm={handleConfirmNewHead}
+                busy={updatingHead}
+                error={vhError}
+                step={{ current: vhIndex + 1, total: vhQueue.length }}
+            />
         </div>
     );
 };

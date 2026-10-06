@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBAdminApp — Backend</title>
+<link rel="stylesheet" href="_style.css">
+</head>
+<body>
+<main>
+<nav class="crumbs"><a href="index.html">← Documentation</a></nav>
+
+<h1>Backend</h1>
+<p class="sub">Spring Boot 3.4.1 on Java 17, packaged as <code>neoadminBackend.war</code>.
+16 controllers · 17 services · 8 config classes · 102 endpoints.</p>
+
+<h2>Package layout</h2>
+
+<pre><code>com.example.backend
+├── BackendApplication.java     entry point
+├── ServletInitializer.java     external-Tomcat deployment hook
+├── config/     8 classes — connection, HTTP client, CORS, mail, OTDS, processes
+├── controller/ 16 classes — thin, one per domain area
+├── service/    17 classes — all business logic and every DQL string
+├── dto/        2 classes — AuthResponse, LoginRequest
+└── documentum/ (empty)</code></pre>
+
+<div class="note">
+<p><code>documentum/</code> is an <strong>empty package</strong>. It looks like an intended home for a repository
+abstraction that was never built; repository access is inlined in each service instead.</p>
+</div>
+
+<h2>Module inventory</h2>
+
+<div class="tablewrap"><table>
+<tr><th>Area</th><th>Controller</th><th>Base path</th><th>Endpoints</th><th>Service</th><th>Service LOC</th></tr>
+<tr><td>Users</td><td><code>UserController</code></td><td><code>/api/users</code></td><td>18</td><td><code>UserService</code></td><td>1,191</td></tr>
+<tr><td>Metadata</td><td><code>MetadataController</code></td><td><code>/api/metadata</code></td><td>15</td><td><code>MetadataService</code></td><td>745</td></tr>
+<tr><td>Groups</td><td><code>GroupController</code></td><td><code>/api/groups</code></td><td>13</td><td><code>GroupService</code></td><td>899</td></tr>
+<tr><td>Digidak</td><td><code>DigidakController</code></td><td><code>/api/digidak</code></td><td>12</td><td><code>DigidakService</code></td><td>1,729</td></tr>
+<tr><td>SFS</td><td><code>SfsController</code></td><td><code>/api/sfs</code></td><td>8</td><td><code>SfsService</code></td><td>373</td></tr>
+<tr><td>Auth</td><td><code>AuthController</code></td><td><code>/api/auth</code></td><td>7</td><td><code>AuthService</code>, <code>DctmAuthService</code>, <code>OtdsService</code></td><td>172 / 136 / 400</td></tr>
+<tr><td>Workflows</td><td><code>WorkflowController</code></td><td><code>/api/workflows</code></td><td>7</td><td><code>WorkflowService</code></td><td>508</td></tr>
+<tr><td>Inbox</td><td><code>InboxController</code></td><td><code>/api/inbox</code></td><td>5</td><td><code>InboxService</code></td><td>356</td></tr>
+<tr><td>SFS user access</td><td><code>SfsUserAccessController</code></td><td><code>/api/sfs/user-access</code></td><td>4</td><td><code>SfsUserAccessService</code></td><td>857</td></tr>
+<tr><td>Cases</td><td><code>CaseController</code></td><td><code>/api/cases</code></td><td>3</td><td><code>CaseService</code></td><td>471</td></tr>
+<tr><td>Delegation</td><td><code>DelegateController</code></td><td><code>/api/delegate</code></td><td>3</td><td><code>DelegateService</code></td><td>362</td></tr>
+<tr><td>Departments</td><td><code>DepartmentController</code></td><td><code>/api/departments</code></td><td>2</td><td><code>DepartmentService</code></td><td>623</td></tr>
+<tr><td>Rajbhasha</td><td><code>RajbhashaController</code></td><td><code>/api/rajbhasha</code></td><td>2</td><td><code>RajbhashaService</code></td><td>1,064</td></tr>
+<tr><td>DQL console</td><td><code>QueryController</code></td><td><code>/api/query</code></td><td>1</td><td><code>QueryService</code></td><td>269</td></tr>
+<tr><td>Settings</td><td><code>SettingsController</code></td><td><code>/api/settings</code></td><td>1</td><td>—</td><td>—</td></tr>
+<tr><td>Transliteration</td><td><code>TransliterateController</code></td><td><code>/api/transliterate</code></td><td>1</td><td>—</td><td>—</td></tr>
+</table></div>
+
+<h3>Where the weight sits</h3>
+
+<p><code>DigidakService</code> (1,729 lines), <code>UserService</code> (1,191) and <code>RajbhashaService</code> (1,064)
+account for roughly a third of all service code. <code>RajbhashaService</code> is disproportionate to its two endpoints
+because it builds Hindi-language reports with Apache POI — <code>poi-ooxml</code> 5.2.3 is a dependency purely for that.</p>
+
+<h2>The DQL layer</h2>
+
+<p>Every service builds DQL as a Java string and posts it to dctm-rest. The recurring shape:</p>
+
+<pre><code>String safe = username.replace("'", "''");
+String dql  = "SELECT group_name FROM dm_group WHERE ANY users_names = '" + safe + "' ORDER BY group_name";
+String url  = dctmConfig.getUrl() + "/repositories/" + dctmConfig.getRepository()
+            + "?dql={dql}&amp;items-per-page=200&amp;page=1&amp;inline=true";
+
+Map&lt;String, Object&gt; response = restClient.get()
+        .uri(url, dql)
+        .header("Authorization", getAuthHeader())
+        .header("Accept", "application/vnd.emc.documentum+json")
+        .retrieve()
+        .body(Map.class);</code></pre>
+
+<p>Then the envelope is unwrapped by hand:</p>
+
+<pre><code>entries[] → entry.get("content") → content.get("properties") → the values you wanted</code></pre>
+
+<div class="warn">
+<p><strong>Quote-doubling is the only injection defence.</strong> <code>value.replace("'", "''")</code> appears
+throughout. It is applied inconsistently — some paths interpolate values that were never escaped. Any new query should
+escape every interpolated value, and <code>/api/query/execute</code> deliberately accepts arbitrary DQL from the
+client, so that endpoint is a full repository console for anyone who can reach it.</p>
+</div>
+
+<h2>Documentum object types</h2>
+
+<p>Ranked by how often each is referenced across <code>service/</code>:</p>
+
+<div class="tablewrap"><table>
+<tr><th>Type</th><th>Refs</th><th>Holds</th></tr>
+<tr><td><code>dm_folder</code></td><td>34</td><td>Metadata entries; config folders under <code>/ECM CONFIG/…</code> and <code>/SFS Config/…</code></td></tr>
+<tr><td><code>dm_user</code></td><td>32</td><td>The account. <code>user_name</code> is the display name, <code>user_login_name</code> the login</td></tr>
+<tr><td><code>cms_user_profile</code></td><td>30</td><td>NABARD profile: office type, location, department, grade, designation, UIN, Hindi fields</td></tr>
+<tr><td><code>cms_digidak_folder</code></td><td>29</td><td>Digidak correspondence, parent and child linked by <code>group_uid</code></td></tr>
+<tr><td><code>dm_group</code></td><td>22</td><td>Departments, verticals, vertical heads, roles. Membership in <code>users_names</code></td></tr>
+<tr><td><code>cms_case_folder</code></td><td>18</td><td>Cases</td></tr>
+<tr><td><code>cms_digidak_metadata</code></td><td>13</td><td>Digidak configuration</td></tr>
+<tr><td><code>dm_superusers_dynamic</code></td><td>10</td><td>Superuser membership, preserved by group cleanup</td></tr>
+<tr><td><code>cms_file_number</code></td><td>7</td><td>File numbering</td></tr>
+<tr><td><code>dm_workflow</code>, <code>dm_activity</code>, <code>dm_process</code></td><td>3 / 2 / —</td><td>Workflow runtime and templates</td></tr>
+<tr><td><code>cms_movement_register</code></td><td>3</td><td>Case movement rows — performer, decision, received and completion dates</td></tr>
+<tr><td><code>cms_sfs_metadata</code></td><td>2</td><td>SFS configuration</td></tr>
+</table></div>
+
+<div class="danger">
+<p><strong><code>cms_user_profile</code> has no <code>user_name</code> attribute.</strong> It carries the display name
+in <code>object_name</code> and the login in <code>user_login_name</code>. Since group membership is keyed on
+<code>dm_user.user_name</code>, code that compares a profile against a group member list must use
+<code>object_name</code>. Getting this wrong fails silently — the comparison simply never matches. It has already
+caused a defect in <code>EditUserProfileModal</code>.</p>
+</div>
+
+<h2>Configuration classes</h2>
+
+<div class="tablewrap"><table>
+<tr><th>Class</th><th>Responsibility</th></tr>
+<tr><td><code>DctmConfig</code></td><td>Repository name, dctm-rest base URL, service-account credentials (privileged account for elevated operations)</td></tr>
+<tr><td><code>RestClientConfig</code></td><td>The shared <code>RestClient</code> bean. 30s connect/read timeouts. Installs a trust-all <code>X509TrustManager</code> and a permissive hostname verifier, required for the self-signed Documentum endpoint</td></tr>
+<tr><td><code>WebConfig</code></td><td>MVC configuration; short-circuits CORS preflight</td></tr>
+<tr><td><code>AppConfig</code></td><td>App-level values such as <code>app.cases.default-load-months</code> (3)</td></tr>
+<tr><td><code>OtdsConfig</code></td><td>OTDS token endpoint and credentials</td></tr>
+<tr><td><code>MailConfig</code></td><td>SMTP wiring for <code>EmailService</code></td></tr>
+<tr><td><code>ProcessConfig</code></td><td>Workflow process template ids from <code>app.workflow.processes</code></td></tr>
+<tr><td><code>TasklistConfig</code></td><td>Inbox / tasklist tuning</td></tr>
+</table></div>
+
+<h2>Group cleanup — the part that surprises people</h2>
+
+<p>Updating a user profile does more than write attributes. <code>UserService.handleDepartmentChange</code> runs on
+save and removes group memberships that no longer match the profile. It branches on office type:</p>
+
+<pre><code>// HO: drop every ecm_ho_* group whose leading segment is not a selected department
+String deptCode = extractDeptCodeFromHOGroup(groupName);   // first segment after "ecm_ho_"
+if (deptCode != null &amp;&amp; !newDeptCodesLower.contains(deptCode)) {
+    groupService.removeMember(groupName, dmUserName, "user");
+}
+
+// RO/TE: drop groups containing "_&lt;newDept&gt;_"</code></pre>
+
+<div class="danger">
+<p><strong>Known defect.</strong> <code>extractDeptCodeFromHOGroup("ecm_ho_vertical_head_ddsi_&lt;vertical&gt;")</code>
+returns <strong><code>"vertical"</code></strong>, never <code>"ddsi"</code>, because it takes the first segment after
+the prefix. <code>"vertical"</code> is never a selected department, so <strong>vertical-head groups are removed on any
+HO department change</strong> — including one where that vertical's own department is retained, silently orphaning the
+vertical. Tracked on <a href="https://sedin.atlassian.net/browse/NEO-239">NEO-239</a>; the fix is to teach the method
+to recognise the <code>vertical_head_</code> segment.</p>
+</div>
+
+<p><code>dm_superusers_dynamic</code> and <code>ecm_local_admin</code> are excluded from cleanup, so they survive every
+profile change — including one that marks a user RETIRED.</p>
+
+<h2>Build</h2>
+
+<pre><code>cd backend
+mvn spring-boot:run      # dev server on 8080
+mvn clean install        # build (produces neoadminBackend.war)
+mvn test                 # runs nothing — no tests exist</code></pre>
+
+<p>Maven is used directly; there is no wrapper (<code>mvnw</code> is gitignored). Lombok supplies
+<code>@RequiredArgsConstructor</code> and <code>@Slf4j</code> and is configured as an annotation processor in both the
+compiler and Spring Boot plugins.</p>
+
+<footer><p><a href="architecture.html">← Architecture</a> · <a href="frontend.html">Frontend →</a></p></footer>
+</main>
+</body>
+</html>

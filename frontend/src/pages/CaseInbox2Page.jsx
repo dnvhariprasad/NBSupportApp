@@ -5,8 +5,28 @@ import {
     Inbox, Loader2, X, User, Building2, MapPin, FolderOpen,
     FileText, Info, ClipboardList, ChevronLeft, ChevronRight, ChevronsLeft, ChevronDown
 } from 'lucide-react';
+import { formatDateTime } from '../utils/dateFormat';
+import { withDisplayName } from '../utils/users.js';
 
 const PAGE_SIZE = 20;
+
+// Both tabs are one query with a different task name, exactly as the CMS does it:
+// its Inbox page passes input_task_name 'FYA' for the first tab and
+// "To be Verified <DEPT>" for the second. The Inbox tab is FYA for every department,
+// not "everything in the inbox" — that distinction is what made the counts differ
+// (Ajay K Sood showed 16 against the CMS's 15).
+//
+// cms_all_user_inbox cannot serve either tab: it has no task-name input, matches the
+// performer with EQUAL so group-queued tasks are invisible, and collapses workflows
+// carrying several cms_workflow_param packages. /inbox/by-task-name resolves the set
+// against the repository instead.
+const FYA_TASK_NAME = 'FYA';
+const VERIFY_TASK_NAMES = {
+    chmns: 'To be Verified Chairman',
+    dmds1: 'To be Verified DMDS1',
+    dmds2: 'To be Verified DMDS2',
+    dmds3: 'To be Verified DMDS3',
+};
 
 const selectCls         = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] bg-white appearance-none cursor-pointer pr-8';
 const disabledSelectCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-400 cursor-not-allowed appearance-none pr-8';
@@ -108,14 +128,15 @@ const MovementRegisterModal = ({ caseItem, onClose }) => {
 
     if (!caseItem) return null;
 
+    // NEO-247: Completion Date is the only timestamp shown here. r_creation_date and
+    // r_modify_date were repository housekeeping fields — they sit a few seconds either
+    // side of the action and read as contradicting it, which is what the ticket reported.
     const movCols = [
         { key: 'object_name',    label: 'Object Name' },
         { key: 'performer',      label: 'Performer' },
         { key: 'decision',       label: 'Decision' },
         { key: 'assigned_user',  label: 'Assigned User' },
-        { key: 'completion_date',label: 'Completion Date' },
-        { key: 'r_creation_date',label: 'R Creation Date' },
-        { key: 'r_modify_date',  label: 'R Modify Date' },
+        { key: 'completion_date',label: 'Completion Date', format: formatDateTime },
         { key: 'acl_domain',     label: 'Acl Domain' },
         { key: 'acl_name',       label: 'Acl Name' },
         { key: 'owner_name',     label: 'Owner Name' },
@@ -179,12 +200,15 @@ const MovementRegisterModal = ({ caseItem, onClose }) => {
                                     {movement.map((rec, idx) => (
                                         <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
                                             <td className="px-3 py-2 text-slate-400 font-mono">{idx + 1}</td>
-                                            {movCols.map(col => (
-                                                <td key={col.key} className="px-3 py-2 text-slate-700 max-w-xs truncate"
-                                                    title={String(rec[col.key] ?? '')}>
-                                                    {rec[col.key] ?? '—'}
-                                                </td>
-                                            ))}
+                                            {movCols.map(col => {
+                                                const shown = col.format ? col.format(rec[col.key]) : (rec[col.key] ?? '—');
+                                                return (
+                                                    <td key={col.key} className="px-3 py-2 text-slate-700 max-w-xs truncate"
+                                                        title={String(shown)}>
+                                                        {shown}
+                                                    </td>
+                                                );
+                                            })}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -229,6 +253,7 @@ const CaseInbox2Page = () => {
     const [officeType,  setOfficeType]  = useState(() => isLocalAdmin ? '' : '');
     const [location,    setLocation]    = useState(() => isLocalAdmin ? '' : '');
     const [department,  setDepartment]  = useState(null);
+    const [inboxTab,    setInboxTab]    = useState('inbox');   // 'inbox' | 'verify'
     const [allDepartments, setAllDepartments] = useState([]);
 
     // Initialize filters for Local Admin when profile context loads
@@ -246,9 +271,13 @@ const CaseInbox2Page = () => {
     const [selectedUser, setSelectedUser] = useState(null);
 
     // Cases state
+    // Both lists arrive whole and are paged client-side.
     const [cases,        setCases]        = useState([]);
-    const [total,        setTotal]        = useState(0);
     const [loadingCases, setLoadingCases] = useState(false);
+    const [verifyCases,   setVerifyCases]   = useState([]);
+    const [loadingVerify, setLoadingVerify] = useState(false);
+    const casesReqRef  = useRef(0);
+    const verifyReqRef = useRef(0);
     const [page,         setPage]         = useState(1);
     const [error,        setError]        = useState(null);
 
@@ -308,20 +337,21 @@ const CaseInbox2Page = () => {
     // Office type change handler
     const handleOfficeTypeChange = (val) => {
         setOfficeType(val); setLocation(''); setDepartment(null);
-        setUsers([]); setFilteredUsers([]); setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
+        setUsers([]); setFilteredUsers([]); setSelectedUser(null); setCases([]); setVerifyCases([]); setPage(1);
     };
 
     // Location change handler
     const handleLocationChange = (val) => {
         setLocation(val); setDepartment(null); setSelectedUser(null); setFilteredUsers([]);
-        setCases([]); setTotal(0); setPage(1);
+        setCases([]); setVerifyCases([]); setPage(1);
         if (val) fetchUsersByLocation(val);
         else setUsers([]);
     };
 
     // Department change handler
     const handleDepartmentChange = (shortCode) => {
-        setSelectedUser(null); setCases([]); setTotal(0); setPage(1);
+        setSelectedUser(null); setCases([]); setVerifyCases([]); setPage(1);
+        setInboxTab('inbox');
         if (!shortCode) {
             setDepartment(null); setFilteredUsers([]);
             if (isRoTe && location) fetchUsersByLocation(location);
@@ -350,51 +380,62 @@ const CaseInbox2Page = () => {
         }
     };
 
-    // Fetch cases for selected user
-    const fetchCases = useCallback(async (userName, pg) => {
-        if (!userName) { setCases([]); setTotal(0); return; }
-        setLoadingCases(true);
-        setError(null);
+    // One tab's worth of cases. The request ref guards against a slower earlier
+    // response landing after the user has moved on.
+    const fetchByTaskName = useCallback(async (userName, taskName, reqRef, setList, setBusy) => {
+        if (!userName || !taskName) { reqRef.current++; setList([]); return; }
+        const reqId = ++reqRef.current;
+        setBusy(true);
         try {
-            const start = (pg - 1) * PAGE_SIZE;
-            const res = await api.get('/inbox/tasklist', {
-                params: { username: userName, page: pg, start }
+            const res = await api.get('/inbox/by-task-name', {
+                params: { username: userName, taskName }
             });
-            const data = res.data || {};
-            let items = [];
-            if (Array.isArray(data.entries)) {
-                items = data.entries.map(entry => {
-                    const props = entry?.content?.properties || entry?.properties || entry;
-                    return { ...props, _raw: entry };
-                });
-            } else if (Array.isArray(data.tasks)) {
-                items = data.tasks;
-            }
-            setCases(items);
-            setTotal(data.total || data.count || items.length);
+            if (reqId !== reqRef.current) return;
+            setList((res.data?.entries || []).map(entry => {
+                const props = entry?.content?.properties || entry?.properties || entry;
+                return { ...props, _raw: entry };
+            }));
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to load inbox');
-            setCases([]);
-            setTotal(0);
+            if (reqId !== reqRef.current) return;
+            setList([]);
+            if (taskName === FYA_TASK_NAME) {
+                setError(err.response?.data?.message || err.message || 'Failed to load inbox');
+            }
         } finally {
-            setLoadingCases(false);
+            if (reqId === reqRef.current) setBusy(false);
         }
     }, []);
 
     const handleSelectUser = (userName) => {
         setSelectedUser(userName);
         setPage(1);
-        fetchCases(userName, 1);
+        setInboxTab('inbox');
+        setError(null);
+        fetchByTaskName(userName, FYA_TASK_NAME, casesReqRef, setCases, setLoadingCases);
+        fetchByTaskName(userName, VERIFY_TASK_NAMES[(department?.shortCode || '').toLowerCase()],
+                        verifyReqRef, setVerifyCases, setLoadingVerify);
     };
 
-    const handlePageChange = (newPage) => {
-        setPage(newPage);
-        fetchCases(selectedUser, newPage);
+    // Both lists are held whole, so paging is just a slice.
+    const handlePageChange = (newPage) => setPage(newPage);
+
+    const handleTabChange = (key) => {
+        setInboxTab(key);
+        setPage(1);
     };
 
-    const rangeStart = cases.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
-    const rangeEnd   = (page - 1) * PAGE_SIZE + cases.length;
-    const hasNext    = rangeEnd < total;
+    // Two tabs only for the departments that receive verification tasks.
+    const showVerifyTabs = Boolean(VERIFY_TASK_NAMES[(department?.shortCode || '').toLowerCase()]);
+    const onVerifyTab    = showVerifyTabs && inboxTab === 'verify';
+
+    const activeCases  = onVerifyTab ? verifyCases : cases;
+    const visibleCases = activeCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    const activeTotal  = activeCases.length;
+    const busy         = onVerifyTab ? loadingVerify : loadingCases;
+
+    const rangeStart = visibleCases.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
+    const rangeEnd   = (page - 1) * PAGE_SIZE + visibleCases.length;
+    const hasNext    = rangeEnd < activeTotal;
     const hasPrev    = page > 1;
 
     const p               = (c, f) => c[`packagescase_folder${f}`] || c[f];
@@ -460,7 +501,7 @@ const CaseInbox2Page = () => {
                         <SelectWrapper>
                             {/* Show filtered users if department selected, otherwise show all users */}
                             {(() => {
-                                const displayUsers = department && isRoTe ? filteredUsers : users;
+                                const displayUsers = withDisplayName(department && isRoTe ? filteredUsers : users);
                                 const isEmpty = displayUsers.length === 0;
                                 return (
                                     <select value={selectedUser || ''} onChange={e => handleSelectUser(e.target.value)}
@@ -485,12 +526,37 @@ const CaseInbox2Page = () => {
                     <span className="text-sm font-semibold text-slate-700">
                         {selectedUser ? `Inbox — ${selectedUser}` : 'Inbox Tasks'}
                     </span>
-                    {selectedUser && !loadingCases && total > 0 && (
+                    {selectedUser && !busy && activeTotal > 0 && (
                         <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-500 rounded-full">
-                            {total} case{total !== 1 ? 's' : ''}
+                            {activeTotal} case{activeTotal !== 1 ? 's' : ''}
                         </span>
                     )}
                 </div>
+
+                {/* Inbox / To be Verified tabs */}
+                {selectedUser && showVerifyTabs && (
+                    <div className="px-5 pt-2 border-b border-slate-100 flex items-center gap-1">
+                        {[
+                            { key: 'inbox',  label: 'Inbox',
+                              count: loadingCases ? '\u2026' : cases.length },
+                            { key: 'verify', label: 'To be Verified',
+                              count: loadingVerify ? '…' : verifyCases.length },
+                        ].map(t => (
+                            <button key={t.key}
+                                onClick={() => handleTabChange(t.key)}
+                                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                                    inboxTab === t.key
+                                        ? 'border-[#0A66C2] text-[#0A66C2]'
+                                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                                }`}>
+                                {t.label}
+                                <span className={`ml-2 px-1.5 py-0.5 text-xs rounded-full ${
+                                    inboxTab === t.key ? 'bg-blue-50 text-[#0A66C2]' : 'bg-slate-100 text-slate-500'
+                                }`}>{t.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {/* Table area */}
                 <div className="flex-1 overflow-auto">
@@ -501,26 +567,26 @@ const CaseInbox2Page = () => {
                         </div>
                     )}
 
-                    {selectedUser && loadingCases && (
+                    {selectedUser && busy && (
                         <div className="flex items-center justify-center h-full py-16">
                             <Loader2 size={24} className="animate-spin text-[#0A66C2]" />
                         </div>
                     )}
 
-                    {selectedUser && !loadingCases && error && (
+                    {selectedUser && !busy && error && (
                         <div className="flex flex-col items-center justify-center h-full gap-2 text-red-500 py-16">
                             <p className="text-sm">{error}</p>
                         </div>
                     )}
 
-                    {selectedUser && !loadingCases && !error && cases.length === 0 && (
+                    {selectedUser && !busy && !error && visibleCases.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 py-16">
                             <Inbox size={36} strokeWidth={1.5} />
                             <p className="text-sm">No pending cases found for this user</p>
                         </div>
                     )}
 
-                    {selectedUser && !loadingCases && !error && cases.length > 0 && (
+                    {selectedUser && !busy && !error && visibleCases.length > 0 && (
                         <table className="w-full text-left text-sm">
                             <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
                                 <tr>
@@ -533,7 +599,7 @@ const CaseInbox2Page = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {cases.map((c, idx) => (
+                                {visibleCases.map((c, idx) => (
                                     <tr key={getCaseId(c) || idx} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-4 py-3 text-slate-400 font-mono text-xs">
                                             {(page - 1) * PAGE_SIZE + idx + 1}
@@ -584,10 +650,10 @@ const CaseInbox2Page = () => {
                 </div>
 
                 {/* Pagination footer */}
-                {selectedUser && !loadingCases && cases.length > 0 && (hasPrev || hasNext) && (
+                {selectedUser && !busy && visibleCases.length > 0 && (hasPrev || hasNext) && (
                     <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-white">
                         <span className="text-xs text-slate-500">
-                            {rangeStart > 0 ? `Showing ${rangeStart}–${rangeEnd}${total > rangeEnd ? ` of ${total}` : ''}` : ''}
+                            {rangeStart > 0 ? `Showing ${rangeStart}–${rangeEnd}${activeTotal > rangeEnd ? ` of ${activeTotal}` : ''}` : ''}
                         </span>
                         <div className="flex items-center gap-1">
                             <button

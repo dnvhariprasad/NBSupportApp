@@ -59,6 +59,27 @@ public class SfsUserAccessController {
      * Check if user is already in a group.
      * GET /api/sfs/user-access/check-membership?userName=ajay&role=Digitization&officeType=HO&department=HRMD
      */
+    /**
+     * Members of each SFS role group in one call, so the grid can resolve every
+     * user's roles locally instead of calling check-membership per user per role.
+     * GET /api/sfs/user-access/role-members?roles=Maker,Checker&officeType=HO&department=HRMD
+     */
+    @GetMapping("/role-members")
+    public ResponseEntity<?> getRoleMembers(
+            @RequestParam List<String> roles,
+            @RequestParam String officeType,
+            @RequestParam String department,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String locationShortCode) {
+        try {
+            return ResponseEntity.ok(sfsUserAccessService.getRoleMembers(
+                    roles, officeType, department, location, locationShortCode));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
     @GetMapping("/check-membership")
     public ResponseEntity<?> checkUserMembership(
             @RequestParam String userName,

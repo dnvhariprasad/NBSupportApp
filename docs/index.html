@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBAdminApp — Documentation</title>
+<link rel="stylesheet" href="_style.css">
+</head>
+<body>
+<main>
+
+<h1>NBAdminApp — neoadmin Admin Portal</h1>
+<p class="sub">Spring Boot + React administration portal for NABARD, backed by Documentum through the xCP REST API.
+Documentation generated from the working tree on branch <code>NEO-163</code>.</p>
+
+<div class="cards">
+  <div class="card">
+    <h3><a href="architecture.html">Architecture</a></h3>
+    <p>High-level view: the three hops from browser to repository, request lifecycle, authentication, deployment shapes.</p>
+  </div>
+  <div class="card">
+    <h3><a href="backend.html">Backend</a></h3>
+    <p>16 controllers, 17 services, 102 endpoints. Module inventory, the DQL layer, configuration and profiles.</p>
+  </div>
+  <div class="card">
+    <h3><a href="frontend.html">Frontend</a></h3>
+    <p>15 pages, routing, role-based navigation, the API layer, session handling and the metadata module.</p>
+  </div>
+  <div class="card">
+    <h3><a href="patterns.html">Code patterns</a></h3>
+    <p>The conventions that repeat across the codebase — and the traps that have already caused defects.</p>
+  </div>
+  <div class="card">
+    <h3><a href="lowlevel.html">Low-level reference</a></h3>
+    <p>Endpoint tables, Documentum object types, identifier semantics, group naming, date formats.</p>
+  </div>
+  <div class="card">
+    <h3><a href="running.html">Running locally</a></h3>
+    <p>Ports, start/stop, the two-clone hazard, and how to verify you are looking at the right instance.</p>
+  </div>
+</div>
+
+<h2>What this application is</h2>
+
+<p>NBAdminApp — deployed as <strong>neoadmin</strong> — is the administration portal for the NABARD case-management
+platform. It is a <strong>separate application</strong> from the CMS three-tier stack (<code>frontend/</code>,
+<code>backend/</code>, <code>Middleware/</code>), and it does not share code with it. Users, groups, verticals,
+departments, grades, delegation and reporting are administered here.</p>
+
+<div class="note">
+<p>Because administration lives here rather than in the CMS, <strong>support tickets that look like CMS work often land
+in this repository</strong>. A reported problem with "verticals" or "user grades" is far more likely to be a
+NBAdminApp change than a CMS one.</p>
+</div>
+
+<h2>The shape of it in one picture</h2>
+
+<pre><code>React SPA (Vite, base /neoadmin/)
+   │  axios → http://localhost:8080/api
+   ▼
+Spring Boot 3.4.1 / Java 17   ── war: neoadminBackend
+   │  Controller → Service → RestClient (HTTPS, SSL verification disabled)
+   ▼
+Documentum REST Services (dctm-rest, v25.2)
+   │  DFC → DocBroker
+   ▼
+ECM repository  NABARDUAT   @ 172.172.20.214</code></pre>
+
+<p>There is <strong>no database and no JPA layer</strong>. Every read and write is a DQL query or an object
+manipulation against the Documentum repository, issued over HTTP. This is the single most important fact about the
+codebase: what looks like a data-access layer in a conventional Spring application is, here, a REST client that
+speaks DQL.</p>
+
+<h2>Scale</h2>
+
+<div class="tablewrap"><table>
+<tr><th>Tier</th><th>Measure</th></tr>
+<tr><td>Backend</td><td>16 controllers, 17 services, 8 config classes, 2 DTOs — ~12,400 lines across controllers and services</td></tr>
+<tr><td>Backend API</td><td>102 endpoints under <code>/api</code></td></tr>
+<tr><td>Frontend</td><td>15 pages, 6 components, 2 hooks — ~21,000 lines under <code>src/</code></td></tr>
+<tr><td>Largest units</td><td><code>UsersPage.jsx</code> (2,984 lines), <code>EditUserProfileModal.jsx</code> (2,016), <code>DigidakService.java</code> (1,729)</td></tr>
+</table></div>
+
+<div class="warn">
+<p><strong>There is no test infrastructure.</strong> No test runner, no test dependencies, no test files — in either
+tier. <code>spring-boot-starter-test</code> is declared in <code>pom.xml</code> but no tests exist, and the frontend
+<code>package.json</code> has no test script at all. Verification in this codebase means running the application and
+querying the repository directly.</p>
+</div>
+
+<h2>How to read this set</h2>
+
+<ol>
+  <li><a href="architecture.html">Architecture</a> first, for the request path and where authority actually sits.</li>
+  <li><a href="patterns.html">Code patterns</a> before writing anything — several of its entries record defects that
+      have already been shipped once.</li>
+  <li><a href="backend.html">Backend</a> and <a href="frontend.html">Frontend</a> as module references.</li>
+  <li><a href="lowlevel.html">Low-level reference</a> when you need an exact endpoint, type name or identifier rule.</li>
+</ol>
+
+<footer>
+  <p>NBAdminApp · <span class="mono">D:\NB NEO\NBAdminApp</span> · repository
+  <a href="https://github.com/dnvhariprasad/NBSupportApp">dnvhariprasad/NBSupportApp</a></p>
+  <p>Workspace-level tier documentation: <a href="../../Docs/frontend.html">frontend.html</a> ·
+  <a href="../../Docs/backend.html">backend.html</a> · <a href="../../Docs/integration.html">integration.html</a></p>
+  <p class="small">Point-in-time snapshot. Verify specifics against the working tree before relying on them.</p>
+</footer>
+
+</main>
+</body>
+</html>

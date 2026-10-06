@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBAdminApp — Running locally</title>
+<link rel="stylesheet" href="_style.css">
+</head>
+<body>
+<main>
+<nav class="crumbs"><a href="index.html">← Documentation</a></nav>
+
+<h1>Running locally</h1>
+<p class="sub">Ports, start and stop, and how to be sure you are looking at the instance you just changed.</p>
+
+<h2>Prerequisites</h2>
+<ul>
+  <li><strong>Java 17</strong> — set in <code>pom.xml</code>; a newer JDK may compile but is not what this targets.</li>
+  <li><strong>Maven</strong>, installed globally. There is no wrapper — <code>mvnw</code> is gitignored, so
+      <code>start_services.bat</code> falls back to <code>mvn</code>.</li>
+  <li><strong>Node.js</strong> LTS.</li>
+  <li><strong>Network reach to <code>172.172.20.214:3030</code></strong>. The backend starts without it but every
+      request fails, so an unreachable repository looks like a broken application.</li>
+</ul>
+
+<h2>Start</h2>
+
+<h3>Both at once</h3>
+<pre><code>start_services.bat     # stops anything on 8080/5173 first, then starts both
+stop_services.bat      # kills whatever is listening on 8080 and 5173</code></pre>
+
+<h3>Separately — preferred while developing</h3>
+<pre><code>cd backend
+mvn spring-boot:run          # → http://localhost:8080</code></pre>
+<pre><code>cd frontend
+npm install                  # first run only
+npm run dev                  # → http://localhost:5173/neoadmin/</code></pre>
+
+<div class="danger">
+<p><strong>The URL needs the <code>/neoadmin/</code> path.</strong> <code>vite.config.js</code> sets
+<code>base: '/neoadmin/'</code> and the router uses the same <code>basename</code>. Opening
+<code>http://localhost:5173/</code> does not serve the app — Vite answers with a note about the public base URL.</p>
+</div>
+
+<h2>Verify it is up</h2>
+<pre><code>curl -s -o /dev/null -w "backend  %{http_code}\n" "http://localhost:8080/api/groups/by-prefix?prefix=ecm_&size=1"
+curl -s -o /dev/null -w "frontend %{http_code}\n" "http://localhost:5173/neoadmin/"</code></pre>
+
+<div class="warn">
+<p><strong>Allow generous timeouts.</strong> The first backend call after startup opens a Documentum session and can
+take several seconds. A short curl timeout makes a healthy backend look dead — this has already caused one wrong
+diagnosis.</p>
+</div>
+
+<h2>Two clones — the trap that costs the most time</h2>
+
+<div class="danger">
+<p>A second clone of this repository exists at <strong><code>D:\NBSupportApp</code></strong>, outside the workspace and
+usually on a different branch. If its dev server is already running, it holds port <strong>5173</strong>, and the one
+you start from <code>D:\NB NEO\NBAdminApp</code> silently moves to <strong>5174</strong>.</p>
+<p>You then edit one checkout and test the other, and your changes appear to have no effect.</p>
+</div>
+
+<h3>Which clone is on which port?</h3>
+<p>Ask the dev server for a file you know exists in only one of them:</p>
+<pre><code>curl -s http://localhost:5173/neoadmin/src/utils/verticalHead.js | head -3
+curl -s http://localhost:5174/neoadmin/src/utils/verticalHead.js | head -3</code></pre>
+<p>The clone that has the file returns JavaScript; the other returns the SPA fallback HTML. Or list the listeners and
+match the PID:</p>
+<pre><code>Get-NetTCPConnection -State Listen -LocalPort 5173,5174 |
+  Select-Object LocalPort, OwningProcess</code></pre>
+
+<div class="note">
+<p><code>stop_services.bat</code> only clears <strong>8080 and 5173</strong>. A stray server on 5174 survives it and
+will still be serving stale code afterwards.</p>
+</div>
+
+<h2>CORS and the port you land on</h2>
+
+<div class="warn">
+<p>Most controllers allow both <code>localhost:5173</code> and <code>localhost:5174</code>, so a shifted port mostly
+works. Two do not:</p>
+<ul>
+  <li><code>SettingsController</code> allows <strong>only 5173</strong> — Settings calls fail on 5174 while everything
+      else succeeds.</li>
+  <li><code>TransliterateController</code> allows <code>*</code>.</li>
+</ul>
+<p>If one feature fails with a CORS error and the rest of the app is fine, check which port you are on before
+looking anywhere else.</p>
+</div>
+
+<h2>Signing in</h2>
+<p>You need an account with <code>admin_role</code> of <strong>Super Admin</strong> or <strong>Local Admin</strong>.
+Anything else lands on the "Access Denied" panel from <code>MainLayout</code> — that is the role gate, not a failed
+login.</p>
+<p>The session is front-end only and idles out after <strong>30 minutes</strong>, with a 30-second warning. After a
+long pause you will be back at the login screen with no server-side error to explain it.</p>
+
+<h2>Current state of this machine</h2>
+<div class="tablewrap"><table>
+<tr><th>Service</th><th>Port</th><th>Serving</th></tr>
+<tr><td>Backend</td><td>8080</td><td><code>D:\NB NEO\NBAdminApp\backend</code></td></tr>
+<tr><td>Frontend</td><td><strong>5174</strong></td><td><code>D:\NB NEO\NBAdminApp\frontend</code> — <strong>this repository</strong></td></tr>
+<tr><td>Frontend</td><td>5173</td><td><code>D:\NBSupportApp</code> — the other clone</td></tr>
+</table></div>
+<p>So the working URL here is <strong><code>http://localhost:5174/neoadmin/</code></strong>.</p>
+
+<h2>Build for deployment</h2>
+<pre><code>cd backend  &amp;&amp; mvn clean install    # → target/neoadminBackend.war
+cd frontend &amp;&amp; npm run build        # → dist/, served under /neoadmin/</code></pre>
+<p>The backend war carries <code>ServletInitializer</code> for an external Tomcat. Note that the frontend hardcodes
+<code>http://localhost:8080/api</code> in <code>src/api/axios.js</code>, so a deployed bundle needs a reverse proxy or
+an edited base URL — there is no environment variable for it.</p>
+
+<h2>Diagnosing without the UI</h2>
+<p>With no test suite, the DQL console is the quickest way to check repository state:</p>
+<pre><code>curl -s -X POST http://localhost:8080/api/query/execute \
+  -H "Content-Type: application/json" \
+  -d '{"dql":"select object_name, office_type, department_short_code from cms_user_profile where user_login_name = '"'"'cto.dit'"'"'"}'</code></pre>
+<p>And to inspect a user's group membership:</p>
+<pre><code>curl -s "http://localhost:8080/api/groups/by-user?username=cto.dit"</code></pre>
+
+<div class="warn">
+<p>Both hit the <strong>shared UAT repository</strong>. Reads are safe; <code>PATCH</code> and group
+<code>POST</code>/<code>DELETE</code> change data other people are using. Snapshot before you write, and restore
+after.</p>
+</div>
+
+<footer><p><a href="lowlevel.html">← Low-level reference</a> · <a href="index.html">Documentation index</a></p></footer>
+</main>
+</body>
+</html>
