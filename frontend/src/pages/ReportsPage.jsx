@@ -375,8 +375,9 @@ const ReportsPage = () => {
     }, [rajbhashaOfficeType, rajbhashaLocation, rajbhashaIsRoTe]);
 
     // The Rajbhasha department owns this report for the whole organisation, so a Local
-    // Admin in RAJ sees every department here, as a Super Admin does. Every other Local
-    // Admin sees only their own.
+    // Admin in RAJ gets Super Admin reach on this tab: every office type, every location
+    // and every department. Every other Local Admin stays pinned to their own office and
+    // sees only their own departments.
     const rajbhashaOwnDepartments = (() => {
         const raw = profileCtx?.department_short_code_multi;
         return (Array.isArray(raw) ? raw : (raw ? [raw] : [])).map(s => String(s).toLowerCase());
@@ -1806,7 +1807,7 @@ const ReportsPage = () => {
                     {/* Office Type */}
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Office Type</label>
-                        <select value={rajbhashaOfficeType} onChange={e => handleRajbhashaOfficeTypeChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
+                        <select value={rajbhashaOfficeType} onChange={e => handleRajbhashaOfficeTypeChange(e.target.value)} className={selectCls} disabled={isLocalAdmin && !isRajLocalAdmin}>
                             <option value="">Select</option>
                             <option value="HO">HO</option>
                             <option value="RO">RO</option>
@@ -1818,7 +1819,7 @@ const ReportsPage = () => {
                     {rajbhashaIsRoTe && (
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Location</label>
-                            <select value={rajbhashaLocation} onChange={e => handleRajbhashaLocationChange(e.target.value)} className={selectCls} disabled={isLocalAdmin}>
+                            <select value={rajbhashaLocation} onChange={e => handleRajbhashaLocationChange(e.target.value)} className={selectCls} disabled={isLocalAdmin && !isRajLocalAdmin}>
                                 <option value="">Select Location</option>
                                 {rajbhashaLocations.map(l => <option key={l.shortCode} value={l.location}>{l.location}</option>)}
                             </select>
