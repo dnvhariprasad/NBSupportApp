@@ -735,7 +735,7 @@ public class RajbhashaService {
             "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
             "AND (entry_type='Internal' AND region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
             "OR (entry_type='External' AND received_from in ('External-GoI','External-RBI','External-RBI-EFD') " +
-            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Poducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
+            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','UT of Puducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
         log.info("Grid 3 Region C Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -748,7 +748,7 @@ public class RajbhashaService {
             "and status!='Saved' and decision='Outward' and languages in ('English') " +
             "AND (entry_type='Internal' AND region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
             "OR (entry_type='External' AND received_from in ('External-GoI','External-RBI','External-RBI-EFD') " +
-            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Poducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
+            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','UT of Puducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
         log.info("Grid 3 Region C Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
