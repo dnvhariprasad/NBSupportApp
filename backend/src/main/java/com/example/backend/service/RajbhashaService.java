@@ -2,6 +2,7 @@ package com.example.backend.service;
 
 import com.example.backend.config.DctmConfig;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.apache.poi.xwpf.usermodel.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -11,9 +12,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
 @Service
 @Slf4j
@@ -22,7 +29,8 @@ public class RajbhashaService {
     private final DctmConfig dctmConfig;
     private final RestClient restClient;
 
-    public RajbhashaService(DctmConfig dctmConfig, RestClient.Builder restClientBuilder) {
+    public RajbhashaService(DctmConfig dctmConfig,
+                            @Qualifier("longRunningRestClientBuilder") RestClient.Builder restClientBuilder) {
         this.dctmConfig = dctmConfig;
         this.restClient = restClientBuilder.build();
     }
@@ -106,18 +114,44 @@ public class RajbhashaService {
             log.info("Query parameters calculated: value1={}, value2={}, value3={}, fromDate={}, toDate={}",
                     value1, value2, value3, fromDate, toDate);
 
-            // Grid 1: Execute queries
-            log.info("Executing Grid 1 - Query 1: Total Letters in Hindi");
-            long count1 = executeTotalLettersInHindi(value1, value2, value3, fromDate, toDate);
-            log.info("Query 1 result: {}", count1);
+            // All eighteen counts are independent - none reads another's result - so they
+            // run concurrently rather than as eighteen sequential round-trips. Each call
+            // carries a fixed cost of roughly a second before it touches any data, so the
+            // sequential version paid that eighteen times over.
+            final String v1 = value1, v2 = value2, v3 = value3, from = fromDate, to = toDate;
+            ExecutorService pool = Executors.newFixedThreadPool(QUERY_PARALLELISM);
+            long countsStarted = System.currentTimeMillis();
+            List<Long> counts;
+            try {
+                counts = runConcurrently(pool, List.of(
+                    () -> executeTotalLettersInHindi(v1, v2, v3, from, to),   //  0  grid 1 (1)
+                    () -> executeRepliedInHindi(v1, v2, v3, from, to),        //  1  grid 1 (2)
+                    () -> executeRepliedInEnglish(v1, v2, v3, from, to),      //  2  grid 1 (3)
+                    () -> executeGrid2Query1RegionA(v1, v2, v3, from, to),    //  3  grid 2 A (i)
+                    () -> executeGrid2Query2RegionA(v1, v2, v3, from, to),    //  4  grid 2 A (ii)
+                    () -> executeGrid2Query3RegionA(v1, v2, v3, from, to),    //  5  grid 2 A (iii)
+                    () -> executeGrid2Query1RegionB(v1, v2, v3, from, to),    //  6  grid 2 B (i)
+                    () -> executeGrid2Query2RegionB(v1, v2, v3, from, to),    //  7  grid 2 B (ii)
+                    () -> executeGrid2Query3RegionB(v1, v2, v3, from, to),    //  8  grid 2 B (iii)
+                    () -> executeGrid2Query1RegionC(v1, v2, v3, from, to),    //  9  grid 2 C (i)
+                    () -> executeGrid2Query2RegionC(v1, v2, v3, from, to),    // 10  grid 2 C (ii)
+                    () -> executeGrid2Query3RegionC(v1, v2, v3, from, to),    // 11  grid 2 C (iii)
+                    () -> executeGrid3Query1RegionA(v1, from, to),            // 12  grid 3 A (i)
+                    () -> executeGrid3Query2RegionA(v1, from, to),            // 13  grid 3 A (ii)
+                    () -> executeGrid3Query1RegionB(v1, from, to),            // 14  grid 3 B (i)
+                    () -> executeGrid3Query2RegionB(v1, from, to),            // 15  grid 3 B (ii)
+                    () -> executeGrid3Query1RegionC(v1, from, to),            // 16  grid 3 C (i)
+                    () -> executeGrid3Query2RegionC(v1, from, to)             // 17  grid 3 C (ii)
+                ));
+            } finally {
+                pool.shutdown();
+            }
+            log.info("All 18 Rajbhasha counts completed in {}ms (parallelism {})",
+                     System.currentTimeMillis() - countsStarted, QUERY_PARALLELISM);
 
-            log.info("Executing Grid 1 - Query 2: Replied in Hindi");
-            long count2 = executeRepliedInHindi(value1, value2, value3, fromDate, toDate);
-            log.info("Query 2 result: {}", count2);
-
-            log.info("Executing Grid 1 - Query 3: Replied in English");
-            long count3 = executeRepliedInEnglish(value1, value2, value3, fromDate, toDate);
-            log.info("Query 3 result: {}", count3);
+            long count1 = counts.get(0);
+            long count2 = counts.get(1);
+            long count3 = counts.get(2);
 
             // Grid 1: Build response
             Map<String, Object> result = new HashMap<>();
@@ -145,18 +179,18 @@ public class RajbhashaService {
 
             // Grid 2: Regional analysis
             Map<String, Object> grid2 = new HashMap<>();
-            Map<String, Object> regionA = executeGrid2RegionA(value1, value2, value3, fromDate, toDate);
-            Map<String, Object> regionB = executeGrid2RegionB(value1, value2, value3, fromDate, toDate);
-            Map<String, Object> regionC = executeGrid2RegionC(value1, value2, value3, fromDate, toDate);
+            Map<String, Object> regionA = grid2Row("From Region 'A'", counts.get(3), counts.get(4), counts.get(5));
+            Map<String, Object> regionB = grid2Row("From Region 'B'", counts.get(6), counts.get(7), counts.get(8));
+            Map<String, Object> regionC = grid2Row("From Region 'C'", counts.get(9), counts.get(10), counts.get(11));
             grid2.put("rows", new Map[]{regionA, regionB, regionC});
             result.put("grid2", grid2);
 
             // Grid 3: Outbound letters by region
             log.info("Executing Grid 3 - Outbound letters by region");
             Map<String, Object> grid3 = new HashMap<>();
-            Map<String, Object> toRegionA = executeGrid3RegionA(value1, fromDate, toDate);
-            Map<String, Object> toRegionB = executeGrid3RegionB(value1, fromDate, toDate);
-            Map<String, Object> toRegionC = executeGrid3RegionC(value1, fromDate, toDate);
+            Map<String, Object> toRegionA = grid3Row("To Region 'A'", counts.get(12), counts.get(13));
+            Map<String, Object> toRegionB = grid3Row("To Region 'B'", counts.get(14), counts.get(15));
+            Map<String, Object> toRegionC = grid3Row("To Region 'C'", counts.get(16), counts.get(17));
 
             // Calculate Total row
             long totalHindi = (long) toRegionA.get("hindi_count") + (long) toRegionB.get("hindi_count") + (long) toRegionC.get("hindi_count");
@@ -207,6 +241,59 @@ public class RajbhashaService {
      * letters issued outward, which is a different question from whether an
      * inbound letter has been answered.
      */
+
+    /** How many counts are in flight at once. See runConcurrently. */
+    private static final int QUERY_PARALLELISM = 6;
+
+    /**
+     * Run the suppliers on {@code pool} and return their results in the order given.
+     *
+     * <p>Parallelism is deliberately bounded rather than "one thread per query". On a
+     * large repository each count is real work, and eighteen at once would contend for
+     * the same repository and degrade it for everyone else using the system; six
+     * recovers most of the benefit for a third of the concurrent load.
+     *
+     * <p>If any count fails the whole report fails - a partial report would be a grid of
+     * numbers with no indication that some of them are missing.
+     */
+    private <T> List<T> runConcurrently(ExecutorService pool, List<Supplier<T>> tasks) {
+        List<CompletableFuture<T>> futures = new ArrayList<>(tasks.size());
+        for (Supplier<T> task : tasks) {
+            futures.add(CompletableFuture.supplyAsync(task, pool));
+        }
+        List<T> results = new ArrayList<>(tasks.size());
+        for (CompletableFuture<T> future : futures) {
+            results.add(future.join());
+        }
+        return results;
+    }
+
+    /** One Grid 2 row. Not replied to = received, less those replied to in either language. */
+    private Map<String, Object> grid2Row(String summary, long english, long repliedHindi, long repliedEnglish) {
+        Map<String, Object> row = new HashMap<>();
+        row.put("summary", summary);
+        row.put("no_of_letters_english", english);
+        row.put("replied_in_hindi", repliedHindi);
+        row.put("replied_in_english", repliedEnglish);
+        row.put("not_replied_to", english - repliedHindi - repliedEnglish);
+        return row;
+    }
+
+    /** One Grid 3 row, with its own percentage over its own total. */
+    private Map<String, Object> grid3Row(String summary, long hindi, long english) {
+        long totalLetters = hindi + english;
+        Map<String, Object> row = new HashMap<>();
+        row.put("summary", summary);
+        row.put("hindi_count", hindi);
+        row.put("hindi_bilingual", hindi);
+        row.put("english_count", english);
+        row.put("english_only", english);
+        row.put("total_letters_issued", totalLetters);
+        row.put("percentage", String.format("%.2f%%",
+                totalLetters > 0 ? (hindi * 100.0) / totalLetters : 0));
+        return row;
+    }
+
     /** Grid 2 Region C: southern and eastern states, plus the two Bird centres. */
     private static final String C_LOGIN_REGIONS =
         "'Karnataka','West Bengal','Tripura','Telangana','Sikkim','Odisha','Nagaland','Mizoram','Meghalaya','Manipur','Tamilnadu','Kerala','Goa','Assam','Arunachal Pradesh','Andhra Pradesh','Jammu and Kashmir','Bird Kolkata','Bird Mangalore'";
@@ -385,11 +472,14 @@ public class RajbhashaService {
             return 0L;
 
         } catch (Exception e) {
-            log.error("EXCEPTION while executing Rajbhasha count query", e);
-            log.error("Exception class: {}", e.getClass().getName());
-            log.error("Exception message: {}", e.getMessage());
-            log.error("Exception stacktrace:", e);
-            return 0L;
+            // Never return 0 here. A read timeout or a transport failure used to be
+            // swallowed into a count of zero, which reaches the grid as a real figure and
+            // silently understates a statutory return - and because the "not replied to"
+            // rows are derived by subtraction, one bad zero skews a second cell too.
+            // Failing loudly makes generateReport return success=false instead.
+            log.error("EXCEPTION while executing Rajbhasha count query: {}", dql, e);
+            throw new IllegalStateException(
+                    "Rajbhasha count query failed: " + e.getMessage(), e);
         }
     }
 
@@ -442,97 +532,6 @@ public class RajbhashaService {
         locationCodes.put("West Bengal", "wb");
 
         return locationCodes.getOrDefault(location, location.toLowerCase().substring(0, 2));
-    }
-
-    /**
-     * Grid 2 - Region A queries for English letters
-     * Region A: Bihar, Chhattisgarh, Haryana, Himachal Pradesh, Jharkhand, Madhya Pradesh, etc.
-     */
-    private Map<String, Object> executeGrid2RegionA(String value1, String value2, String value3,
-                                                     String fromDate, String toDate) {
-        log.info("Executing Grid 2 - Region A queries");
-
-        Map<String, Object> regionA = new HashMap<>();
-        regionA.put("summary", "From Region 'A'");
-
-        // Letters received in English
-        long engCount = executeGrid2Query1RegionA(value1, value2, value3, fromDate, toDate);
-        regionA.put("no_of_letters_english", engCount);
-
-        // Replied in Hindi
-        long replyHindiCount = executeGrid2Query2RegionA(value1, value2, value3, fromDate, toDate);
-        regionA.put("replied_in_hindi", replyHindiCount);
-
-        // Replied in English
-        long replyEnglishCount = executeGrid2Query3RegionA(value1, value2, value3, fromDate, toDate);
-        regionA.put("replied_in_english", replyEnglishCount);
-
-        // Letters received in English, less those replied to in either language.
-        long notRepliedCount = engCount - replyHindiCount - replyEnglishCount;
-        regionA.put("not_replied_to", notRepliedCount);
-
-        return regionA;
-    }
-
-    /**
-     * Grid 2 - Region B queries for English letters
-     * Region B: Gujarat, Maharashtra, Punjab, various departments
-     */
-    private Map<String, Object> executeGrid2RegionB(String value1, String value2, String value3,
-                                                     String fromDate, String toDate) {
-        log.info("Executing Grid 2 - Region B queries");
-
-        Map<String, Object> regionB = new HashMap<>();
-        regionB.put("summary", "From Region 'B'");
-
-        // Letters received in English
-        long engCount = executeGrid2Query1RegionB(value1, value2, value3, fromDate, toDate);
-        regionB.put("no_of_letters_english", engCount);
-
-        // Replied in Hindi
-        long replyHindiCount = executeGrid2Query2RegionB(value1, value2, value3, fromDate, toDate);
-        regionB.put("replied_in_hindi", replyHindiCount);
-
-        // Replied in English
-        long replyEnglishCount = executeGrid2Query3RegionB(value1, value2, value3, fromDate, toDate);
-        regionB.put("replied_in_english", replyEnglishCount);
-
-        // Letters received in English, less those replied to in either language.
-        long notRepliedCount = engCount - replyHindiCount - replyEnglishCount;
-        regionB.put("not_replied_to", notRepliedCount);
-
-        return regionB;
-    }
-
-    /**
-     * Grid 2 - Region C queries for English letters.
-     *
-     * <p>Region C: the southern and eastern states, plus Bird Kolkata and Bird Mangalore.
-     */
-    private Map<String, Object> executeGrid2RegionC(String value1, String value2, String value3,
-                                                     String fromDate, String toDate) {
-        log.info("Executing Grid 2 - Region C queries");
-
-        Map<String, Object> regionC = new HashMap<>();
-        regionC.put("summary", "From Region 'C'");
-
-        // Letters received in English
-        long engCount = executeGrid2Query1RegionC(value1, value2, value3, fromDate, toDate);
-        regionC.put("no_of_letters_english", engCount);
-
-        // Replied in Hindi
-        long replyHindiCount = executeGrid2Query2RegionC(value1, value2, value3, fromDate, toDate);
-        regionC.put("replied_in_hindi", replyHindiCount);
-
-        // Replied in English
-        long replyEnglishCount = executeGrid2Query3RegionC(value1, value2, value3, fromDate, toDate);
-        regionC.put("replied_in_english", replyEnglishCount);
-
-        // Letters received in English, less those replied to in either language.
-        long notRepliedCount = engCount - replyHindiCount - replyEnglishCount;
-        regionC.put("not_replied_to", notRepliedCount);
-
-        return regionC;
     }
 
     private long executeGrid2Query1RegionA(String value1, String value2, String value3,
@@ -678,99 +677,6 @@ public class RajbhashaService {
 
         log.info("Grid 2 Region C Query 3 (Replied English): {}", dql.toString());
         return executeCountQuery(dql.toString());
-    }
-
-    /**
-     * Grid 3 - Region A queries (Outbound letters)
-     * Region A: RO-BR, RO-CH, RO-HR, RO-HP, RO-JH, RO-MP, RO-RJ, RO-UP, RO-UK, RO-DL, RO-AN, TE-BL, TE-NC
-     */
-    private Map<String, Object> executeGrid3RegionA(String value1, String fromDate, String toDate) {
-        log.info("Executing Grid 3 - To Region A queries");
-
-        Map<String, Object> regionA = new HashMap<>();
-        regionA.put("summary", "To Region 'A'");
-
-        // Hindi/Bilingual count
-        long hindiCount = executeGrid3Query1RegionA(value1, fromDate, toDate);
-        regionA.put("hindi_count", hindiCount);
-        regionA.put("hindi_bilingual", hindiCount);
-
-        // English only count
-        long englishCount = executeGrid3Query2RegionA(value1, fromDate, toDate);
-        regionA.put("english_count", englishCount);
-        regionA.put("english_only", englishCount);
-
-        // Total letters issued
-        long totalLetters = hindiCount + englishCount;
-        regionA.put("total_letters_issued", totalLetters);
-
-        // Percentage: count1 / count3 * 100
-        double percentage = (totalLetters > 0) ? (hindiCount * 100.0) / totalLetters : 0;
-        regionA.put("percentage", String.format("%.2f%%", percentage));
-
-        return regionA;
-    }
-
-    /**
-     * Grid 3 - Region B queries (Outbound letters)
-     * Region B: RO-PN, RO-MH, RO-GJ, HO-AD, HO-RAJ, HO-SPPID, HO-FD, HO-FSDD, HO-FSPD, HO-HRMD, HO-ID, HO-IDD, HO-LAW, HO-GSD, HO-RMSMED, HO-DCAS, HO-DDMABI, HO-DEAR, HO-DMFI, HO-DOS, HO-DPSP, HO-DSM, HO-DSSI, HO-CC, HO-CCD, HO-CPD, HO-CVC, HO-CHMNS, HO-DMDS1, HO-DMDS2, HO-CISO, HO-DDSI, HO-CSDD
-     */
-    private Map<String, Object> executeGrid3RegionB(String value1, String fromDate, String toDate) {
-        log.info("Executing Grid 3 - To Region B queries");
-
-        Map<String, Object> regionB = new HashMap<>();
-        regionB.put("summary", "To Region 'B'");
-
-        // Hindi/Bilingual count
-        long hindiCount = executeGrid3Query1RegionB(value1, fromDate, toDate);
-        regionB.put("hindi_count", hindiCount);
-        regionB.put("hindi_bilingual", hindiCount);
-
-        // English only count
-        long englishCount = executeGrid3Query2RegionB(value1, fromDate, toDate);
-        regionB.put("english_count", englishCount);
-        regionB.put("english_only", englishCount);
-
-        // Total letters issued
-        long totalLetters = hindiCount + englishCount;
-        regionB.put("total_letters_issued", totalLetters);
-
-        // Percentage: count1 / count3 * 100
-        double percentage = (totalLetters > 0) ? (hindiCount * 100.0) / totalLetters : 0;
-        regionB.put("percentage", String.format("%.2f%%", percentage));
-
-        return regionB;
-    }
-
-    /**
-     * Grid 3 - Region C queries (Outbound letters)
-     * Region C: RO-AR, RO-AD, RO-AS, RO-GA, RO-KA, RO-KL, RO-MN, RO-ML, RO-MZ, RO-NL, RO-OR, RO-SK, RO-TN, RO-TG, RO-TR, RO-WB, RO-JK, TE-BK, TE-BM
-     */
-    private Map<String, Object> executeGrid3RegionC(String value1, String fromDate, String toDate) {
-        log.info("Executing Grid 3 - To Region C queries");
-
-        Map<String, Object> regionC = new HashMap<>();
-        regionC.put("summary", "To Region 'C'");
-
-        // Hindi/Bilingual count
-        long hindiCount = executeGrid3Query1RegionC(value1, fromDate, toDate);
-        regionC.put("hindi_count", hindiCount);
-        regionC.put("hindi_bilingual", hindiCount);
-
-        // English only count
-        long englishCount = executeGrid3Query2RegionC(value1, fromDate, toDate);
-        regionC.put("english_count", englishCount);
-        regionC.put("english_only", englishCount);
-
-        // Total letters issued
-        long totalLetters = hindiCount + englishCount;
-        regionC.put("total_letters_issued", totalLetters);
-
-        // Percentage: count1 / count3 * 100
-        double percentage = (totalLetters > 0) ? (hindiCount * 100.0) / totalLetters : 0;
-        regionC.put("percentage", String.format("%.2f%%", percentage));
-
-        return regionC;
     }
 
     private long executeGrid3Query1RegionA(String value1, String fromDate, String toDate) {
