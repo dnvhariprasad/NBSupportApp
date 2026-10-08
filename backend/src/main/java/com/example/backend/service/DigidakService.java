@@ -135,16 +135,11 @@ public class DigidakService {
                 where.append(")");
             }
 
-            // Region filter (maps to selected_region)
+            // Region filter (Internal -> region, External -> state_of_sender)
             if (region != null && !region.isBlank()) {
-                List<String> regionLocations = getLocationsByRegion(region);
-                if (!regionLocations.isEmpty()) {
-                    where.append(" AND selected_region IN (");
-                    for (int i = 0; i < regionLocations.size(); i++) {
-                        if (i > 0) where.append(", ");
-                        where.append("'").append(regionLocations.get(i)).append("'");
-                    }
-                    where.append(")");
+                String regionFilter = buildOutboxRegionFilter(region);
+                if (!regionFilter.isEmpty()) {
+                    where.append(" AND ").append(regionFilter);
                 }
             }
             // Sent To (selected_region) filter - only if region not selected
@@ -1141,6 +1136,34 @@ public class DigidakService {
         return receivedFromOptions;
     }
 
+    /**
+     * Outbox Region filter: Internal letters match on the sending office (region),
+     * External letters on the sender's state (state_of_sender). Multiple regions are OR-ed.
+     */
+    private static final Map<String, String> OUTBOX_REGION_FILTERS = Map.of(
+        "region a",
+            "(entry_type = 'Internal' AND region IN ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC'))" +
+            " OR (entry_type = 'External' AND state_of_sender IN ('Andaman and Nicobar','Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','New Delhi','Rajasthan','Uttar Pradesh','Uttarakhand'))",
+        "region b",
+            "(entry_type = 'Internal' AND region IN ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD'))" +
+            " OR (entry_type = 'External' AND state_of_sender IN ('Gujarat','Maharashtra','Punjab'))",
+        "region c",
+            "(entry_type = 'Internal' AND region IN ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM'))" +
+            " OR (entry_type = 'External' AND received_from IN ('External-GoI','External-RBI','External-RBI-EFD')" +
+            " AND state_of_sender IN ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','UT of Puducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal'))"
+    );
+
+    private String buildOutboxRegionFilter(String region) {
+        List<String> clauses = new ArrayList<>();
+        for (String r : region.split(",")) {
+            String clause = OUTBOX_REGION_FILTERS.get(r.trim().toLowerCase());
+            if (clause != null) {
+                clauses.add("(" + clause + ")");
+            }
+        }
+        return clauses.isEmpty() ? "" : "(" + String.join(" OR ", clauses) + ")";
+    }
+
     private List<String> getLocationsByRegion(String region) {
         List<String> locations = new ArrayList<>();
         String[] regions = region.split(",");
@@ -1258,14 +1281,9 @@ public class DigidakService {
             }
 
             if (region != null && !region.isBlank()) {
-                List<String> regionLocations = getLocationsByRegion(region);
-                if (!regionLocations.isEmpty()) {
-                    where.append(" AND selected_region IN (");
-                    for (int i = 0; i < regionLocations.size(); i++) {
-                        if (i > 0) where.append(", ");
-                        where.append("'").append(regionLocations.get(i)).append("'");
-                    }
-                    where.append(")");
+                String regionFilter = buildOutboxRegionFilter(region);
+                if (!regionFilter.isEmpty()) {
+                    where.append(" AND ").append(regionFilter);
                 }
             } else if (sentTo != null && !sentTo.isBlank()) {
                 String[] regions = sentTo.split(",");

@@ -231,6 +231,8 @@ const ReportsPage = () => {
     const [digidakRegion,        setDigidakRegion]        = useState([]);
     const [digidakInboxRegion,   setDigidakInboxRegion]   = useState([]);
     const digidakRegionOptions = ['Region A', 'Region B', 'Region C'];
+    // Outbox Region decides entry_type itself, so the Type filter is disabled while a Region is selected
+    const digidakTypeDisabled = digidakSubTab === 'outbox' && digidakRegion.length > 0;
     const [digidakMetadata,     setDigidakMetadata]     = useState({
         languages: [], mode_of_receipt: [], priority: [], secrecy: [], status: [], type_category: [], entry_type: [], source_vertical: []
     });
@@ -645,7 +647,7 @@ const ReportsPage = () => {
         if (digidakSecrecy && digidakSecrecy.length > 0)           p.secrecy = digidakSecrecy.join(',');
         if (digidakStatus && digidakStatus.length > 0)            p.status = digidakStatus.join(',');
         if (digidakTypeCategory && digidakTypeCategory.length > 0)      p.typeCategory = digidakTypeCategory.join(',');
-        if (digidakEntryType && digidakEntryType.length > 0)          p.entryType = digidakEntryType.join(',');
+        if (!digidakTypeDisabled && digidakEntryType && digidakEntryType.length > 0) p.entryType = digidakEntryType.join(',');
 
         // Outbox: Region/Sent To handling
         if (digidakSubTab === 'outbox') {
@@ -675,7 +677,7 @@ const ReportsPage = () => {
     }, [digidakOfficeType, digidakIsRoTe, digidakLocation, digidakDeptName,
         digidakFromDate, digidakToDate, digidakLanguage, digidakModeOfReceipt,
         digidakPriority, digidakSecrecy, digidakStatus, digidakTypeCategory, digidakEntryType, digidakSentTo, digidakRegion, digidakInboxRegion, digidakReceivedFrom, digidakInboxUsername,
-        digidakSourceVertical, digidakSubTab]);
+        digidakSourceVertical, digidakSubTab, digidakTypeDisabled]);
 
     const fetchDigidakReport = useCallback(async (pageNum = 1, size = 10) => {
         setLoading(true);
@@ -1543,14 +1545,17 @@ const ReportsPage = () => {
                         placeholder="Select Type Category"
                     />
 
-                    {/* Type (Entry Type) */}
-                    <MultiSelectDropdown
-                        label="Type"
-                        options={digidakMetadata.entry_type || []}
-                        selectedValues={digidakEntryType}
-                        onChange={setDigidakEntryType}
-                        placeholder="Select Type"
-                    />
+                    {/* Type (Entry Type) - disabled on Outbox if Region selected */}
+                    <div className={digidakTypeDisabled ? 'opacity-50 pointer-events-none' : ''}>
+                        <MultiSelectDropdown
+                            label="Type"
+                            options={digidakMetadata.entry_type || []}
+                            selectedValues={digidakTypeDisabled ? [] : digidakEntryType}
+                            onChange={setDigidakEntryType}
+                            placeholder="Select Type"
+                            disabled={digidakTypeDisabled}
+                        />
+                    </div>
 
                     {/* Region - Only for Outbox (disabled if Sent To selected) */}
                     {digidakSubTab === 'outbox' && (

@@ -19,6 +19,21 @@ public class RestClientConfig {
                 .requestFactory(new TrustAllRequestFactory());
     }
 
+    /**
+     * For reports whose individual queries can legitimately run for minutes against a
+     * large repository. The default 30s read timeout is right for interactive calls but
+     * cuts a heavy Rajbhasha count short, and a cut-short query is worse than a slow one:
+     * it surfaces as a failure the caller must handle rather than a real number.
+     */
+    @Bean("longRunningRestClientBuilder")
+    public RestClient.Builder longRunningRestClientBuilder() {
+        TrustAllRequestFactory factory = new TrustAllRequestFactory();
+        factory.setReadTimeout(LONG_READ_TIMEOUT_MS);
+        return RestClient.builder().requestFactory(factory);
+    }
+
+    private static final int LONG_READ_TIMEOUT_MS = 180_000;
+
     // Custom RequestFactory to bypass SSL verification and add timeout
     static class TrustAllRequestFactory extends SimpleClientHttpRequestFactory {
         public TrustAllRequestFactory() {
