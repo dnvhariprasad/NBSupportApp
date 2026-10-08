@@ -1,6 +1,7 @@
 package com.example.backend.service;
 
 import com.example.backend.config.DctmConfig;
+import com.example.backend.config.LocationShortCodes;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.*;
 import org.springframework.stereotype.Service;
@@ -410,38 +411,7 @@ public class RajbhashaService {
     }
 
     private String getLocationShortCode(String location) {
-        Map<String, String> locationCodes = new HashMap<>();
-        locationCodes.put("Andhra Pradesh", "ap");
-        locationCodes.put("Arunachal Pradesh", "ar");
-        locationCodes.put("Assam", "as");
-        locationCodes.put("Bihar", "bh");
-        locationCodes.put("Chhattisgarh", "cg");
-        locationCodes.put("Goa", "ga");
-        locationCodes.put("Gujarat", "gj");
-        locationCodes.put("Haryana", "hr");
-        locationCodes.put("Himachal Pradesh", "hp");
-        locationCodes.put("Jharkhand", "jh");
-        locationCodes.put("Karnataka", "ka");
-        locationCodes.put("Kerala", "kl");
-        locationCodes.put("Madhya Pradesh", "mp");
-        locationCodes.put("Maharashtra", "mh");
-        locationCodes.put("Manipur", "mn");
-        locationCodes.put("Meghalaya", "ml");
-        locationCodes.put("Mizoram", "mz");
-        locationCodes.put("Nagaland", "nl");
-        locationCodes.put("Odisha", "od");
-        locationCodes.put("Punjab", "pb");
-        locationCodes.put("Rajasthan", "rj");
-        locationCodes.put("Sikkim", "sk");
-        locationCodes.put("Tamil Nadu", "tn");
-        locationCodes.put("Tamilnadu", "tn");
-        locationCodes.put("Telangana", "tg");
-        locationCodes.put("Tripura", "tr");
-        locationCodes.put("Uttar Pradesh", "up");
-        locationCodes.put("Uttarakhand", "uk");
-        locationCodes.put("West Bengal", "wb");
-
-        return locationCodes.getOrDefault(location, location.toLowerCase().substring(0, 2));
+        return LocationShortCodes.of(location);
     }
 
     /**
