@@ -1,5 +1,7 @@
 package com.example.backend.service;
 
+import com.example.backend.config.LocationShortCodes;
+
 import com.example.backend.config.AppConfig;
 import com.example.backend.config.DctmConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -437,47 +439,10 @@ public class DigidakService {
      * Get location short code from name (maps location names to shortcodes)
      */
     private String getLocationShortCode(String locationName) {
-        Map<String, String> locationCodeMap = new HashMap<>();
-        // RO Locations
-        locationCodeMap.put("Andaman and Nicobar", "an");
-        locationCodeMap.put("Andhra Pradesh", "ad");
-        locationCodeMap.put("Arunachal Pradesh", "ar");
-        locationCodeMap.put("Assam", "as");
-        locationCodeMap.put("Bihar", "br");
-        locationCodeMap.put("Chhattisgarh", "ch");
-        locationCodeMap.put("Goa", "ga");
-        locationCodeMap.put("Gujarat", "gj");
-        locationCodeMap.put("Haryana", "hr");
-        locationCodeMap.put("Himachal Pradesh", "hp");
-        locationCodeMap.put("Jammu and Kashmir", "jk");
-        locationCodeMap.put("Jharkhand", "jh");
-        locationCodeMap.put("Karnataka", "ka");
-        locationCodeMap.put("Kerala", "kl");
-        locationCodeMap.put("Madhya Pradesh", "mp");
-        locationCodeMap.put("Maharashtra", "mh");
-        locationCodeMap.put("Manipur", "mn");
-        locationCodeMap.put("Meghalaya", "ml");
-        locationCodeMap.put("Mizoram", "mz");
-        locationCodeMap.put("Nagaland", "nl");
-        locationCodeMap.put("New Delhi", "dl");
-        locationCodeMap.put("Odisha", "or");
-        locationCodeMap.put("Punjab", "pn");
-        locationCodeMap.put("Rajasthan", "rj");
-        locationCodeMap.put("Sikkim", "sk");
-        locationCodeMap.put("Tamilnadu", "tn");
-        locationCodeMap.put("Telangana", "tg");
-        locationCodeMap.put("Tripura", "tr");
-        locationCodeMap.put("Uttarakhand", "uk");
-        locationCodeMap.put("Uttar Pradesh", "up");
-        locationCodeMap.put("West Bengal", "wb");
-        // TE Locations
-        locationCodeMap.put("Bird Kolkata", "bk");
-        locationCodeMap.put("Bird Lucknow", "bl");
-        locationCodeMap.put("Bird Mangalore", "bm");
-        locationCodeMap.put("NBSC Lucknow", "nc");
-
-        String trimmed = locationName.trim();
-        return locationCodeMap.getOrDefault(trimmed, trimmed.toLowerCase());
+        // Unknown locations keep Digidak's existing lenient behaviour rather than
+        // throwing, so this change cannot alter how any current report behaves.
+        return LocationShortCodes.orDefault(
+                locationName, locationName == null ? "" : locationName.trim().toLowerCase());
     }
 
     /**
