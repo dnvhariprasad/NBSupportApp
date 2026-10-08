@@ -2,6 +2,7 @@ package com.example.backend.service;
 
 import com.example.backend.config.DctmConfig;
 import com.example.backend.config.LocationShortCodes;
+import com.example.backend.config.RegionCScope;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.*;
 import org.springframework.stereotype.Service;
@@ -791,15 +792,16 @@ public class RajbhashaService {
         return executeCountQuery(dql.toString());
     }
 
+    /** The Grid 3 Region 'C' destination test, shared with the Digidak Outbox filter. */
+    private static final String GRID3_REGION_C_SCOPE = "AND (" + RegionCScope.PREDICATE + ")";
+
     private long executeGrid3Query1RegionC(String value1, String fromDate, String toDate) {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
-            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
-            "AND (entry_type='Internal' AND region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
-            "OR (entry_type='External' AND received_from in ('External-GoI','External-RBI','External-RBI-EFD') " +
-            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','UT of Puducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
+            "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') ")
+            .append(GRID3_REGION_C_SCOPE);
         log.info("Grid 3 Region C Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -809,10 +811,8 @@ public class RajbhashaService {
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and login_region in ('").append(value1).append("') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
-            "and status!='Saved' and decision='Outward' and languages in ('English') " +
-            "AND (entry_type='Internal' AND region in ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM') " +
-            "OR (entry_type='External' AND received_from in ('External-GoI','External-RBI','External-RBI-EFD') " +
-            "AND state_of_sender in ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','UT of Puducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal')))");
+            "and status!='Saved' and decision='Outward' and languages in ('English') ")
+            .append(GRID3_REGION_C_SCOPE);
         log.info("Grid 3 Region C Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
