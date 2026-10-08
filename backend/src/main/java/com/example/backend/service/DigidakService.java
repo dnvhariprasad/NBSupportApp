@@ -1,5 +1,8 @@
 package com.example.backend.service;
 
+import com.example.backend.config.LocationShortCodes;
+import com.example.backend.config.RegionCScope;
+
 import com.example.backend.config.AppConfig;
 import com.example.backend.config.DctmConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -437,47 +440,10 @@ public class DigidakService {
      * Get location short code from name (maps location names to shortcodes)
      */
     private String getLocationShortCode(String locationName) {
-        Map<String, String> locationCodeMap = new HashMap<>();
-        // RO Locations
-        locationCodeMap.put("Andaman and Nicobar", "an");
-        locationCodeMap.put("Andhra Pradesh", "ad");
-        locationCodeMap.put("Arunachal Pradesh", "ar");
-        locationCodeMap.put("Assam", "as");
-        locationCodeMap.put("Bihar", "br");
-        locationCodeMap.put("Chhattisgarh", "ch");
-        locationCodeMap.put("Goa", "ga");
-        locationCodeMap.put("Gujarat", "gj");
-        locationCodeMap.put("Haryana", "hr");
-        locationCodeMap.put("Himachal Pradesh", "hp");
-        locationCodeMap.put("Jammu and Kashmir", "jk");
-        locationCodeMap.put("Jharkhand", "jh");
-        locationCodeMap.put("Karnataka", "ka");
-        locationCodeMap.put("Kerala", "kl");
-        locationCodeMap.put("Madhya Pradesh", "mp");
-        locationCodeMap.put("Maharashtra", "mh");
-        locationCodeMap.put("Manipur", "mn");
-        locationCodeMap.put("Meghalaya", "ml");
-        locationCodeMap.put("Mizoram", "mz");
-        locationCodeMap.put("Nagaland", "nl");
-        locationCodeMap.put("New Delhi", "dl");
-        locationCodeMap.put("Odisha", "or");
-        locationCodeMap.put("Punjab", "pn");
-        locationCodeMap.put("Rajasthan", "rj");
-        locationCodeMap.put("Sikkim", "sk");
-        locationCodeMap.put("Tamilnadu", "tn");
-        locationCodeMap.put("Telangana", "tg");
-        locationCodeMap.put("Tripura", "tr");
-        locationCodeMap.put("Uttarakhand", "uk");
-        locationCodeMap.put("Uttar Pradesh", "up");
-        locationCodeMap.put("West Bengal", "wb");
-        // TE Locations
-        locationCodeMap.put("Bird Kolkata", "bk");
-        locationCodeMap.put("Bird Lucknow", "bl");
-        locationCodeMap.put("Bird Mangalore", "bm");
-        locationCodeMap.put("NBSC Lucknow", "nc");
-
-        String trimmed = locationName.trim();
-        return locationCodeMap.getOrDefault(trimmed, trimmed.toLowerCase());
+        // Unknown locations keep Digidak's existing lenient behaviour rather than
+        // throwing, so this change cannot alter how any current report behaves.
+        return LocationShortCodes.orDefault(
+                locationName, locationName == null ? "" : locationName.trim().toLowerCase());
     }
 
     /**
@@ -1147,10 +1113,7 @@ public class DigidakService {
         "region b",
             "(entry_type = 'Internal' AND region IN ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD'))" +
             " OR (entry_type = 'External' AND state_of_sender IN ('Gujarat','Maharashtra','Punjab'))",
-        "region c",
-            "(entry_type = 'Internal' AND region IN ('RO-AR','RO-AD','RO-AS','RO-GA','RO-KA','RO-KL','RO-MN','RO-ML','RO-MZ','RO-NL','RO-OR','RO-SK','RO-TN','RO-TG','RO-TR','RO-WB','RO-JK','TE-BK','TE-BM'))" +
-            " OR (entry_type = 'External' AND received_from IN ('External-GoI','External-RBI','External-RBI-EFD')" +
-            " AND state_of_sender IN ('Andhra Pradesh','Arunachal Pradesh','Assam','Goa','Jammu and Kashmir','Karnataka','Kerala','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','UT of Puducherry','Sikkim','Tamilnadu','Telangana','Tripura','West Bengal'))"
+        "region c", RegionCScope.PREDICATE
     );
 
     private String buildOutboxRegionFilter(String region) {
