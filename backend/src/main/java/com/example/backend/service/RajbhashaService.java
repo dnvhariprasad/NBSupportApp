@@ -2,6 +2,7 @@ package com.example.backend.service;
 
 import com.example.backend.config.DctmConfig;
 import com.example.backend.config.LocationShortCodes;
+import com.example.backend.config.RegionBScope;
 import com.example.backend.config.RegionCScope;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.*;
@@ -558,7 +559,7 @@ public class RajbhashaService {
         StringBuilder dql = new StringBuilder(
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD') " +
+            "and login_region in(" + RegionBScope.LOGIN_REGIONS + ") " +
             "and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved' and languages in ('English')");
         log.info("Grid 2 Region B Query 1 (English letters): {}", dql.toString());
@@ -571,7 +572,7 @@ public class RajbhashaService {
             "select count (*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
+            "and login_region in(" + RegionBScope.LOGIN_REGIONS + ")and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved' and languages in ('English')) " +
             "and languages in ('Hindi', 'Bilingual') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
@@ -587,7 +588,7 @@ public class RajbhashaService {
             "select count(*) as total from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and any responding_uid in (select distinct uid_number from cms_digidak_folder where is_group=false and is_migrated=false " +
             "and selected_region in ('").append(value1).append("') and selected_cgm_group ='ecm_digidak_").append(value2).append("_").append(value3).append("_cgm' " +
-            "and login_region in('Gujarat','Maharashtra','Punjab','PFD','DIT','DOR','SECY','RMD','SPD','AD','RAJ','SPPID','FD','FSDD','FSPD','HRMD','ID','IDD','LAW','GSD','RMSMED','DCAS','DDMABI','DEAR','DMFI','DOS','DPSP','DSM','DSSI','CC','CCD','CPD','CVC','CHMNS','DMDS1','DMDS2','CISO','DDSI','CSDD')and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
+            "and login_region in(" + RegionBScope.LOGIN_REGIONS + ")and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved' and languages in ('English')) " +
             "and languages in ('English') and (r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss')) " +
             "and status!='Saved'");
@@ -774,8 +775,8 @@ public class RajbhashaService {
             "and login_region in ('").append(value1).append("') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
             "and status!='Saved' and decision='Outward' and languages in ('Hindi', 'Bilingual') " +
-            "AND (entry_type='Internal' AND region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
-            "OR (entry_type='External' AND state_of_sender in ('Gujarat','Maharashtra','Punjab')))");
+            "AND (entry_type='Internal' AND region in (" + RegionBScope.REGIONS + ") " +
+            "OR (entry_type='External' AND state_of_sender in (" + RegionBScope.STATES + ")))");
         log.info("Grid 3 Region B Query 1 (Hindi/Bilingual): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
@@ -786,8 +787,8 @@ public class RajbhashaService {
             "and login_region in ('").append(value1).append("') " +
             "and r_creation_date>=DATE('").append(fromDate).append(" 00:00:00','dd/MM/yyyy hh:mi:ss') AND r_creation_date<=DATE('").append(toDate).append(" 23:59:59','dd/MM/yyyy hh:mi:ss') " +
             "and status!='Saved' and decision='Outward' and languages in ('English') " +
-            "AND (entry_type='Internal' AND region in ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD') " +
-            "OR (entry_type='External' AND state_of_sender in ('Gujarat','Maharashtra','Punjab')))");
+            "AND (entry_type='Internal' AND region in (" + RegionBScope.REGIONS + ") " +
+            "OR (entry_type='External' AND state_of_sender in (" + RegionBScope.STATES + ")))");
         log.info("Grid 3 Region B Query 2 (English Only): {}", dql.toString());
         return executeCountQuery(dql.toString());
     }
