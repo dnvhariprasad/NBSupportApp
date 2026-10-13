@@ -1,6 +1,7 @@
 package com.example.backend.service;
 
 import com.example.backend.config.LocationShortCodes;
+import com.example.backend.config.RegionBScope;
 import com.example.backend.config.RegionCScope;
 
 import com.example.backend.config.AppConfig;
@@ -1111,8 +1112,8 @@ public class DigidakService {
             "(entry_type = 'Internal' AND region IN ('RO-BR','RO-CH','RO-HR','RO-HP','RO-JH','RO-MP','RO-RJ','RO-UP','RO-UK','RO-DL','RO-AN','TE-BL','TE-NC'))" +
             " OR (entry_type = 'External' AND state_of_sender IN ('Andaman and Nicobar','Bihar','Chhattisgarh','Haryana','Himachal Pradesh','Jharkhand','Madhya Pradesh','New Delhi','Rajasthan','Uttar Pradesh','Uttarakhand'))",
         "region b",
-            "(entry_type = 'Internal' AND region IN ('RO-PN','RO-MH','RO-GJ','HO-PFD','HO-DIT','HO-DOR','HO-SECY','HO-RMD','HO-SPD','HO-AD','HO-RAJ','HO-SPPID','HO-FD','HO-FSDD','HO-FSPD','HO-HRMD','HO-ID','HO-IDD','HO-LAW','HO-GSD','HO-RMSMED','HO-DCAS','HO-DDMABI','HO-DEAR','HO-DMFI','HO-DOS','HO-DPSP','HO-DSM','HO-DSSI','HO-CC','HO-CCD','HO-CPD','HO-CVC','HO-CHMNS','HO-DMDS1','HO-DMDS2','HO-DMDS3','HO-CISO','HO-DDSI','HO-CSDD'))" +
-            " OR (entry_type = 'External' AND state_of_sender IN ('Gujarat','Maharashtra','Punjab'))",
+            "(entry_type = 'Internal' AND region IN (" + RegionBScope.REGIONS + "))" +
+            " OR (entry_type = 'External' AND state_of_sender IN (" + RegionBScope.STATES + "))",
         "region c", RegionCScope.PREDICATE
     );
 
@@ -1140,12 +1141,7 @@ public class DigidakService {
                     "Andaman and Nicobar", "Bird Lucknow", "NBSC Lucknow"
                 ));
             } else if ("region b".equals(trimmed)) {
-                locations.addAll(java.util.Arrays.asList(
-                    "Gujarat", "Maharashtra", "Punjab", "PFD", "DIT", "DOR", "SECY", "RMD", "SPD", "AD", "RAJ", "SPPID",
-                    "FD", "FSDD", "FSPD", "HRMD", "ID", "IDD", "LAW", "GSD", "RMSMED", "DCAS", "DDMABI", "DEAR",
-                    "DMFI", "DOS", "DPSP", "DSM", "DSSI", "CC", "CCD", "CPD", "CVC", "CHMNS", "DMDS1", "DMDS2",
-                    "CISO", "DDSI", "CSDD"
-                ));
+                locations.addAll(RegionBScope.LOGIN_REGION_VALUES);
             } else if ("region c".equals(trimmed)) {
                 locations.addAll(java.util.Arrays.asList(
                     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Goa", "Karnataka", "Kerala",
